@@ -477,8 +477,8 @@ namespace UZIP2
         }
         public Password(string name, Config c)
         {
-            PasswordName = name;
-            LoadScores();
+            PWConfig = c;
+            try { LoadScores(); } catch { }
             PWConfig = c;
         }
 
