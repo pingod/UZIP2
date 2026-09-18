@@ -29,13 +29,19 @@ jobs:
       - name: Assemble publish folder
         shell: pwsh
         run: |
-          $publish = "publish"
-          # 拷贝编译产物（不含 7-Zip，由用户自行安装）
-          Copy-Item "UZIP2\bin\Release\*" -Destination $publish -Recurse -Force
-          # 创建 Config 空目录（程序首次启动会自动生成配置）
+          $ErrorActionPreference = "Stop"
+          $root = $PWD.Path
+          Write-Host "Root: $root"
+          $src = Join-Path $root "UZIP2\bin\Release"
+          $publish = Join-Path $root "publish"
+          Write-Host "Src: $src"
+          Write-Host "Src exists: $(Test-Path $src)"
+          Get-ChildItem $src -Recurse | Select-Object FullName
+          New-Item -ItemType Directory -Path $publish -Force | Out-Null
+          Copy-Item "$src\*" -Destination $publish -Recurse -Force
           New-Item -ItemType Directory -Path "$publish\Config" -Force | Out-Null
-          # 清理调试符号
           Remove-Item "$publish\*.pdb" -ErrorAction SilentlyContinue
+          Write-Host "---publish contents---"
           Get-ChildItem $publish -Recurse | Select-Object FullName
 
       - name: Upload artifact
