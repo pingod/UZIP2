@@ -21,11 +21,38 @@ namespace UZIP2
     public partial class MainWindow : Window
     {
         DebugWindow DBWin = null;
+        // 真正退出标志（托盘菜单点"退出"才为 true）
+        private bool _reallyQuit = false;
+        // 从托盘恢复主窗口
+        private void ShowFromTray()
+        {
+            this.Show();
+            this.WindowState = WindowState.Normal;
+            this.Activate();
+        }
+        // 托盘菜单退出
+        private void QuitToDesktop()
+        {
+            _reallyQuit = true;
+            this.Close();
+        }
+        // 拦截窗口关闭按钮：普通模式下隐藏到托盘，命令行模式直接退出
+        protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+        {
+            if (!_reallyQuit && !USetting.IsCmdMode && USetting.RunState == RunStatus.Normal)
+            {
+                e.Cancel = true;
+                this.Hide();
+                return;
+            }
+            base.OnClosing(e);
+        }
         public MainWindow()
         {
             InitializeComponent();
             WindowPosition();
             ControlInitialize();
+            Notifier.Setup(ShowFromTray, QuitToDesktop);
         }
 
         // 窗体初始化Plus
@@ -270,11 +297,16 @@ namespace UZIP2
 
         void CloseWindow()
         {
+            if (USetting.IsCmdMode)
+            {
+                Environment.Exit(0);
+                return;
+            }
             if (USetting.RunState == RunStatus.Normal)
             {
                 USetting.WindowLeft = this.Left;
                 USetting.WindowTop = this.Top;
-                Environment.Exit(0);
+                this.Hide();
             }
         }
 
@@ -1857,7 +1889,7 @@ namespace UZIP2
                     // 检测文件是 否不可解压，且不使用解压未知格式，且不是分卷，直接跳过
                     if (!UTool.CanExtract(f) && !USetting.ExtractUnknow && !uVolumes.IsVolumes())
                     {
-                        FailureList.Add(f);
+                        FailureList.Add(f); USetting.FailureReasons[f] = "不支持的格式";
                         // 删除临时文件夹
                         if (Directory.Exists(FOutTemp))
                         {
@@ -2044,7 +2076,7 @@ namespace UZIP2
                     if (!uOk)
                     {
                         //MessageBox.Show("没有找到密码");
-                        FailureList.Add(f);
+                        FailureList.Add(f); USetting.FailureReasons[f] = "密码本/密码纸中未找到正确密码";
                         // 删除临时文件夹
                         if (Directory.Exists(FOutTemp))
                         {
@@ -2190,7 +2222,7 @@ namespace UZIP2
                     }
                     else
                     {
-                        FailureList.Add(f);
+                        FailureList.Add(f); USetting.FailureReasons[f] = UTool.Diagnose7zError(uMessage);
                     }
                     // 处理后事
                 }

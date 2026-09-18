@@ -173,6 +173,29 @@ namespace UZIP2
 
 
         // 检查文件字符串后缀
+        // 从 7z 输出中诊断失败原因
+        public static string Diagnose7zError(string output)
+        {
+            if (string.IsNullOrEmpty(output)) return "无输出";
+            if (output.IndexOf("Wrong password", StringComparison.OrdinalIgnoreCase) >= 0
+                || output.IndexOf("Cannot open encrypted", StringComparison.OrdinalIgnoreCase) >= 0
+                || output.IndexOf("Headers error", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "密码错误或加密头损坏";
+            if (output.IndexOf("CRC Failed", StringComparison.OrdinalIgnoreCase) >= 0
+                || output.IndexOf("Data Error", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "压缩包数据损坏 (CRC)";
+            if (output.IndexOf("Can not open", StringComparison.OrdinalIgnoreCase) >= 0
+                || output.IndexOf("ERROR:", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "文件被占用或无法打开";
+            if (output.IndexOf("No files to process", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "包内无文件（可能被过滤规则全部删除）";
+            if (output.IndexOf("Is not supported", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "格式不支持";
+            if (output.IndexOf("There are some data after the end", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "分卷不完整或损坏";
+            return "未知错误";
+        }
+
         public static bool CanExtract(string FPath)
         {
             string Extension = Path.GetExtension(FPath).ToLower();

@@ -148,6 +148,11 @@ namespace UZIP2
                 foreach (string f in LF)
                 {
                     RichEdit.AddText("✖ " + Path.GetFileName(f) + "\n", Brushes.Red);
+                    string reason;
+                    if (USetting.FailureReasons.TryGetValue(f, out reason) && reason != null)
+                    {
+                        RichEdit.AddText("    → " + reason + "\n", Brushes.Orange);
+                    }
                 }
                 RichEdit.AddText(g);
             }

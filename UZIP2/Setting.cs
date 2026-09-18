@@ -47,6 +47,8 @@ namespace UZIP2
 
         // 文件删除到回收站
         public static bool DeleteToRecycle = true;
+        // 解压失败原因表：文件路径 -> 原因
+        public static Dictionary<string, string> FailureReasons = new Dictionary<string, string>();
 
         // 读取外部密码
         public static string PWUrl
@@ -476,7 +478,64 @@ namespace UZIP2
         public Password(string name, Config c)
         {
             PasswordName = name;
+            LoadScores();
             PWConfig = c;
+        }
+
+        // 密码成功次数表：密码原文 -> 成功次数
+        private Dictionary<string, int> _scores = new Dictionary<string, int>();
+
+        // 载入成功次数（从配置文件）
+        private void LoadScores()
+        {
+            _scores.Clear();
+            for (int i = 0; i < PWMAX; i++)
+            {
+                string k = PWConfig.GetConfig("Score_" + PasswordName + i, null);
+                if (k == null || k == "") continue;
+                int sep = k.IndexOf(':');
+                if (sep > 0)
+                {
+                    string pw = DpapiHelper.Decode(k.Substring(0, sep));
+                    int n;
+                    if (pw != null && int.TryParse(k.Substring(sep + 1), out n)) _scores[pw] = n;
+                }
+            }
+        }
+
+        // 记录一次成功，更新排序
+        public void ReportSuccess(string pw)
+        {
+            if (string.IsNullOrEmpty(pw)) return;
+            int n;
+            _scores.TryGetValue(pw, out n);
+            _scores[pw] = n + 1;
+            SaveScores();
+        }
+
+        private void SaveScores()
+        {
+            int i = 0;
+            foreach (var kv in _scores)
+            {
+                PWConfig.SetConfig("Score_" + PasswordName + i, DpapiHelper.Encrypt(kv.Key) + ":" + kv.Value);
+                i++;
+            }
+            PWConfig.SetConfig("Score_" + PasswordName + i, null);
+        }
+
+        // 返回按成功次数降序的密码列表（常用密码先试）
+        public List<string> GetSortedPasswords()
+        {
+            var sorted = new List<string>(Passwords);
+            sorted.Sort((a, b) =>
+            {
+                int sa, sb;
+                _scores.TryGetValue(a, out sa);
+                _scores.TryGetValue(b, out sb);
+                return sb.CompareTo(sa);
+            });
+            return sorted;
         }
         // 载入所有密码数据
         public void LoadPasswords()
@@ -600,15 +659,17 @@ namespace UZIP2
             return string.Join("\n", li.ToArray());
         }
         // 传入一个cmd对象，以检测密码
+        // 传入一个cmd对象，以检测密码（按成功次数降序试，常用密码优先）
         public string CmdTestPassword(UCmd cmd, string f)
         {
-            for (int i = 0; i < Passwords.Count; i++)
+            var sorted = GetSortedPasswords();
+            for (int i = 0; i < sorted.Count; i++)
             {
-                string uMessage = cmd.TestFile(f, Passwords[i]);
-                //MessageBox.Show(uMessage);
+                string uMessage = cmd.TestFile(f, sorted[i]);
                 if (UCmd.IsOK(uMessage))
                 {
-                    return Passwords[i];
+                    ReportSuccess(sorted[i]);
+                    return sorted[i];
                 }
             }
             return null;
