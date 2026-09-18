@@ -21,7 +21,8 @@
    - 随机密码生成器字符池最后一个字符永远选不到，已修复。
    - `RealExtension` 之前只读前 2 字节靠 ASCII 拼接猜格式，现在按完整魔数（file signature）匹配 ZIP/RAR/7z/BZ2/GZ/XZ/WIM/TAR/ISO。
    - `CheckPath` 对短路径可能越界，加了长度保护。
-6. **CI**：`.github/workflows/build-windows.yml` 在 Windows runner 上自动 Release 构建并打包 artifact。
+6. **7-Zip 解耦**：发布物不再内置 7z.exe。首次启动时如果没找到 7z，会弹窗引导你从 https://www.7-zip.org 下载安装并选择 7z.exe；也会自动检测 `C:\Program Files\7-Zip\` 等系统安装位置。
+7. **CI**：`.github/workflows/build-windows.yml` 在 Windows runner 上自动 Release 构建并打包 artifact（不含 7-Zip）。
 
 ### 关于跨平台
 

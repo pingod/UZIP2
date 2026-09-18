@@ -518,16 +518,30 @@ namespace UZIP2
     public static class UCmdPathHelp
     {
         // 返回7Z路径
+        // 按优先级查找可用的 7z.exe：自定义路径 > 内置目录 > 系统常见安装位置
+        public static string Find7zPath()
+        {
+            // 1. 用户自定义路径
+            if (USetting.Customize7z && !string.IsNullOrEmpty(USetting.Customize7zPath) && File.Exists(USetting.Customize7zPath))
+                return USetting.Customize7zPath;
+            // 2. 程序目录下的 7-Zip\\7z.exe
+            string embedded = Path.Combine(USetting.BasePath, "7-Zip", "7z.exe");
+            if (File.Exists(embedded)) return embedded;
+            // 3. 系统常见安装位置
+            string[] candidates = new string[] {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "7-Zip", "7z.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "7-Zip", "7z.exe")
+            };
+            foreach (string c in candidates) { if (File.Exists(c)) return c; }
+            return null;
+        }
+
+        // 返回7Z命令行（带引号），供 Cmd 拼接使用
         public static string Get7zParh()
         {
-            if (USetting.Customize7z == true && File.Exists(USetting.Customize7zPath))
-            {
-                return "\"" + USetting.Customize7zPath + "\" ";
-            }
-            else
-            {
-                return "\"" + USetting.BasePath + "7-Zip\\7z.exe" + "\""; ;
-            }
+            string p = Find7zPath();
+            if (p == null) p = Path.Combine(USetting.BasePath, "7-Zip", "7z.exe");
+            return "\"" + p + "\"";
         }
 
         public static string GetExtractPath(string file = null)

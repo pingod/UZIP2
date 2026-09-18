@@ -204,6 +204,28 @@ namespace UZIP2
             //备份密码
             USetting.BackConfigPage();
             USetting.BackConfigNote();
+            // 首次启动检测：找不到 7z.exe 则引导用户配置
+            if (!USetting.IsCmdMode && UCmdPathHelp.Find7zPath() == null)
+            {
+                var r = System.Windows.MessageBox.Show(
+                    "未找到 7z.exe。\n\nUZIP2 本身不内置 7-Zip，请从官网 https://www.7-zip.org 下载安装，" +
+                    "或下载 7-Zip 命令行版本后，点「确定」在本地选择 7z.exe。\n\n点「取消」稍后在设置里配置。",
+                    "首次启动 - 需要 7-Zip",
+                    System.Windows.MessageBoxButton.OKCancel, System.Windows.MessageBoxImage.Information);
+                if (r == System.Windows.MessageBoxResult.OK)
+                {
+                    var dlg = new Microsoft.Win32.OpenFileDialog();
+                    dlg.Title = "选择 7z.exe";
+                    dlg.Filter = "7-Zip 程序|7z.exe|所有文件 (*.*)|*.*";
+                    if (dlg.ShowDialog() == true && File.Exists(dlg.FileName))
+                    {
+                        USetting.Customize7z = true;
+                        USetting.Customize7zPath = dlg.FileName;
+                        BCustomize7z.IsChecked = true;
+                        BCustomize7zPath.Text = dlg.FileName;
+                    }
+                }
+            }
             if (USetting.IsCmdMode)
             {
                 MinWindow();
