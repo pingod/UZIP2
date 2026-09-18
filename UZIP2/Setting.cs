@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
@@ -52,7 +52,7 @@ namespace UZIP2
         public static string PWUrl
         {
             get { return UConfig.GetConfig("PWUrl", ""); }
-            set { UConfig.SetConfig("PWUrl", ""); }
+            set { UConfig.SetConfig("PWUrl", value); }
         }
         // 
         public static int ReadPasswordMode
@@ -189,6 +189,18 @@ namespace UZIP2
         {
             get { return SConvert.ToBool(UConfig.GetConfig("DeleteFinishFile"), false); }
             set { UConfig.SetConfig("DeleteFinishFile", value.ToString()); }
+        }
+        // 解压完成后自动打开输出目录
+        public static bool AutoOpenAfterExtract
+        {
+            get { return SConvert.ToBool(UConfig.GetConfig("AutoOpenAfterExtract"), true); }
+            set { UConfig.SetConfig("AutoOpenAfterExtract", value.ToString()); }
+        }
+        // 启动时清理上次残留的 UZipTemp_* 临时目录
+        public static bool CleanTempOnStartup
+        {
+            get { return SConvert.ToBool(UConfig.GetConfig("CleanTempOnStartup"), true); }
+            set { UConfig.SetConfig("CleanTempOnStartup", value.ToString()); }
         }
         // 包内文件较多时创建新文件夹
         public static bool CreateNewFolder
@@ -474,7 +486,7 @@ namespace UZIP2
             {
                 p = PWConfig.GetConfig(PasswordName + i, null);
                 if (p == null || p == "") break;
-                Passwords.Add(p);
+                string decoded = DpapiHelper.Decode(p); if (decoded != null && decoded != "") Passwords.Add(decoded);
             }
 
         }
@@ -484,7 +496,7 @@ namespace UZIP2
             int i = 0;
             foreach (string p in Passwords)
             {
-                PWConfig.SetConfig(PasswordName + i, p);
+                PWConfig.SetConfig(PasswordName + i, DpapiHelper.Encrypt(p));
                 i++;
             }
             // 添加结尾标记
@@ -498,7 +510,7 @@ namespace UZIP2
             else
             {
                 Passwords.Add(pw);
-                PWConfig.SetConfig(PasswordName + (Count - 1), pw);
+                PWConfig.SetConfig(PasswordName + (Count - 1), DpapiHelper.Encrypt(pw));
                 // 重新添加结尾标记
                 PWConfig.SetConfig(PasswordName + (Count), null);
                 return pw;

@@ -1,0 +1,50 @@
+name: Build Windows Release
+
+# WPF + .NET Framework 4.8 是 Windows-only 技术栈，macOS/Linux 无法构建或运行。
+# 因此本 CI 只产出 Windows 版本。跨平台需要迁移到 .NET 8 + Avalonia UI + SharpCompress，是独立的大重构。
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install 7-Zip (for packaging + runtime)
+        run: choco install 7zip -y --no-progress
+
+      - name: Build Release
+        run: |
+          msbuild UZIP2.sln /p:Configuration=Release /p:Platform="Any CPU" /p:WarningLevel=0 /v:minimal
+        shell: pwsh
+
+      - name: Assemble publish folder
+        shell: pwsh
+        run: |
+          $publish = "publish"
+          New-Item -ItemType Directory -Path "$publish\7-Zip" -Force | Out-Null
+          # 拷贝编译产物
+          Copy-Item "UZIP2\bin\Release\*" -Destination $publish -Recurse -Force
+          # 拷贝运行时需要的 7z.exe / 7z.dll
+          Copy-Item "C:\Program Files\7-Zip\7z.exe" "$publish\7-Zip\"
+          Copy-Item "C:\Program Files\7-Zip\7z.dll" "$publish\7-Zip\"
+          # 创建 Config 空目录（程序首次启动会自动生成配置）
+          New-Item -ItemType Directory -Path "$publish\Config" -Force | Out-Null
+          # 清理不需要的调试符号（保留 pdb 也可以，这里删掉减小体积）
+          Remove-Item "$publish\*.pdb" -ErrorAction SilentlyContinue
+          Get-ChildItem $publish -Recurse | Select-Object FullName
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UZIP2-windows
+          path: publish/
+          retention-days: 14

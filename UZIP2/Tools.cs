@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -31,8 +31,8 @@ namespace UZIP2
             {
                 if (path.IndexOf(c) != -1) return false;
             }
-            // 冒号:出现在其他位置
-            if (path.Substring(2).IndexOf(':') != -1) return false;
+            // 冒号:出现在其他位置（如 C: 之外的盘符）
+            if (path.Length >= 3 && path.Substring(2).IndexOf(':') != -1) return false;
             // 两层斜杠\\
             if (path.Contains("\\\\")) return false;
             return true;
@@ -109,51 +109,67 @@ namespace UZIP2
             if (useSpe == true) { str += "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"; }
             for (int i = 0; i < length; i++)
             {
-                s += str.Substring(r.Next(0, str.Length - 1), 1);
+                s += str.Substring(r.Next(0, str.Length), 1);
             }
             return s;
         }
 
-        // 检查文件真实格式
+        // 检查文件真实格式（按魔数/file signature 匹配，比以前只读前两字节可靠）
         public static string RealExtension(string path)
         {
-            FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read);
-            BinaryReader r = new BinaryReader(fs);
-            string bx = " ";
-            byte buffer;
             try
             {
-                buffer = r.ReadByte();
-                bx = buffer.ToString();
-                buffer = r.ReadByte();
-                bx += buffer.ToString();
-            }
-            catch (Exception exc)
-            {
-                System.Windows.MessageBox.Show("出现异常 " + exc.Message);
-            }
-            r.Close();
-            fs.Close();
-            //真实的文件类型
-            switch (bx)
-            {
-                case "8297": return ".rar";
-                case "8075": return ".zip";
-                case "55122": return ".7z";
-                case "6690": return ".bz2";
-                case "31139": return ".gz";
-                case "30125": return ".lzh";
-                case "4950": return ".tar";
-                case "7783": return ".wim";
-                case "25355": return ".xz";
-                case "00": return ".iso";
-                default: return null;
-            }
+                using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read))
+                {
+                    byte[] head = new byte[8];
+                    int read = fs.Read(head, 0, head.Length);
+                    if (read < 4) return null;
 
-            //string ZE = Enum.GetName(typeof(ZipExtension), int.Parse(bx));
-            //MessageBox.Show("格式代码为 " + bx + "\n真实格式为 " + ZE);
+                    // RAR: 52 61 72 21 1A 07 ("Rar!")
+                    if (read >= 7 && head[0] == 0x52 && head[1] == 0x61 && head[2] == 0x72 && head[3] == 0x21)
+                        return ".rar";
+                    // ZIP: 50 4B 03 04 / 05 06 / 07 08
+                    if (head[0] == 0x50 && head[1] == 0x4B && (head[2] == 0x03 || head[2] == 0x05 || head[2] == 0x07))
+                        return ".zip";
+                    // 7z: 37 7A BC AF 27 1C
+                    if (read >= 6 && head[0] == 0x37 && head[1] == 0x7A && head[2] == 0xBC && head[3] == 0xAF && head[4] == 0x27 && head[5] == 0x1C)
+                        return ".7z";
+                    // BZIP2: 42 5A 68 ("BZh")
+                    if (head[0] == 0x42 && head[1] == 0x5A && head[2] == 0x68)
+                        return ".bz2";
+                    // GZIP: 1F 8B
+                    if (head[0] == 0x1F && head[1] == 0x8B)
+                        return ".gz";
+                    // XZ: FD 37 7A 58 5A 00
+                    if (read >= 6 && head[0] == 0xFD && head[1] == 0x37 && head[2] == 0x7A && head[3] == 0x58 && head[4] == 0x5A && head[5] == 0x00)
+                        return ".xz";
+                    // WIM: MSWIM
+                    if (head[0] == 0x4D && head[1] == 0x53 && head[2] == 0x57 && head[3] == 0x49 && head[4] == 0x4D)
+                        return ".wim";
+                    // TAR: 偏移 0x101 处 "ustar"
+                    if (fs.Length >= 0x106)
+                    {
+                        fs.Position = 0x101;
+                        byte[] tar = new byte[5];
+                        if (fs.Read(tar, 0, 5) == 5 && tar[0] == 0x75 && tar[1] == 0x73 && tar[2] == 0x74 && tar[3] == 0x61 && tar[4] == 0x72)
+                            return ".tar";
+                    }
+                    // ISO: 偏移 0x8001 处 "CD001"
+                    if (fs.Length >= 0x8006)
+                    {
+                        fs.Position = 0x8001;
+                        byte[] iso = new byte[5];
+                        if (fs.Read(iso, 0, 5) == 5 && iso[0] == 0x43 && iso[1] == 0x44 && iso[2] == 0x30 && iso[3] == 0x30 && iso[4] == 0x31)
+                            return ".iso";
+                    }
+                }
+            }
+            catch
+            {
+                return null;
+            }
+            return null;
         }
-
 
 
         // 检查文件字符串后缀
@@ -594,6 +610,11 @@ namespace UZIP2
         // 压缩文件格式
         string CType = null;
 
+        // 进度事件（0-100），由调用方订阅以更新 UI
+        public event Action<int> OnProgress;
+        // 异步收集 stdout 用的缓冲
+        private System.Text.StringBuilder _sb = new System.Text.StringBuilder();
+
         // 记录输出的文件
         private string OFPath = null;
         public string GetOutFilePath()
@@ -815,22 +836,38 @@ namespace UZIP2
             if (s.Contains("Volumes =")) return true;
             return false;
         }
-        // 主进程
+        // 主进程（异步读取 stdout，解析 7z 进度百分比）
         private string Cmd(string StrInput)
         {
+            _sb.Clear();
+            // 订阅输出事件，逐行收集 + 解析进度
+            p.OutputDataReceived += (sender, e) =>
+            {
+                if (e.Data == null) return;
+                lock (_sb) _sb.AppendLine(e.Data);
+                // 7z 进度行形如 "  23% - file.txt"，取行首百分比
+                var m = System.Text.RegularExpressions.Regex.Match(e.Data.TrimStart(), @"^(\d+)%");
+                if (m.Success)
+                {
+                    int pct;
+                    if (int.TryParse(m.Groups[1].Value, out pct))
+                    {
+                        var handler = OnProgress;
+                        if (handler != null) handler(pct);
+                    }
+                }
+            };
             // 启动命令行
             p.Start();
             // 向cmd窗口发送输入信息
             p.StandardInput.WriteLine(StrInput + "&exit");
             p.StandardInput.AutoFlush = true;
+            // 异步读取输出（避免缓冲区写满死锁）
+            p.BeginOutputReadLine();
             // 等待执行完退出进程
             p.WaitForExit();
-
-            // 接收结果
-            string StrOutput = p.StandardOutput.ReadToEnd();
-
-            // 返回输出
-            return StrOutput;
+            p.CancelOutputRead();
+            lock (_sb) return _sb.ToString();
         }
     }
     public class RichBoxEdit

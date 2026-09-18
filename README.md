@@ -10,6 +10,24 @@
 3. 优化代码格式，如制表符改成空格，删除多余引用，格式化代码等。
 4. 优化临时缓存文件夹相关代码，每个压缩包有单独的缓存文件夹，并且该文件夹是隐藏的。
 5. 支持多级解压，压缩包内第一层压缩包再次解压，持续符合条件时会循环解压。
+## 本次增强（v2.3）
+
+1. **密码本/密码纸 DPAPI 加密存储**：密码不再以明文写入配置文件，改用 Windows DPAPI（`ProtectedData`）加密，密文与当前 Windows 用户绑定；旧版明文配置在首次保存时自动迁移。
+2. **实时进度显示**：解析 7z 命令行输出的百分比，在主界面提示区实时显示"进度 xx%"。
+3. **完成通知**：解压/压缩完成后通过系统托盘气泡通知；解压完成后可自动打开输出目录（设置项 `AutoOpenAfterExtract`，默认开）。
+4. **启动时清理残留临时目录**：上次崩溃或强杀进程遗留的 `UZipTemp_*` 隐藏目录，启动时自动清理（设置项 `CleanTempOnStartup`，默认开）。
+5. **Bug 修复**：
+   - `PWUrl` 设置项 setter 之前写死空串，外部赋值无效，已修复。
+   - 随机密码生成器字符池最后一个字符永远选不到，已修复。
+   - `RealExtension` 之前只读前 2 字节靠 ASCII 拼接猜格式，现在按完整魔数（file signature）匹配 ZIP/RAR/7z/BZ2/GZ/XZ/WIM/TAR/ISO。
+   - `CheckPath` 对短路径可能越界，加了长度保护。
+6. **CI**：`.github/workflows/build-windows.yml` 在 Windows runner 上自动 Release 构建并打包 artifact。
+
+### 关于跨平台
+
+本项目 UI 基于 **WPF**，运行时依赖 **.NET Framework 4.8** 和 **cmd.exe 调用 7z.exe**，这三项都是 Windows-only，因此 **macOS / Linux 无法直接构建或运行**。CI 也只产出 Windows 版本。
+
+如果未来需要跨平台，需要做一次独立重构：UI 迁移到 Avalonia UI，解压后端换成跨平台的 SharpCompress 库，并弃用 cmd.exe 调用。当前阶段不做这件事。
 
 
 # [UZIP简介](https://www.yuque.com/farkaway/uzip/gggnsn)

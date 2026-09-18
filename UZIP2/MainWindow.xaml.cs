@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -1792,12 +1792,20 @@ namespace UZIP2
                 int fs = USetting.FileList.Length;
                 // 输出文本
                 string str = null;
+                // 订阅 7z 进度事件，实时显示百分比
+                Cmd.OnProgress += (pct) =>
+                {
+                    if (USetting.IsCmdMode) return;
+                    try { this.Dispatcher.BeginInvoke(new UMessage(UMessageTipCancel), str + "进度 " + pct + "%", TipMods.FixGray); } catch { }
+                };
                 // 用于智能解压，读取子目录信息
                 DirectoryInfo di = null;
                 // 从文件名提取的密码
                 string NamePassword = null;
                 // 标识，用于标识文件是否曾被（分卷）解压过
                 bool vhas = false;
+                // 记录最后一个成功解压的输出目录，整批完成后打开一次
+                string lastOutDir = null;
                 // 多文件操作 解压
                 foreach (var fi in USetting.FileList)
                 {
@@ -2137,6 +2145,7 @@ namespace UZIP2
 
                         }
 
+                        lastOutDir = FOut;
                         // 删除原文件
                         if (USetting.DeleteFinishFile && File.Exists(f))
                         {
@@ -2210,6 +2219,12 @@ namespace UZIP2
                             this.Dispatcher.Invoke(new UMessage(UMessageTip), "解压已完成,其中 " + fl + " 个失败", TipMods.WarnRed);
                         else
                             this.Dispatcher.Invoke(new UMessage(UMessageTip), "解压全部完成", TipMods.WarnGreen);
+                        Notifier.Show("UZIP2 解压完成", "全部 " + sl + " 个文件解压成功");
+                        // 整批完成后打开输出目录
+                        if (USetting.AutoOpenAfterExtract && lastOutDir != null && Directory.Exists(lastOutDir))
+                        {
+                            try { System.Diagnostics.Process.Start("explorer.exe", lastOutDir); } catch { }
+                        }
                     }
                 }
 
@@ -2273,6 +2288,11 @@ namespace UZIP2
                 int fs = USetting.FileList.Length;
                 // 输出文本
                 string str = null;
+                // 订阅压缩进度
+                Cmd.OnProgress += (pct) =>
+                {
+                    try { this.Dispatcher.BeginInvoke(new UMessage(UMessageTipCancel), str + "压缩 " + pct + "%", TipMods.FixGray); } catch { }
+                };
                 // 密码标识，用于将密码写入文件名
                 string PWSign = null;
                 // 是否将密码写入文件名
@@ -2392,7 +2412,9 @@ namespace UZIP2
                         if (SuccessList[0] == "s")
                         this.Dispatcher.Invoke(new UMessage(UMessageTip), "压缩完成", TipMods.WarnGreen);
                     else
+                        Notifier.Show("UZIP2 压缩完成", "压缩已完成");
                         this.Dispatcher.Invoke(new UMessage(UMessageTip), "压缩全部完成", TipMods.WarnGreen);
+                        Notifier.Show("UZIP2 压缩完成", "全部压缩完成");
                 }
 
                 // 清空文件列表
