@@ -28,3 +28,25 @@
 
 - `ShowDebug`（旧版独立调试窗口开关）在 3.0 中由 `DebugMode` + `logs/app-*.log` + "打开最新日志"覆盖，不再单开窗口。
 - 右键菜单注册沿用旧版机制（向资源管理器注册表写入调用 `UZIP2.exe` 的命令），程序名与可执行文件名未变（`UZIP2.exe`），旧注册项无需重写；升级后如需调整路径，指向新的 `UZIP2.exe` 即可。
+
+## v3.1 增量能力（旧版没有的新功能）
+
+上表是"旧版有的功能一个都不能丢"；下面是重构后新增的处理逻辑与入口，同样标注验证方式。基线：`dotnet test` 329/329 通过（2026-09-30）。**渲染核对** = 用一次性离屏快照（`RenderTargetBitmap`，窗口摆在屏幕外且不激活）检查布局、图标与配色，同时收集 WPF 数据绑定告警。
+
+| # | 能力 | 证据 |
+|---|------|------|
+| N1 | 并发作业队列（解压默认 3 路、压缩默认 2 路，设置里 1–8 实时可调） | 测试：`ParallelQueueTests`；实测：一次拖入多个包，进度条同时推进。8×20 MB 从 712 ms 降到 122 ms（8 路） |
+| N2 | 未加密包不再跑整包 `7z t`：只读归档头（`7z l -slt`）判定加密状态 | 测试：`SevenZipClientTests.Probe_Detects_Encryption_State` / `Probe_Non_Archive_Is_Unknown`（实测 100 MB 包 `l` 0.041 s vs `t` 1.548 s） |
+| N3 | 解压前包内清单预览，可勾选只解其中几项（`PreviewBeforeExtract`，默认关） | 测试：`ArchiveInspectorTests` + `ArchiveWorkerTests` 的选中项解压 |
+| N4 | 监听下载目录自动解压（`WatchEnabled` / `WatchFolder`，去抖 + 稳定性判定） | 测试：`WatchFolderServiceTests` |
+| N5 | 压缩日志检索窗口（按包名 / 密码 / 时间过滤 `Compress.log`） | 测试：`CompressLogServiceTests`；实测：设置 → "7-Zip 与日志" → 检索压缩日志 |
+| N6 | 失败条：一键批量重试全部失败项 + 导出失败报告（报告绝不含密码） | 测试：`FailureReportTests`（含"导出件不含密码"用例） |
+| N7 | Windows 右键菜单注册/移除（HKCU，免管理员），设置页显示当前指向 | 测试：`ShellMenuTests`（写入/移除/状态判定/指向检测）。资源管理器里的实际菜单项待发布部署时确认 |
+| N8 | 密码库跨机加密导出/导入（口令派生密钥；导出件不含明文，也不含口令） | 测试：`VaultTransferTests` |
+| N9 | 桌面迷你拖拽方块：只留一个小窗，文件拖上去即处理（`MiniPuck`，默认关；位置记忆） | 测试：`HomeViewModelTests` 的模式路由与预告文案复用；方块窗口本身待人工拖放确认 |
+| N10 | 分卷压缩 `-v`（`700m` / `1g` / 纯字节；非法值在启动 7z 前挡下） | 测试：`VolumeSizeTests` + `ArchiveWorkerTests`；产出 `name.7z.001/002…` |
+| N11 | 高级压缩参数：固实 `-ms`、线程 `-mmt`、文件名加密（并说明只对 7z 生效） | 测试：`CompressOptionsTests` |
+| N12 | 按目录压缩预设：最深目录命中、逐字段回落全局、预设刻意不含密码 | 测试：`CompressPresetTests`（含真实 7z 分卷产物、非法分卷值在启动 7z 前挡下、设置往返） |
+| N13 | 校验面板：SHA-256 + `.sfv` / `.md5` / `.sha256` 旁挂逐条核对（含分卷缺失、未收录） | 测试：`ChecksumServiceTests`；实测：离屏渲染快照核对四种状态色与图标 |
+| N14 | 检查更新：启动至多一天问一次 GitHub Releases，可关可手动，失败静默；代理优先读 `HTTP(S)_PROXY` | 测试：`UpdateServiceTests`；实测：带代理环境变量启动后 `settings.json` 写入 `latestSeenVersion` |
+| N15 | 密码本明文按密文缓存，且只在真正改动时写 `passwords.json` | 测试：`PasswordServiceTests`（`Changed` 次数即落盘次数） |

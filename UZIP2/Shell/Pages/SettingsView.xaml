@@ -505,7 +505,7 @@
             <!-- 关于 -->
             <ui:CardExpander Header="关于" Margin="0,0,0,16" IsExpanded="False">
                 <StackPanel>
-                    <TextBlock Text="UZIP 3.0 — Fluent 重构版" FontWeight="SemiBold" Margin="0,4" />
+                    <TextBlock Text="UZIP · Fluent 重构版" FontWeight="SemiBold" Margin="0,4" />
                     <TextBlock Text=".NET 8 + WPF-UI；旧版配置自动迁移，旧密码本兼容 DPAPI 加密存储。"
                                TextWrapping="Wrap" FontSize="12"
                                Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4" />
