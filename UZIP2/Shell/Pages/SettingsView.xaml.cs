@@ -42,6 +42,8 @@ namespace UZIP2.Shell.Pages
                 SelectComboInt(LevelBox, (int)Vm.Read("CompressLevel"));
                 SelectComboInt(PwModeBox, (int)Vm.Read("PasswordMode"));
                 SelectComboInt(ReadModeBox, (int)Vm.Read("ReadPasswordMode"));
+                SelectComboInt(ParallelExtractBox, ClampToItem(ParallelExtractBox, (int)Vm.Read("ParallelExtract")));
+                SelectComboInt(ParallelCompressBox, ClampToItem(ParallelCompressBox, (int)Vm.Read("ParallelCompress")));
 
                 foreach (var tb in Logical(this).OfType<TextBox>())
                     if (tb.Tag is string tag && !(tb is { IsReadOnly: true }))
@@ -71,6 +73,19 @@ namespace UZIP2.Shell.Pages
                     box.SelectedItem = item;
                     return;
                 }
+        }
+
+        // 配置里的并行数可能超出下拉可选范围（或来自旧版本），取不大于它的最大项
+        static int ClampToItem(ComboBox box, int value)
+        {
+            int best = -1;
+            foreach (ComboBoxItem item in box.Items)
+                if (int.TryParse(item.Tag?.ToString(), out var v) && v <= value && v > best)
+                    best = v;
+            if (best > 0) return best;
+            foreach (ComboBoxItem item in box.Items)
+                if (int.TryParse(item.Tag?.ToString(), out var v)) return v;
+            return value;
         }
 
         void OnToggleChanged(object sender, RoutedEventArgs e)

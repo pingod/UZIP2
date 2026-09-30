@@ -1,0 +1,39 @@
+<Window x:Class="UZIP2.Shell.MiniPuckWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        Title="UZIP 拖拽方块"
+        Width="104" Height="104"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" ShowInTaskbar="False" Topmost="True"
+        AllowDrop="True" Focusable="True"
+        AutomationProperties.Name="UZIP 拖拽方块">
+    <Border x:Name="Body" CornerRadius="18" BorderThickness="1.5" AllowDrop="True"
+            Drop="OnDropFiles" DragOver="OnDragOverFiles" DragLeave="OnDragLeaveFiles"
+            Background="{DynamicResource ControlFillColorDefaultBrush}"
+            BorderBrush="{DynamicResource AccentFillColorDefaultBrush}">
+        <Border.ContextMenu>
+            <ContextMenu>
+                <MenuItem Header="显示主窗口" Click="OnShowMain" />
+                <MenuItem Header="隐藏主窗口，只留方块" Click="OnHideMain" />
+                <Separator />
+                <MenuItem Header="模式">
+                    <MenuItem x:Name="ModeAuto" Header="自动（压缩包解压 / 其余压缩）" Click="OnModeAuto" />
+                    <MenuItem x:Name="ModeExtract" Header="只解压" Click="OnModeExtract" />
+                    <MenuItem x:Name="ModeCompress" Header="只压缩" Click="OnModeCompress" />
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="关闭迷你方块" Click="OnClosePuck" />
+            </ContextMenu>
+        </Border.ContextMenu>
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+            <ui:SymbolIcon x:Name="Glyph" Symbol="Box24" FontSize="28" HorizontalAlignment="Center"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+            <TextBlock x:Name="Hint" Text="拖到这里" FontSize="11" HorizontalAlignment="Center"
+                       Margin="0,4,4,0" MaxWidth="88" TextWrapping="Wrap" TextAlignment="Center"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            <ProgressBar x:Name="Pulse" Height="3" Width="58" Margin="0,6,0,0"
+                         Visibility="Collapsed" IsIndeterminate="True" />
+        </StackPanel>
+    </Border>
+</Window>

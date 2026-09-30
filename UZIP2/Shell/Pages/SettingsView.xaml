@@ -57,9 +57,46 @@
                     </Grid>
                     <Grid Style="{StaticResource Row}">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="迷你拖拽方块（桌面只留一枚方块接收拖放）" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="MiniPuck" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                         <TextBlock Style="{StaticResource RowLabel}" Text="调试模式（显示详细日志）" />
                         <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="DebugMode" Click="OnToggleChanged" />
                     </Grid>
+                </StackPanel>
+            </ui:CardExpander>
+
+            <!-- 性能 -->
+            <ui:CardExpander Header="性能" Margin="0,0,0,10" IsExpanded="False">
+                <StackPanel>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="同时解压几个包" />
+                        <ComboBox Grid.Column="1" x:Name="ParallelExtractBox" Width="80" HorizontalAlignment="Left"
+                                  Tag="ParallelExtract" SelectionChanged="OnIntComboChanged">
+                            <ComboBoxItem Tag="1">1</ComboBoxItem>
+                            <ComboBoxItem Tag="2">2</ComboBoxItem>
+                            <ComboBoxItem Tag="3">3</ComboBoxItem>
+                            <ComboBoxItem Tag="4">4</ComboBoxItem>
+                            <ComboBoxItem Tag="6">6</ComboBoxItem>
+                            <ComboBoxItem Tag="8">8</ComboBoxItem>
+                        </ComboBox>
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="同时压缩几个包" />
+                        <ComboBox Grid.Column="1" x:Name="ParallelCompressBox" Width="80" HorizontalAlignment="Left"
+                                  Tag="ParallelCompress" SelectionChanged="OnIntComboChanged">
+                            <ComboBoxItem Tag="1">1</ComboBoxItem>
+                            <ComboBoxItem Tag="2">2</ComboBoxItem>
+                            <ComboBoxItem Tag="3">3</ComboBoxItem>
+                            <ComboBoxItem Tag="4">4</ComboBoxItem>
+                        </ComboBox>
+                    </Grid>
+                    <TextBlock Text="改完立即生效；调小只影响还没开始的作业。压缩是 CPU 密集，建议不超过 2–3。"
+                               FontSize="11" Opacity="0.7" TextWrapping="Wrap" Margin="0,2,0,4" />
                 </StackPanel>
             </ui:CardExpander>
 

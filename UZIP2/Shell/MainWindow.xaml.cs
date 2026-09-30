@@ -22,6 +22,7 @@ namespace UZIP2.Shell
         private bool _exiting;
         private uint _registeredVk;
         private bool _registeredAlt, _registeredShift, _registeredCtrl;
+        private MiniPuckWindow _puck;
 
         public MainWindow()
         {
@@ -42,6 +43,7 @@ namespace UZIP2.Shell
                 ApplyTheme(s);
                 Topmost = s.WindowOnTop;
                 RegisterHotKey(s);
+                SyncPuck();
             });
 
             _clipboard.Info += msg => Dispatcher.Invoke(() => _tray.ShowBalloon("UZIP", msg));
@@ -66,9 +68,47 @@ namespace UZIP2.Shell
 
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
-            _tray.Setup(ShowFromTray, Quit, ExtractIcon());
+            _tray.Setup(ShowFromTray, Quit, ExtractIcon(), ShowPuckOnly);
             RegisterHotKey(_settings.Current);
             NavView.Navigate(typeof(Pages.HomeView));
+            SyncPuck();
+        }
+
+        // 迷你方块: 设置开着就存在，关掉设置即消失
+        void SyncPuck()
+        {
+            if (_settings.Current.MiniPuck) EnsurePuck();
+            else ClosePuck();
+        }
+
+        void EnsurePuck()
+        {
+            if (_puck != null) return;
+            try
+            {
+                _puck = new MiniPuckWindow(this);
+                _puck.Closed += (_, __) => _puck = null;
+                _puck.Show();
+            }
+            catch (Exception ex)
+            {
+                _logger.Error("迷你方块创建失败", ex);
+                _puck = null;
+            }
+        }
+
+        void ClosePuck()
+        {
+            var p = _puck;
+            _puck = null;
+            try { p?.Close(); } catch { }
+        }
+
+        // 托盘菜单: 桌面只留方块。持久写 MiniPuck，避免下次保存设置时被 SyncPuck 关掉
+        void ShowPuckOnly()
+        {
+            _settings.Save(s => s.MiniPuck = true);
+            if (_puck != null) Hide();
         }
 
         // 关闭 = 隐藏到托盘（旧行为）；只有托盘"退出"才真正退出
