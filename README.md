@@ -10,7 +10,32 @@
 3. 优化代码格式，如制表符改成空格，删除多余引用，格式化代码等。
 4. 优化临时缓存文件夹相关代码，每个压缩包有单独的缓存文件夹，并且该文件夹是隐藏的。
 5. 支持多级解压，压缩包内第一层压缩包再次解压，持续符合条件时会循环解压。
-## 本次增强（v2.3）
+
+## 本次增强（v3.0 — Fluent 重构）
+
+界面与工程整体重做，**功能行为与 v2.x 逐项对等**（对等验证记录见 [`docs/parity-checklist.md`](docs/parity-checklist.md)）。
+
+1. **运行时升级到 .NET 8**：工程改为 SDK 风格 csproj，UI 仍是 WPF，引入 `WPF-UI`（Fluent / Win11 观感）、`CommunityToolkit.Mvvm`、`Microsoft.Extensions.Hosting` 依赖注入。旧版窗体代码保留在 `UZIP2/Legacy/` 仅作移植参照，不再参与编译。
+2. **MVVM 分层**：处理逻辑从窗体事件里彻底拆出——`ArchiveWorker`（串行作业队列）+ `SevenZipClient`（直接 `Process` 调用 7z，带进度解析、取消、错误分类）+ `PasswordService` / `FilterService` / `ArchiveInspector` 等专职服务；界面只剩 `HomeViewModel` / `SettingsViewModel` / `PasswordBookViewModel` 三个视图模型。
+3. **新界面**：`FluentWindow` + `NavigationView` 三页（主页 / 密码 / 设置）。主页支持拖拽预览（自动/仅解压/仅压缩三态即时提示"不支持的格式"）、作业队列实时进度与失败诊断、取消与重试、底部一键贴入剪切板密码并显示密码纸余量。设置页按 常规/解压/压缩/密码/快捷键/7-Zip 与日志/关于 分组，改动即时保存、即时生效（主题、置顶、热键无需重启）。
+4. **配置迁移**：新增 `settings.json`（camelCase，读取不区分大小写）。首次启动自动识别旧版 `UZip.config` / `PasswordNote` / `PasswordPage`，一次性迁移为 json 并保留 DPAPI 加密的密码本；迁移失败会提示并回落默认配置，不会丢原文件。
+5. **单实例 + 命令行**：`UZIP2.exe a.zip b.zip`（或右键"发送到"）直接把文件排进已在运行实例的队列，第二进程转发完参数即退出。
+6. **调试与可观测**：`DebugMode` 打开后把每条 7z 命令行写入 `logs/app-*.log`，密码参数一律脱敏为 `-p***`；设置页可一键打开运行日志与压缩日志。
+7. **测试**：`UZIP2.Tests` 129 个用例，其中 `ParityTests` 用真实 7z.exe 端到端覆盖密码试错链、多级解压、分卷、密码写文件名、过滤与头加密、压缩日志、日志脱敏。
+8. **CI**：`build-windows.yml` 改为 `setup-dotnet@v4` → `dotnet test` → `dotnet publish -r win-x64 --self-contained false -p:PublishSingleFile=true`，产物为单文件 `release/UZIP2.exe`（不含 7-Zip）。
+9. **旧版发布分支**：v2.x 的 .NET Framework 源码与发布二进制完整保留在 `legacy` 分支。
+
+### 运行环境（v3.0）
+
+- **Windows 10/11 x64** + **.NET 8 Desktop Runtime**（框架依赖发布，缺失时程序启动会给出带下载链接的系统提示）。
+- 需要本机安装 7-Zip（程序自动检测 `C:\Program Files\7-Zip\`，或在设置页手动指定 `7z.exe`）。
+- 仍通过直接 `Process` 启动 7z 命令行完成解压/压缩，不使用 `cmd.exe` 包壳。
+
+### 关于跨平台
+
+UI 基于 **WPF**，仍是 Windows-only，因此 **macOS / Linux 无法直接构建或运行**，CI 也只产出 Windows 版本。若未来要跨平台，需把 UI 迁移到 Avalonia UI、解压后端换成 SharpCompress；当前阶段不做这件事。
+
+## 历史增强（v2.3）
 
 1. **密码本/密码纸 DPAPI 加密存储**：密码不再以明文写入配置文件，改用 Windows DPAPI（`ProtectedData`）加密，密文与当前 Windows 用户绑定；旧版明文配置在首次保存时自动迁移。
 2. **实时进度显示**：解析 7z 命令行输出的百分比，在主界面提示区实时显示"进度 xx%"。
@@ -23,13 +48,6 @@
    - `CheckPath` 对短路径可能越界，加了长度保护。
 6. **7-Zip 解耦**：发布物不再内置 7z.exe。首次启动时如果没找到 7z，会弹窗引导你从 https://www.7-zip.org 下载安装并选择 7z.exe；也会自动检测 `C:\Program Files\7-Zip\` 等系统安装位置。
 7. **CI**：`.github/workflows/build-windows.yml` 在 Windows runner 上自动 Release 构建并打包 artifact（不含 7-Zip）。
-
-### 关于跨平台
-
-本项目 UI 基于 **WPF**，运行时依赖 **.NET Framework 4.8** 和 **cmd.exe 调用 7z.exe**，这三项都是 Windows-only，因此 **macOS / Linux 无法直接构建或运行**。CI 也只产出 Windows 版本。
-
-如果未来需要跨平台，需要做一次独立重构：UI 迁移到 Avalonia UI，解压后端换成跨平台的 SharpCompress 库，并弃用 cmd.exe 调用。当前阶段不做这件事。
-
 
 # [UZIP简介](https://www.yuque.com/farkaway/uzip/gggnsn)
 UZIP是一个主要用于解压各种压缩档案的小工具，希望它可以为您提供更便利的解压功能。

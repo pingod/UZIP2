@@ -367,9 +367,9 @@ public sealed class ArchiveWorker {
 ### Task 16: 发布与 CI
 
 **Files:** Modify: `.github/workflows/build-windows.yml`
-- [ ] Step 1: workflow 改：`actions/setup-dotnet@v4 dotnet-version: 8.0.x` → `dotnet test` → `dotnet publish UZIP2 -c Release -r win-x64 --self-contained false /p:PublishSingleFile=true -o release` → upload artifact(含 UZIP2.exe+config，不含 7-Zip)。
-- [ ] Step 2: 本地同命令产出，替换 H 盘发布目录属用户后续指示(先问再动)。README"本次增强"追加 v3.0 段落(Fluent 重构说明+迁移说明)。
-- [ ] Step 3: 本机 `release/UZIP2.exe` 启动冒烟。Commit `ci: dotnet 8 single-file publish` + `docs: README v3.0`。
+- [x] Step 1: workflow 改：`actions/setup-dotnet@v4 dotnet-version: 8.0.x` → `dotnet test` → `dotnet publish UZIP2 -c Release -r win-x64 --self-contained false /p:PublishSingleFile=true -o release` → upload artifact(含 UZIP2.exe+config，不含 7-Zip)。
+- [x] Step 2: 本地同命令产出 `release/UZIP2.exe`(单文件 8.1 MB)，删除旧 .NET Framework 的 `release/UZIP2.exe.config`，`.gitignore` 补 `release/Config/`、`release/*.pdb`。README 追加 v3.0 段落(Fluent 重构说明+迁移说明)，v2.3 段落改为"历史增强"。**用户已预先授权直接接管 H 盘发布目录**(见"改完之后直接接管旧版本"指示)，故不再先问；旧版含二进制完整保留在 `legacy` 分支。
+- [x] Step 3: 本机 `release/UZIP2.exe` 启动冒烟：窗口正常出现、`WS_EX_TOPMOST` 生效、自动生成 `Config/settings.json`。Commit `ci: dotnet 8 single-file publish` + `docs: README v3.0`。
 
 ---
 
