@@ -600,13 +600,16 @@ namespace UZIP2.Services
             if (s.PasswordToName && password != null)
                 pwSign = string.IsNullOrEmpty(s.NameFilter2) ? " " : s.NameFilter2;
 
-            string outArchive = BuildArchivePath(s, sources, outDir, pwSign, password);
+            // 目录预设优先于全局设置；未命中的项按字段回落到全局
+            var plan = CompressPresetResolver.Plan(s, CompressPresetResolver.Find(sources[0], s.CompressPresets));
+
+            string outArchive = BuildArchivePath(plan.Type, sources, outDir, pwSign, password);
 
             string volume = null;
-            if (!string.IsNullOrWhiteSpace(s.CompressVolume) && !VolumeSize.TryNormalize(s.CompressVolume, out volume))
+            if (!string.IsNullOrWhiteSpace(plan.Volume) && !VolumeSize.TryNormalize(plan.Volume, out volume))
             {
                 job.Status = JobStatus.Failed;
-                job.Diagnosis = $"分卷大小格式不正确: {s.CompressVolume}（示例: 700m / 1g / 102400）";
+                job.Diagnosis = $"分卷大小格式不正确: {plan.Volume}（示例: 700m / 1g / 102400）";
                 return;
             }
 
@@ -617,8 +620,8 @@ namespace UZIP2.Services
                 if (p.DoneCount > 0) job.Done = p.DoneCount;
             });
 
-            var res = await _zip.CompressAsync(sources, outArchive, password, s.CompressType, s.CompressLevel,
-                s.HideZipContent, progress, ct, FilterService.ParseRules(s.CompressFilter), volume,
+            var res = await _zip.CompressAsync(sources, outArchive, password, plan.Type, plan.Level,
+                plan.EncryptHeaders, progress, ct, FilterService.ParseRules(s.CompressFilter), volume,
                 s.CompressSolid, s.CompressThreads).ConfigureAwait(false);
 
             if (!res.Success)
@@ -670,7 +673,7 @@ namespace UZIP2.Services
             => list != null && i < list.Count && !string.IsNullOrEmpty(list[i]) ? list[i] : null;
 
         // 输出档案命名(移植 UCmd.CompressFile 命名循环: 去 -New 尾巴、-NewN 避让、密码写文件名)
-        static string BuildArchivePath(AppSettings s, List<string> sources, string outDir, string pwSign, string password)
+        static string BuildArchivePath(int compressType, List<string> sources, string outDir, string pwSign, string password)
         {
             string baseName;
             bool combined = sources.Count > 1;
@@ -687,7 +690,7 @@ namespace UZIP2.Services
             }
 
             string sign = pwSign != null && password != null ? pwSign + password : "";
-            string ext = ArchiveExtension(s.CompressType);
+            string ext = ArchiveExtension(compressType);
 
             int num = 0;
             string path;

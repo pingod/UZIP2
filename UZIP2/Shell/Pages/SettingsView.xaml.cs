@@ -164,6 +164,18 @@ namespace UZIP2.Shell.Pages
         void OnAddInternal(object sender, RoutedEventArgs e) => Vm.AddInternal();
         void OnRemoveInternal(object sender, RoutedEventArgs e) => Vm.RemoveInternal(((FrameworkElement)sender).DataContext as SettingsViewModel.TextRow);
 
+        void OnAddPreset(object sender, RoutedEventArgs e) => Vm.AddPreset();
+        void OnRemovePreset(object sender, RoutedEventArgs e) => Vm.RemovePreset(((FrameworkElement)sender).DataContext as SettingsViewModel.PresetRow);
+
+        void OnBrowsePresetFolder(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.DataContext is not SettingsViewModel.PresetRow row) return;
+            using var dlg = new System.Windows.Forms.FolderBrowserDialog { Description = "选择该预设生效的目录" };
+            if (!string.IsNullOrEmpty(row.Folder) && System.IO.Directory.Exists(row.Folder)) dlg.SelectedPath = row.Folder;
+            if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+            row.Folder = dlg.SelectedPath;   // setter 触发持久化
+        }
+
         void OnHotkeyCapture(object sender, KeyEventArgs e)
         {
             var key = e.Key == Key.System ? e.SystemKey : e.Key;

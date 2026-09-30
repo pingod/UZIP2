@@ -29,6 +29,10 @@ namespace UZIP2.ViewModel
             foreach (var p in s.InternalPasswords ?? new List<string>())
                 AddInternalRow(p);
 
+            Presets = new ObservableCollection<PresetRow>();
+            foreach (var p in s.CompressPresets ?? new List<CompressPreset>())
+                AddPresetRow(p);
+
             var custom = Pad3(s.CustomPasswords);
             CustomPassword1 = new TextRow(custom[0]);
             CustomPassword2 = new TextRow(custom[1]);
@@ -49,6 +53,7 @@ namespace UZIP2.ViewModel
 
         public ObservableCollection<CustomFolderRow> Folders { get; }
         public ObservableCollection<TextRow> InternalPasswords { get; }
+        public ObservableCollection<PresetRow> Presets { get; }
         public TextRow CustomPassword1 { get; }
         public TextRow CustomPassword2 { get; }
         public TextRow CustomPassword3 { get; }
@@ -87,6 +92,24 @@ namespace UZIP2.ViewModel
             InternalPasswords.Add(row);
         }
 
+        // 只保留填了目录的预设：没有目录的预设永远匹配不上，存下来只会污染配置
+        public void AddPreset() => AddPresetRow(new CompressPreset { Name = $"预设{Presets.Count + 1}" });
+
+        public void RemovePreset(PresetRow row)
+        {
+            if (row == null) return;
+            row.PropertyChanged -= OnRowChanged;
+            Presets.Remove(row);
+            PersistLists();
+        }
+
+        void AddPresetRow(CompressPreset p)
+        {
+            var row = new PresetRow(p);
+            row.PropertyChanged += OnRowChanged;
+            Presets.Add(row);
+        }
+
         public void SaveProperty(string name, object value)
         {
             _settings.Save(s =>
@@ -112,6 +135,8 @@ namespace UZIP2.ViewModel
                 s.CustomizeFolders = Folders.Select(f => new CustomFolder { Name = f.Name, Path = f.Path }).ToList();
                 s.InternalPasswords = InternalPasswords.Select(x => x.Value).Where(v => !string.IsNullOrEmpty(v)).ToList();
                 s.CustomPasswords = new List<string> { CustomPassword1.Value, CustomPassword2.Value, CustomPassword3.Value };
+                s.CompressPresets = Presets.Where(x => !string.IsNullOrWhiteSpace(x.Folder))
+                                           .Select(x => x.ToModel()).ToList();
             });
         }
 
@@ -166,6 +191,48 @@ namespace UZIP2.ViewModel
         {
             public TextRow(string value) { _value = value ?? ""; }
             [ObservableProperty] private string _value;
+        }
+
+        // 一行目录预设。三个下拉都用 SelectedIndex，0 恒为"跟随全局"，
+        // 因此索引 0 写回模型时转成 -1 / ""，由 CompressPresetResolver 回落全局值。
+        public sealed partial class PresetRow : ObservableObject
+        {
+            public static readonly int[] LevelValues = { 0, 1, 3, 5, 7, 9 };
+
+            public PresetRow(CompressPreset p)
+            {
+                _name = p?.Name ?? "";
+                _folder = p?.Folder ?? "";
+                _volume = p?.CompressVolume ?? "";
+                _typeIndex = p == null || p.CompressType < 0 ? 0 : p.CompressType + 1;
+                _levelIndex = ToLevelIndex(p?.CompressLevel ?? -1);
+                _encryptIndex = string.Equals(p?.EncryptHeaders, "on", StringComparison.OrdinalIgnoreCase) ? 2
+                              : string.Equals(p?.EncryptHeaders, "off", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+            }
+
+            static int ToLevelIndex(int level)
+            {
+                if (level < 0) return 0;
+                int i = Array.IndexOf(LevelValues, level);
+                return i < 0 ? Array.IndexOf(LevelValues, 5) + 1 : i + 1;
+            }
+
+            public CompressPreset ToModel() => new CompressPreset
+            {
+                Name = Name,
+                Folder = Folder,
+                CompressVolume = Volume,
+                CompressType = TypeIndex - 1,
+                CompressLevel = LevelIndex == 0 ? -1 : LevelValues[LevelIndex - 1],
+                EncryptHeaders = EncryptIndex == 2 ? "on" : EncryptIndex == 1 ? "off" : ""
+            };
+
+            [ObservableProperty] private string _name;
+            [ObservableProperty] private string _folder;
+            [ObservableProperty] private string _volume;
+            [ObservableProperty] private int _typeIndex;
+            [ObservableProperty] private int _levelIndex;
+            [ObservableProperty] private int _encryptIndex;
         }
     }
 }

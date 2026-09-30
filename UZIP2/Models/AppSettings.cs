@@ -72,6 +72,8 @@ namespace UZIP2.Models
         public string CompressThreads { get; set; } = "";
         // 旧名沿用: 压缩时给 7z 加 -mhe=on，连文件名一起加密（仅 7z 有效）
         public bool HideZipContent { get; set; }
+        // 按目录覆盖上面的压缩选项（不含密码）
+        public List<CompressPreset> CompressPresets { get; set; } = new List<CompressPreset>();
         public string CompressFilter { get; set; } = "";
         public string NameFilter { get; set; } = "";
         public string NameFilter2 { get; set; } = "";

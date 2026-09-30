@@ -304,6 +304,64 @@
                         <TextBlock Style="{StaticResource RowLabel}" Text="压缩排除过滤规则" />
                         <ui:TextBox Grid.Column="1" Tag="CompressFilter" LostFocus="OnTextChanged" AcceptsReturn="True" MinHeight="40" TextWrapping="Wrap" />
                     </Grid>
+
+                    <TextBlock Text="按目录压缩预设" Margin="0,12,0,4" FontWeight="SemiBold" />
+                    <TextBlock Text="压缩该目录（含子目录）内的文件时，用这里的设置覆盖全局默认；每一项都可以单独选&#10;&quot;跟随全局&quot;。预设不带密码，密码始终按上面的密码设置来取。"
+                               FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                    <ItemsControl x:Name="PresetList" ItemsSource="{Binding Presets}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{DynamicResource ControlFillColorDefaultBrush}" CornerRadius="6" Padding="8,6" Margin="0,3">
+                                    <StackPanel>
+                                        <Grid Margin="0,0,0,4">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                            <ui:TextBox Text="{Binding Name, UpdateSourceTrigger=LostFocus}" PlaceholderText="名称" Margin="0,0,6,0" />
+                                            <ui:TextBox Grid.Column="1" Text="{Binding Folder, UpdateSourceTrigger=LostFocus}" PlaceholderText="目录，例如 D:\Downloads" />
+                                            <ui:Button Grid.Column="2" Icon="{ui:SymbolIcon FolderOpen24}" Padding="6,3" Margin="6,0,0,0" Click="OnBrowsePresetFolder" ToolTip="选择目录" />
+                                            <ui:Button Grid.Column="3" Icon="{ui:SymbolIcon Delete24}" Padding="6,3" Margin="6,0,0,0" Click="OnRemovePreset" ToolTip="删除该预设" />
+                                        </Grid>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="格式" VerticalAlignment="Center" FontSize="11" Margin="0,0,4,0" />
+                                            <ComboBox Width="98" FontSize="12" Padding="6,2" Margin="0,0,10,0"
+                                                    SelectedIndex="{Binding TypeIndex, Mode=TwoWay}">
+                                                <ComboBoxItem>跟随全局</ComboBoxItem>
+                                                <ComboBoxItem>zip</ComboBoxItem>
+                                                <ComboBoxItem>7z</ComboBoxItem>
+                                                <ComboBoxItem>bz2</ComboBoxItem>
+                                                <ComboBoxItem>gz</ComboBoxItem>
+                                                <ComboBoxItem>tar</ComboBoxItem>
+                                                <ComboBoxItem>wim</ComboBoxItem>
+                                                <ComboBoxItem>xz</ComboBoxItem>
+                                            </ComboBox>
+                                            <TextBlock Text="级别" VerticalAlignment="Center" FontSize="11" Margin="0,0,4,0" />
+                                            <ComboBox Width="92" FontSize="12" Padding="6,2" Margin="0,0,10,0"
+                                                    SelectedIndex="{Binding LevelIndex, Mode=TwoWay}">
+                                                <ComboBoxItem>跟随全局</ComboBoxItem>
+                                                <ComboBoxItem>仅存储</ComboBoxItem>
+                                                <ComboBoxItem>最快</ComboBoxItem>
+                                                <ComboBoxItem>快速</ComboBoxItem>
+                                                <ComboBoxItem>标准</ComboBoxItem>
+                                                <ComboBoxItem>较高</ComboBoxItem>
+                                                <ComboBoxItem>极限</ComboBoxItem>
+                                            </ComboBox>
+                                            <TextBlock Text="分卷" VerticalAlignment="Center" FontSize="11" Margin="0,0,4,0" />
+                                            <ui:TextBox Width="78" FontSize="12" Padding="6,2" Margin="0,0,10,0"
+                                                       Text="{Binding Volume, UpdateSourceTrigger=LostFocus}" PlaceholderText="如 700m" />
+                                            <TextBlock Text="文件名加密" VerticalAlignment="Center" FontSize="11" Margin="0,0,4,0" />
+                                            <ComboBox Width="92" FontSize="12" Padding="6,2"
+                                                    SelectedIndex="{Binding EncryptIndex, Mode=TwoWay}">
+                                                <ComboBoxItem>跟随全局</ComboBoxItem>
+                                                <ComboBoxItem>否</ComboBoxItem>
+                                                <ComboBoxItem>是</ComboBoxItem>
+                                            </ComboBox>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <ui:Button Content="添加预设" Icon="{ui:SymbolIcon Add24}" HorizontalAlignment="Left" Margin="0,6,0,0" Click="OnAddPreset" />
                 </StackPanel>
             </ui:CardExpander>
 
