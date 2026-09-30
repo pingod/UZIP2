@@ -1,0 +1,239 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using UZIP2.Models;
+using UZIP2.Services;
+
+namespace UZIP2.ViewModel
+{
+    public sealed record DropPreview(string Text, bool IsWarning);
+
+    public partial class HomeViewModel : ObservableObject
+    {
+        private readonly ArchiveWorker _worker;
+        private readonly ISettingsService _settings;
+        private readonly SevenZipClient _zip;
+        private readonly HashSet<long> _autoOpened = new HashSet<long>();
+
+        public HomeViewModel(ArchiveWorker worker, ISettingsService settings, SevenZipClient zip)
+        {
+            _worker = worker;
+            _settings = settings;
+            _zip = zip;
+            _mode = settings.Current.AppMode;
+            _sevenZipMissing = zip.SevenZipPath == null;
+            ((INotifyCollectionChanged)_worker.Jobs).CollectionChanged += OnJobsChanged;
+            foreach (var job in _worker.Jobs) HookJob(job);
+        }
+
+        public ReadOnlyObservableCollection<JobEntry> Jobs => _worker.Jobs;
+
+        [ObservableProperty] private int _mode;
+        [ObservableProperty] private string _previewText = "";
+        [ObservableProperty] private bool _previewIsWarning;
+        [ObservableProperty] private bool _isDragging;
+        [ObservableProperty] private bool _sevenZipMissing;
+
+        partial void OnModeChanged(int value)
+        {
+            _settings.Save(s => s.AppMode = value);
+        }
+
+        // ---- 拖拽预告（纯函数） ----
+
+        public static DropPreview PreviewFor(int mode, IReadOnlyList<string> dropped)
+        {
+            var list = dropped ?? Array.Empty<string>();
+            var archives = list.Count(IsArchivePath);
+            var others = list.Count - archives;
+
+            if (list.Count == 0)
+                return new DropPreview("无有效文件", true);
+
+            switch (mode)
+            {
+                case 1: // 仅解压
+                    if (archives == 0)
+                        return new DropPreview("没有可解压的压缩包", true);
+                    if (others == 0)
+                        return new DropPreview($"释放以解压 {archives} 个压缩包", false);
+                    return new DropPreview($"释放以解压 {archives} 个压缩包，{others} 个文件夹/非压缩包将被忽略", true);
+                case 2: // 仅压缩
+                    return new DropPreview($"释放以压缩 {list.Count} 个文件/文件夹", false);
+                default: // 自动
+                    if (archives > 0 && others > 0)
+                        return new DropPreview($"释放以解压 {archives} 个压缩包、压缩 {others} 个文件/文件夹", false);
+                    if (archives > 0)
+                        return new DropPreview($"释放以解压 {archives} 个压缩包", false);
+                    return new DropPreview($"释放以压缩 {others} 个文件/文件夹", false);
+            }
+        }
+
+        static bool IsArchivePath(string path)
+        {
+            try
+            {
+                return File.Exists(path) && ArchiveInspector.CanExtractByExtension(path);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // ---- 拖放 ----
+
+        public void ShowPreview(string[] files)
+        {
+            IsDragging = true;
+            var p = PreviewFor(Mode, files ?? Array.Empty<string>());
+            PreviewText = p.Text;
+            PreviewIsWarning = p.IsWarning;
+        }
+
+        public void ClearPreview()
+        {
+            IsDragging = false;
+            PreviewText = "";
+            PreviewIsWarning = false;
+        }
+
+        [RelayCommand]
+        public void DropFiles(string[] files)
+        {
+            ClearPreview();
+            var list = (files ?? Array.Empty<string>())
+                .Where(f => File.Exists(f) || Directory.Exists(f)).ToList();
+            if (list.Count == 0) return;
+
+            var archives = list.Where(IsArchivePath).ToList();
+            var others = list.Except(archives).ToList();
+
+            switch (Mode)
+            {
+                case 1:
+                    if (archives.Count > 0) _worker.EnqueueExtract(archives);
+                    break;
+                case 2:
+                    _worker.EnqueueCompress(list);
+                    break;
+                default:
+                    if (archives.Count > 0) _worker.EnqueueExtract(archives);
+                    if (others.Count > 0) _worker.EnqueueCompress(others);
+                    break;
+            }
+        }
+
+        // ---- 任务卡命令 ----
+
+        [RelayCommand]
+        void CancelJob(JobEntry job)
+        {
+            if (job != null) _worker.Cancel(job);
+        }
+
+        [RelayCommand]
+        void RetryJob(JobEntry job)
+        {
+            if (job != null) _worker.Retry(job);
+        }
+
+        [RelayCommand]
+        void OpenOutput(JobEntry job)
+        {
+            if (job == null) return;
+            var dir = job.OutputDir;
+            if (string.IsNullOrEmpty(dir) && !string.IsNullOrEmpty(job.Archive))
+                dir = Path.GetDirectoryName(job.Archive);
+            if (!string.IsNullOrEmpty(dir) && File.Exists(dir))
+                dir = Path.GetDirectoryName(dir);
+            OpenInExplorer(dir);
+        }
+
+        [RelayCommand]
+        void DeleteSource(JobEntry job)
+        {
+            if (job == null || string.IsNullOrEmpty(job.Archive) || !File.Exists(job.Archive)) return;
+            var vol = ArchiveInspector.AnalyzeVolume(job.Archive);
+            if (vol != null && vol.IsVolume)
+                ArchiveInspector.DeleteVolumeSet(vol, _settings.Current.DeleteToRecycle);
+            else
+                FilterService.Delete(job.Archive, _settings.Current.DeleteToRecycle);
+        }
+
+        [RelayCommand]
+        void Locate7z()
+        {
+            using var dlg = new System.Windows.Forms.FolderBrowserDialog
+            {
+                Description = "选择 7-Zip 安装目录（含 7z.exe）",
+                SelectedPath = SafeCurrent7zDir()
+            };
+            if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            {
+                var exe = Path.Combine(dlg.SelectedPath, "7z.exe");
+                if (File.Exists(exe))
+                {
+                    _settings.Save(s =>
+                    {
+                        s.Customize7z = true;
+                        s.Customize7zPath = exe;
+                    });
+                }
+            }
+            SevenZipMissing = _zip.SevenZipPath == null;
+        }
+
+        string SafeCurrent7zDir()
+        {
+            try
+            {
+                var p = _zip.SevenZipPath;
+                return p == null ? "" : Path.GetDirectoryName(p);
+            }
+            catch { return ""; }
+        }
+
+        static void OpenInExplorer(string dir)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
+                Process.Start(new ProcessStartInfo("explorer.exe", $"\"{dir}\"") { UseShellExecute = true });
+            }
+            catch { /* 打开资源管理器失败不影响任务 */ }
+        }
+
+        // ---- 成功后自动打开输出目录 ----
+
+        void OnJobsChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (e.NewItems != null)
+                foreach (JobEntry job in e.NewItems) HookJob(job);
+            if (e.OldItems != null)
+                foreach (JobEntry job in e.OldItems) job.PropertyChanged -= OnJobPropertyChanged;
+        }
+
+        void HookJob(JobEntry job)
+        {
+            job.PropertyChanged += OnJobPropertyChanged;
+        }
+
+        void OnJobPropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(JobEntry.Status)) return;
+            var job = (JobEntry)sender;
+            if (job.Status != JobStatus.Success) return;
+            if (!_settings.Current.AutoOpenAfterExtract) return;
+            if (string.IsNullOrEmpty(job.OutputDir) || !_autoOpened.Add(job.Id)) return;
+            OpenInExplorer(job.OutputDir);
+        }
+    }
+}

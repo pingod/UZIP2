@@ -317,6 +317,7 @@ namespace UZIP2.Services
             var res = await _zip.ExtractAsync(f, temp.TrimEnd('\\'), usedPassword, progress, ct, s.ExtractCoverMode)
                 .ConfigureAwait(false);
             job.Percent = res.Success ? 100 : job.Percent;
+            if (res.Success) job.Done = job.Total;
 
             if (!res.Success)
             {
@@ -475,6 +476,7 @@ namespace UZIP2.Services
 
             _compressLog.Log(outArchive, password);
             job.Percent = 100;
+            job.Done = job.Total;
             job.UsedPassword = password;
             job.OutputDir = outArchive;
             job.Status = JobStatus.Success;

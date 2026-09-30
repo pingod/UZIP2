@@ -5,6 +5,7 @@ using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using UZIP2.Services;
 using UZIP2.Shell;
+using UZIP2.ViewModel;
 
 namespace UZIP2
 {
@@ -59,6 +60,7 @@ namespace UZIP2
             services.AddSingleton<ClipboardService>();
             services.AddSingleton<HotKeyService>();
             services.AddSingleton<TrayService>();
+            services.AddSingleton<HomeViewModel>();
             Services = services.BuildServiceProvider();
 
             var window = new MainWindow();
