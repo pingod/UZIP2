@@ -19,6 +19,7 @@ namespace UZIP2.Models
         internal string ManualPassword;             // Retry 时人工指定的密码
         internal int Depth;                         // 多级解压深度
         internal bool CancelRequested;
+        internal bool Flat;                         // "解压到当前文件夹"：无视建目录设置
 
         [ObservableProperty] private JobStatus status;
         [ObservableProperty] private double? percent;

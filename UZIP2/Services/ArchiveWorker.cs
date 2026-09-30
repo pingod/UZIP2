@@ -90,10 +90,10 @@ namespace UZIP2.Services
         // ---------- 入队 ----------
 
         public void EnqueueExtract(IReadOnlyList<string> archives, string outputDir = null,
-            List<string> onlyEntries = null)
+            List<string> onlyEntries = null, bool flat = false)
         {
             foreach (var a in archives)
-                AddJob(new JobEntry { Kind = "Extract", Archive = a, Target = outputDir, SelectedEntries = onlyEntries });
+                AddJob(new JobEntry { Kind = "Extract", Archive = a, Target = outputDir, SelectedEntries = onlyEntries, Flat = flat });
         }
 
         public void EnqueueCompress(IReadOnlyList<string> files, string outDir = null)
@@ -490,7 +490,11 @@ namespace UZIP2.Services
             try
             {
                 var di = new DirectoryInfo(temp);
-                if (s.CreateNewFolder || s.CreateNameFolder)
+                if (job.Flat)
+                {
+                    FilterService.MoveFolder(temp, outDir, s.ExtractCoverMode);
+                }
+                else if (s.CreateNewFolder || s.CreateNameFolder)
                 {
                     if (di.GetDirectories().Length + di.GetFiles().Length <= 1 && !s.CreateNameFolder)
                     {
@@ -535,7 +539,7 @@ namespace UZIP2.Services
                 {
                     var p = Path.Combine(dest, name);
                     if (File.Exists(p))
-                        AddJob(new JobEntry { Kind = "Extract", Archive = p, Target = job.Target, Depth = job.Depth + 1 });
+                        AddJob(new JobEntry { Kind = "Extract", Archive = p, Target = job.Target, Flat = job.Flat, Depth = job.Depth + 1 });
                 }
             }
         }

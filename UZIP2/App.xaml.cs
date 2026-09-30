@@ -112,7 +112,7 @@ namespace UZIP2
                     break;
                 case ShellVerb.ExtractHere:
                     foreach (var f in paths.Where(File.Exists))
-                        worker.EnqueueExtract(new[] { f }, Path.GetDirectoryName(f));
+                        worker.EnqueueExtract(new[] { f }, Path.GetDirectoryName(f), null, true);
                     break;
                 case ShellVerb.Compress:
                     worker.EnqueueCompress(paths);

@@ -41,7 +41,7 @@
 | N4 | 监听下载目录自动解压（`WatchEnabled` / `WatchFolder`，去抖 + 稳定性判定） | 测试：`WatchFolderServiceTests` |
 | N5 | 压缩日志检索窗口（按包名 / 密码 / 时间过滤 `Compress.log`） | 测试：`CompressLogServiceTests`；实测：设置 → "7-Zip 与日志" → 检索压缩日志 |
 | N6 | 失败条：一键批量重试全部失败项 + 导出失败报告（报告绝不含密码） | 测试：`FailureReportTests`（含"导出件不含密码"用例） |
-| N7 | Windows 右键菜单注册/移除（HKCU，免管理员），设置页显示当前指向 | 测试：`ShellMenuTests`（写入/移除/状态判定/指向检测）。资源管理器里的实际菜单项待发布部署时确认 |
+| N7 | Windows 右键菜单注册/移除（HKCU，免管理员），设置页显示当前指向；"解压到当前文件夹"动词带 `Flat`，无视 `CreateNewFolder/CreateNameFolder` 建目录设置 | 测试：`ShellMenuTests`（写入/移除/状态判定/指向检测）+ `ArchiveWorkerTests.Flat_extract_overrides_create_name_folder`。实测：从 H: 部署副本跑 `--register-shell` 后，注册表里 5 项（文件解压到当前/解压/压缩 + 目录压缩 + 目录背景压缩）全部指向 `H:\Sync\PublicShare\software\UZip\UZIP2.exe`；资源管理器里的菜单外观未截图核对 |
 | N8 | 密码库跨机加密导出/导入（口令派生密钥；导出件不含明文，也不含口令） | 测试：`VaultTransferTests` |
 | N9 | 桌面迷你拖拽方块：只留一个小窗，文件拖上去即处理（`MiniPuck`，默认关；位置记忆） | 测试：`HomeViewModelTests` 的模式路由与预告文案复用；方块窗口本身待人工拖放确认 |
 | N10 | 分卷压缩 `-v`（`700m` / `1g` / 纯字节；非法值在启动 7z 前挡下） | 测试：`VolumeSizeTests` + `ArchiveWorkerTests`；产出 `name.7z.001/002…` |

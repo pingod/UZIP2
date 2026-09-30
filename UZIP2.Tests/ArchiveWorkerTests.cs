@@ -146,6 +146,23 @@ namespace UZIP2.Tests
             Assert.True(File.Exists(Path.Combine(_out, "电影", "d4.bin")));
         }
 
+        // "解压到当前文件夹"动词必须无视建目录设置，即使同名文件夹开关打开
+        [Fact]
+        public async Task Flat_extract_overrides_create_name_folder()
+        {
+            var f = MakeFile(_src, "d5.bin");
+            var zip = Path.Combine(_root, "here.zip");
+            Assert.True((await CompressRaw(zip, null, 0, f)).Success);
+
+            _settings.Current.CreateNameFolder = true;
+            _worker.EnqueueExtract(new[] { zip }, _out, null, true);
+            await _worker.WhenIdleAsync();
+
+            Assert.Equal(JobStatus.Success, Assert.Single(_worker.Jobs).Status);
+            Assert.True(File.Exists(Path.Combine(_out, "d5.bin")), "文件应直接落在输出目录");
+            Assert.False(Directory.Exists(Path.Combine(_out, "here")), "不应建立同名文件夹");
+        }
+
         [Fact]
         public async Task MultiLevel_extracts_nested_archive()
         {
