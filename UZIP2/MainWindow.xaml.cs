@@ -2556,7 +2556,8 @@ namespace UZIP2
         // 热键处理程序
         IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handle)
         {
-            if (wParam.ToInt32() == UKPatse.ID)
+            // 64 位进程中 wParam 可能是指针，ToUInt64 比较避免 ToInt32 溢出
+            if (msg == 0x0312 && (ulong)wParam == (ulong)UKPatse.ID)
             {
                 // 全局快捷键要执行的命令
                 // 读取剪切板的内容
