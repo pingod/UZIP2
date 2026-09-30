@@ -1,10 +1,10 @@
 name: Build Windows Release
 
-# WPF + .NET Framework 4.8 是 Windows-only 技术栈，macOS/Linux 无法构建或运行。
-# 因此本 CI 只产出 Windows 版本。跨平台需要迁移到 .NET 8 + Avalonia UI + SharpCompress，是独立的大重构。
+# .NET 8 + WPF 仍是 Windows-only 技术栈，macOS/Linux 无法构建或运行，因此 CI 只产出 Windows 版本。
+# 产物为框架依赖单文件：目标机需安装 .NET 8 Desktop Runtime（缺失时 Windows 会给出带下载链接的提示）。
 #
 # 7-Zip 不打包进发布物：用户需自行从 https://www.7-zip.org 安装，
-# 首次启动时 UZIP2 会引导选择 7z.exe 路径（或自动检测系统安装位置）。
+# UZIP2 会自动检测系统安装位置，或在设置页手动指定 7z.exe 路径。
 
 on:
   push:
@@ -18,35 +18,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
 
-      - name: Build Release
-        run: |
-          msbuild UZIP2.sln /p:Configuration=Release /p:Platform="Any CPU" /p:WarningLevel=0 /v:minimal
-        shell: pwsh
+      - name: Test
+        run: dotnet test UZIP2.Tests/UZIP2.Tests.csproj -c Release --nologo
+
+      - name: Publish single-file
+        run: >
+          dotnet publish UZIP2 -c Release -r win-x64 --self-contained false
+          /p:PublishSingleFile=true -o release
 
       - name: Assemble publish folder
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $root = $PWD.Path
-          Write-Host "Root: $root"
-          $src = Join-Path $root "UZIP2\bin\Release"
-          $publish = Join-Path $root "publish"
-          Write-Host "Src: $src"
-          Write-Host "Src exists: $(Test-Path $src)"
-          Get-ChildItem $src -Recurse | Select-Object FullName
-          New-Item -ItemType Directory -Path $publish -Force | Out-Null
-          Copy-Item "$src\*" -Destination $publish -Recurse -Force
-          New-Item -ItemType Directory -Path "$publish\Config" -Force | Out-Null
-          Remove-Item "$publish\*.pdb" -ErrorAction SilentlyContinue
-          Write-Host "---publish contents---"
-          Get-ChildItem $publish -Recurse | Select-Object FullName
+          New-Item -ItemType Directory -Path release/Config -Force | Out-Null
+          Remove-Item release/*.pdb -ErrorAction SilentlyContinue
+          Get-ChildItem release -Recurse | Select-Object FullName
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: UZIP2-windows
-          path: publish/
+          path: release/
           retention-days: 14
