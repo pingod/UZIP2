@@ -391,6 +391,28 @@
                 </StackPanel>
             </ui:CardExpander>
 
+            <!-- Windows 右键菜单 -->
+            <ui:CardExpander Header="Windows 右键菜单" Margin="0,0,0,16" IsExpanded="False"
+                             Expanded="OnShellExpanded">
+                <StackPanel>
+                    <TextBlock Text="写入当前用户的注册表（HKCU），不需要管理员权限。Windows 11 下菜单项位于“显示更多选项”里，与 7-Zip、Bandizip 一致。"
+                               TextWrapping="Wrap" FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,8" />
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="当前状态" />
+                        <TextBlock x:Name="ShellStatus" Grid.Column="1" VerticalAlignment="Center" FontSize="12"
+                                   TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,6,0,0">
+                        <ui:Button Content="注册右键菜单" Appearance="Primary" Click="OnRegisterShell" />
+                        <ui:Button Content="移除" Margin="8,0,0,0" Click="OnUnregisterShell" />
+                        <ui:Button Content="刷新状态" Margin="8,0,0,0" Click="OnRefreshShellStatus" />
+                    </StackPanel>
+                </StackPanel>
+            </ui:CardExpander>
+
             <!-- 关于 -->
             <ui:CardExpander Header="关于" Margin="0,0,0,16" IsExpanded="False">
                 <StackPanel>

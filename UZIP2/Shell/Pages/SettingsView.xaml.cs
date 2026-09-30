@@ -51,6 +51,7 @@ namespace UZIP2.Shell.Pages
 
                 HotkeyBox.Text = Vm.HotkeyText;
                 Detected7zPath.Text = App.Services.GetRequiredService<SevenZipClient>().SevenZipPath ?? "未检测到";
+                RefreshShellStatus();
             }
             finally { _loading = false; }
         }
@@ -202,6 +203,45 @@ namespace UZIP2.Shell.Pages
             var win = new CompressLogWindow(App.Services.GetRequiredService<CompressLogService>())
             { Owner = Window.GetWindow(this) };
             win.Show();
+        }
+
+        // ---- Windows 右键菜单 (HKCU) ----
+
+        void OnShellExpanded(object sender, RoutedEventArgs e) => RefreshShellStatus();
+
+        void OnRefreshShellStatus(object sender, RoutedEventArgs e) => RefreshShellStatus();
+
+        void OnRegisterShell(object sender, RoutedEventArgs e) => ChangeShell(register: true);
+
+        void OnUnregisterShell(object sender, RoutedEventArgs e) => ChangeShell(register: false);
+
+        void ChangeShell(bool register)
+        {
+            var svc = App.Services.GetRequiredService<ShellMenuService>();
+            try
+            {
+                if (register) svc.Register(ShellMenuService.CurrentExePath);
+                else svc.Unregister();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("写入注册表失败: " + ex.Message, "UZIP 右键菜单",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            RefreshShellStatus();
+        }
+
+        void RefreshShellStatus()
+        {
+            if (ShellStatus == null) return;
+            var svc = App.Services.GetRequiredService<ShellMenuService>();
+            var state = svc.State(ShellMenuService.CurrentExePath);
+            ShellStatus.Text = state switch
+            {
+                ShellMenuState.Current => "已注册（指向本程序）",
+                ShellMenuState.Stale => "已注册但指向: " + (svc.ProbeCommand() ?? "未知"),
+                _ => "未注册",
+            };
         }
 
         static System.Collections.Generic.IEnumerable<DependencyObject> Logical(DependencyObject root)

@@ -20,6 +20,14 @@ namespace UZIP2
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             string configDir = Path.Combine(baseDir, "Config");
 
+            var request = ShellArgs.Parse(e.Args);
+            if (request.RegisterShell || request.UnregisterShell)
+            {
+                ApplyShellRegistration(request);
+                Shutdown();
+                return;
+            }
+
             _bus = new InstanceBus();
             if (!_bus.TryBecomePrimary())
             {
@@ -61,6 +69,7 @@ namespace UZIP2
             services.AddSingleton<HotKeyService>();
             services.AddSingleton<WatchFolderService>();
             services.AddSingleton<TrayService>();
+            services.AddSingleton<ShellMenuService>();
             services.AddSingleton<HomeViewModel>();
             services.AddSingleton<SettingsViewModel>();
             services.AddSingleton<PasswordBookViewModel>(sp => new PasswordBookViewModel(
@@ -78,20 +87,54 @@ namespace UZIP2
                 _bus.FilesReceived += args => Dispatcher.Invoke(() =>
                 {
                     window.ShowFromTray();
-                    var files = args.Where(File.Exists).ToArray();
-                    if (files.Length > 0)
-                        Services.GetRequiredService<ArchiveWorker>().EnqueueExtract(files);
+                    Handle(ShellArgs.Parse(args));
                 });
             }
 
-            var startupFiles = e.Args.Where(File.Exists).ToArray();
-            if (startupFiles.Length > 0)
-                Services.GetRequiredService<ArchiveWorker>().EnqueueExtract(startupFiles);
+            Handle(request);
 
             // 监听目录跟随设置即时生效
             var watcher = Services.GetRequiredService<WatchFolderService>();
             settings.Changed += _ => Dispatcher.Invoke(watcher.Apply);
             watcher.Apply();
+        }
+
+        // 右键菜单/命令行进来的路径按动词分流；解压只吃文件，压缩允许目录
+        private static void Handle(ShellRequest request)
+        {
+            var paths = request.Files.Where(p => File.Exists(p) || Directory.Exists(p)).ToArray();
+            if (paths.Length == 0) return;
+            var worker = Services.GetRequiredService<ArchiveWorker>();
+            switch (request.Verb)
+            {
+                case ShellVerb.Extract:
+                    worker.EnqueueExtract(paths.Where(File.Exists).ToArray());
+                    break;
+                case ShellVerb.ExtractHere:
+                    foreach (var f in paths.Where(File.Exists))
+                        worker.EnqueueExtract(new[] { f }, Path.GetDirectoryName(f));
+                    break;
+                case ShellVerb.Compress:
+                    worker.EnqueueCompress(paths);
+                    break;
+            }
+        }
+
+        private static void ApplyShellRegistration(ShellRequest request)
+        {
+            try
+            {
+                using (var svc = new ShellMenuService())
+                {
+                    if (request.UnregisterShell) svc.Unregister();
+                    else svc.Register(ShellMenuService.CurrentExePath);
+                }
+                Environment.ExitCode = 0;
+            }
+            catch
+            {
+                Environment.ExitCode = 1;
+            }
         }
 
         private void OnExit(object sender, ExitEventArgs e)
