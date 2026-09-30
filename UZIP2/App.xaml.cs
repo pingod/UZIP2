@@ -61,6 +61,10 @@ namespace UZIP2
             services.AddSingleton<HotKeyService>();
             services.AddSingleton<TrayService>();
             services.AddSingleton<HomeViewModel>();
+            services.AddSingleton<PasswordBookViewModel>(sp => new PasswordBookViewModel(
+                sp.GetRequiredService<PasswordService>(),
+                Current.Dispatcher,
+                sp.GetRequiredService<ClipboardService>()));
             Services = services.BuildServiceProvider();
 
             var window = new MainWindow();
