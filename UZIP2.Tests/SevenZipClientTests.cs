@@ -30,6 +30,8 @@ namespace UZIP2.Tests
         [InlineData("Data Error in encrypted file. Wrong Password : secret", SevenZipError.WrongPassword)]
         [InlineData("ERROR: Method Failed with nonzero return code, while the decoder produced an error. CRC Failed", SevenZipError.Corrupt)]
         [InlineData("Can not open the file as archive\nIs not supported as an archive", SevenZipError.UnsupportedFormat)]
+        // 7z 26.03 对随机字节伪装的 .zip 的真实输出
+        [InlineData("bad3.zip\nOpen ERROR: Cannot open the file as [zip] archive\n\nERRORS:\nIs not archive", SevenZipError.UnsupportedFormat)]
         [InlineData("There are some data after the end of the payload data", SevenZipError.Corrupt)]
         [InlineData("Not enough disk space", SevenZipError.DiskFull)]
         [InlineData("The system cannot find the path specified. being used by another process", SevenZipError.Occupied)]

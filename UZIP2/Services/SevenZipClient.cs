@@ -325,7 +325,9 @@ namespace UZIP2.Services
                 || o.Contains("enter password"))
                 return SevenZipError.WrongPassword;
             if (o.Contains("crc failed") || o.Contains("data error")) return SevenZipError.Corrupt;
-            if (o.Contains("not supported") || o.Contains("cannot open the file as archive")) return SevenZipError.UnsupportedFormat;
+            // 7z 会把格式名插在中间: "Cannot open the file as [zip] archive"，另有 "Is not archive" 汇总行
+            if (o.Contains("not supported") || o.Contains("cannot open the file as") || o.Contains("is not archive"))
+                return SevenZipError.UnsupportedFormat;
             if (o.Contains("there are some data after the end")) return SevenZipError.Corrupt;
             if (o.Contains("disk full") || o.Contains("not enough disk space")) return SevenZipError.DiskFull;
             if (o.Contains("filename or extension is too long") || o.Contains("path too long")) return SevenZipError.PathTooLong;

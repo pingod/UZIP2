@@ -51,6 +51,16 @@ namespace UZIP2.ViewModel
         [ObservableProperty] private bool _isDragging;
         [ObservableProperty] private bool _sevenZipMissing;
         [ObservableProperty] private int _paperCount;
+        [ObservableProperty] private int _failedCount;
+
+        public bool HasFailures => FailedCount > 0;
+
+        partial void OnFailedCountChanged(int value)
+        {
+            OnPropertyChanged(nameof(HasFailures));
+            RetryAllFailedCommand.NotifyCanExecuteChanged();
+            ExportFailuresCommand.NotifyCanExecuteChanged();
+        }
 
         [RelayCommand]
         private void PastePassword() => _clipboard?.PasteFromClipboard();
@@ -185,6 +195,28 @@ namespace UZIP2.ViewModel
             if (job != null) _worker.Retry(job);
         }
 
+        // 一次卡多个包失败时，逐个点重试太慢；批量重跑一遍（密码链会重新走）
+        [RelayCommand(CanExecute = nameof(HasFailures))]
+        void RetryAllFailed() => _worker.RetryAllFailed();
+
+        [RelayCommand(CanExecute = nameof(HasFailures))]
+        void ExportFailures()
+        {
+            var dlg = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "导出失败报告",
+                Filter = "文本文件|*.txt",
+                FileName = "uzip-failures-" + DateTime.Now.ToString("yyyyMMdd-HHmm") + ".txt",
+            };
+            if (dlg.ShowDialog() != true) return;
+            try
+            {
+                UZIP2.Services.FailureReport.Write(dlg.FileName,
+                    UZIP2.Services.FailureReport.Build(Jobs, _zip.SevenZipPath));
+            }
+            catch { }
+        }
+
         [RelayCommand]
         void OpenOutput(JobEntry job)
         {
@@ -283,6 +315,7 @@ namespace UZIP2.ViewModel
                 foreach (JobEntry job in e.NewItems) HookJob(job);
             if (e.OldItems != null)
                 foreach (JobEntry job in e.OldItems) job.PropertyChanged -= OnJobPropertyChanged;
+            RefreshFailedCount();
         }
 
         void HookJob(JobEntry job)
@@ -295,10 +328,27 @@ namespace UZIP2.ViewModel
             if (e.PropertyName != nameof(JobEntry.Status)) return;
             var job = (JobEntry)sender;
             TrackCompletion(job);
+            if (job.Status == JobStatus.Failed || job.Status == JobStatus.Success
+                || job.Status == JobStatus.Cancelled)
+                RefreshFailedCount();
             if (job.Status != JobStatus.Success) return;
             if (!_settings.Current.AutoOpenAfterExtract) return;
             if (string.IsNullOrEmpty(job.OutputDir) || !_autoOpened.Add(job.Id)) return;
             OpenInExplorer(job.OutputDir);
+        }
+
+        void RefreshFailedCount()
+        {
+            // 状态变更来自后台作业线程：计数和命令可用性都只能在 UI 线程动
+            if (!_ui.CheckAccess())
+            {
+                _ui.BeginInvoke(new Action(RefreshFailedCount));
+                return;
+            }
+            int n = 0;
+            foreach (var j in Jobs)
+                if (j.Status == JobStatus.Failed) n++;
+            FailedCount = n;
         }
     }
 }

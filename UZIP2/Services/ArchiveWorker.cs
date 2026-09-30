@@ -432,9 +432,7 @@ namespace UZIP2.Services
                 job.Status = ct.IsCancellationRequested ? JobStatus.Cancelled : JobStatus.Failed;
                 job.Diagnosis = ct.IsCancellationRequested
                     ? "任务已取消"
-                    : SevenZipClient.Classify(lastTestOutput ?? "", 1, false) == SevenZipError.WrongPassword
-                        ? "需要密码，但密码本/密码纸中未找到正确密码"
-                        : "密码本/密码纸中未找到正确密码";
+                    : DescribePasswordChainFailure(lastTestOutput);
                 return;
             }
 
@@ -572,6 +570,19 @@ namespace UZIP2.Services
         static void TryDeleteTemp(string temp)
         {
             try { if (Directory.Exists(temp)) Directory.Delete(temp.TrimEnd('\\'), true); } catch { }
+        }
+
+        // 密码链跑完仍失败: 空密码那次的输出才能区分"缺密码"和"包本身坏了"，
+        // 后面带密码的 test 一律报 Data error，会把坏包说成密码不对。
+        public static string DescribePasswordChainFailure(string emptyPasswordTestOutput)
+        {
+            switch (SevenZipClient.Classify(emptyPasswordTestOutput ?? "", 1, false))
+            {
+                case SevenZipError.WrongPassword: return "需要密码，但密码本/密码纸中未找到正确密码";
+                case SevenZipError.Corrupt: return "文件已损坏（校验失败）";
+                case SevenZipError.UnsupportedFormat: return "文件已损坏或不是可识别的压缩包";
+                default: return "密码本/密码纸中未找到正确密码";
+            }
         }
 
         // ---------- 压缩 ----------
