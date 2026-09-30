@@ -180,8 +180,8 @@ namespace UZIP2.Services
             catch { return true; }
         }
 
-        // 试密码顺序：密码本(按成功次数降序) -> 密码纸 -> 外部来源(旧 Mypassword 模式)
-        public IReadOnlyList<string> CandidatePasswords()
+        // 试密码顺序(与旧版一致): 外部来源 -> 文件名提取 -> 密码本(按成功次数降序) -> 密码纸
+        public IReadOnlyList<string> CandidatePasswords(string namePassword = null)
         {
             List<PasswordEntry> book;
             List<PasswordEntry> paper;
@@ -191,10 +191,12 @@ namespace UZIP2.Services
                 paper = _paper.ToList();
             }
             book.Sort((a, b) => b.SuccessCount.CompareTo(a.SuccessCount));
-            var result = book.Select(e => e.Text).Concat(paper.Select(e => e.Text))
-                            .Where(t => !string.IsNullOrEmpty(t)).ToList();
+            var result = new List<string>();
             foreach (var extra in ExternalPasswords())
                 if (!result.Contains(extra)) result.Add(extra);
+            if (!string.IsNullOrEmpty(namePassword)) result.Add(namePassword);
+            foreach (var t in book.Select(e => e.Text).Concat(paper.Select(e => e.Text)))
+                if (!string.IsNullOrEmpty(t) && !result.Contains(t)) result.Add(t);
             return result;
         }
 
