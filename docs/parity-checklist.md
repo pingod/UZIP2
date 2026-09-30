@@ -79,3 +79,15 @@
 | S5 | CLI `update`（默认 `--check`，`--json` 含 `downloadUrl/size/canApply`）与 `update --apply`（下载→校验→就位退出） | 测试：`CliRunnerTests.Update_*`（8 例：有更新提示 apply、已是最新、JSON canApply、`--apply` 各分支与失败上报，全部离线注入） |
 | S6 | GUI 主页"可更新"横幅新增**一键更新**按钮（`CanAutoUpdate` 把关）+ 下载进度文案 + 就绪自动重启 | 测试：`UpdateServiceTests.Banner_bindings_resolve_against_the_view_model`（校验 `ApplyUpdateCommand`/`CanAutoUpdate`/`UpdateStatus`/`IsUpdating` 绑定解析）；`ApplyUpdate` 走 S2 的就地判定与安全回落 |
 | S7 | 安全边界：64MB 体积上限、版本精确匹配、只覆盖自身 exe 不碰 `Config`/`7-Zip`/`Bandizip`、失败/取消清理 `.update.new`、复用同一环境代理 | 代码：`SelfUpdater.StageAndApplyAsync` 失败路径 `TryDelete(temp)`；`UpdateService.MaxDownloadBytes`；实测换体仅在临时目录进行，绝不触碰部署目录 |
+
+## v3.4 发布瘦身 + 免依赖安装
+
+基线：`dotnet test` 418/418 通过（2026-10-01），主工程 0 警告。本轮改的是发布配置与脚本，不新增运行期逻辑，故验证以**实测体积**与**脚本跑通**为准。
+
+| # | 能力 | 证据 |
+|---|------|------|
+| P1 | 单文件发布瘦身开关（英文附属资源裁剪、无 `.pdb`、关 EnC 元数据、自包含开 deflate 压缩），条件属性组隔离使普通 build/test 不受影响 | 实测同码对比：自包含 exe 162.0 MB→66.1 MB（−59%）、zip 65.6→60.6 MB、框架依赖 exe 8.1 MB 不变；`dotnet test` 418 全绿证明普通构建未被裁剪开关波及 |
+| P2 | `scripts/publish.ps1` 一条命令产出 fd+sc 两地产物到 `artifacts/<版本>\` + SHA256SUMS 清单，版本号取自 `AssemblyInfo.cs` | 实测跑通：`Publishing UZIP2 v3.4.0` → `UZIP-3.4.0-win-x64.exe`(8.1MB)+`...-selfcontained.zip`(60.6MB)+`SHA256SUMS.txt`；修复了误匹配注释行 `// [assembly: AssemblyVersion("1.0.*")]` 的正则 |
+| P3 | `scripts/install.ps1` 免依赖 per-user 安装：自动选/显式指定源、可选打包 `7-Zip\`、复用 `shell register`、建开始菜单快捷方式；**绝不触碰已存在的 `Config\`** | 实测一次性目录跑通安装；就地重装后 `Config\settings.json` 哨兵内容原样存活；装出的 exe `version` 输出 3.4.0 |
+| P4 | `scripts/uninstall.ps1` 默认注销右键+删程序文件+保留 `Config\`+`logs\`；`-Purge` 删数据前需输 `YES`/`-Force` 二次确认 | 实测：安全卸载后 exe 消失、`Config\` 保留；`-Purge -Force` 清空整个目录 |
+| P5 | 可选 NSIS 配方 `scripts/installer.nsi`（本机未装 NSIS，不静默装系统依赖，作为想要 setup.exe 的人的现成配方；per-user 免 UAC，右键仍复用 app 自身命令） | 交付脚本文件；未在本机编译（无 makensis），文档注明构建方式 |

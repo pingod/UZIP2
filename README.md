@@ -11,7 +11,26 @@
 4. 优化临时缓存文件夹相关代码，每个压缩包有单独的缓存文件夹，并且该文件夹是隐藏的。
 5. 支持多级解压，压缩包内第一层压缩包再次解压，持续符合条件时会循环解压。
 
-## 本次增强（v3.3 — 一键自更新）
+## 本次增强（v3.4 — 发布瘦身 + 免依赖安装）
+
+对照同类工具（Longyuyeee/long_Decompress）补齐的两块体验：把动辄 160MB 的自包含版瘦身，并给出一键安装/卸载的正规入口。
+
+1. **自包含版瘦身（实测）**：在 `UZIP2.csproj` 里加了一段只在 `PublishSingleFile=true` 时生效的发布开关——英文附属资源裁剪（去掉 WPF/BCL 的 30+ 语言资源 DLL）、发布产物不带 `.pdb`、关掉 EnC 元数据更新支持；并对**独立**单文件开启 `EnableCompressionInSingleFile`（deflate 把 BCL 压进 exe 本体）。同一份代码实测：
+
+   | 产物 | v3.3 基线 | v3.4 优化 | 变化 |
+   |---|---|---|---|
+   | 自包含 exe（磁盘） | 162.0 MB | 66.1 MB | **−59%** |
+   | 自包含 zip（下载） | 65.6 MB | 60.6 MB | −7.6% |
+   | 框架依赖 exe | 8.1 MB | 8.1 MB | 不变（本就极小） |
+
+   下载体积只是小幅下降（单文件内部压缩替 zip 做了功），但**解压后落地的 exe 从 162MB 砍到 66MB**，安装占用的实际空间减半还多。开关用条件属性组隔离，普通 `dotnet build` / 调试 / `dotnet test` 一律不受影响，主工程保持 0 警告。
+2. **可复现发布脚本 `scripts/publish.ps1`**：一条命令同时产出两类发布件到 `artifacts/<版本>\` —— `UZIP-<版本>-win-x64.exe`（框架依赖单文件，主发布件，可被 app 内"一键更新"就地换体）与 `UZIP-<版本>-win-x64-selfcontained.zip`（自包含，免装运行时），并生成带 SHA-256 的 `SHA256SUMS.txt` 清单。版本号从 `AssemblyInfo.cs` 读取，产物名与构建版本永不脱节；`-SkipSelfContained` 可只出发框架依赖版做快速验证。
+3. **免依赖安装/卸载 `scripts/install.ps1` / `uninstall.ps1`**：UZIP2 本质是便携应用（`Config`、`logs`、`7-Zip` 全部相对 exe 目录解析，右键菜单写 HKCU 且指向运行的那个 exe），所以"安装"= 放好 `UZIP2.exe` + 可选带一份 `7-Zip\` + 调用 app 自带的 `shell register` + 建开始菜单快捷方式，全程**不需要管理员、不依赖 NSIS/Inno**。`install.ps1` 可 `-Source` 指定 exe 或自动挑 `artifacts` 里最新的框架依赖件；**绝不触碰已存在的 `Config\`**，重复运行即安全就地升级。`uninstall.ps1` 默认只注销右键、删程序文件、保留 `Config\`+`logs\`；要连数据一起清必须显式 `-Purge` 且需输入 `YES`（或 `-Force`）二次确认。已在本机用一次性目录跑通：安装、就地重装（数据存活）、安全卸载（留 Config）、`-Purge` 清空。
+4. **可选 NSIS 安装包 `scripts/installer.nsi`**：给确实想要"双击 setup.exe"的人留的配方（本机未装 NSIS，不静默安装系统依赖，故不在此产出）。装好 NSIS 后用 `makensis scripts\installer.nsi` 即可从 `artifacts` 暂存目录编出 `UZIP2-<版本>-setup.exe`，同样走 per-user 免 UAC、右键注册复用 app 自身命令。
+
+测试总数维持 **418 个**全绿（本轮为发布配置与脚本，无新增运行期逻辑）；程序集版本同步到 3.4.0。
+
+## 历史增强（v3.3 — 一键自更新）
 
 给程序加了自己升级自己的能力，不用再去发布页手动下、手动替换。参考了 Long 解压(Tauri 自动更新)的思路，但落到本项目的 WinExe + GitHub Releases 现实上：
 

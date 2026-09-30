@@ -3,3 +3,5 @@ bin/
 .vs/
 release/Config/
 release/*.pdb
+artifacts/
+_measure/

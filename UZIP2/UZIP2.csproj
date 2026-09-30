@@ -14,6 +14,20 @@
     <Deterministic>true</Deterministic>
     <NoWarn>CA1416</NoWarn>
   </PropertyGroup>
+  <!-- 仅单文件发布时生效的瘦身开关：普通 build / 调试 / 测试不受影响 -->
+  <PropertyGroup Condition="'$(PublishSingleFile)' == 'true'">
+    <!-- 只保留英文附属资源，去掉 WPF/BCL 的 30+ 语言资源 DLL -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- 发布产物不带 pdb（调试用堆栈在单文件里本就无意义） -->
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <!-- 关掉 EnC 元数据更新支持，去掉 System.Reflection.Metadata 载荷 -->
+    <MetadataUpdaterSupport>false</MetadataUpdaterSupport>
+  </PropertyGroup>
+  <!-- 单文件内 deflate 压缩仅独立(self-contained)发布支持；框架依赖版不支持 -->
+  <PropertyGroup Condition="'$(PublishSingleFile)' == 'true' AND '$(SelfContained)' == 'true'">
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="WPF-UI" Version="4.0.2" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
