@@ -197,6 +197,13 @@ namespace UZIP2.Shell.Pages
                 Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
         }
 
+        void OnOpenCompressLogSearch(object sender, RoutedEventArgs e)
+        {
+            var win = new CompressLogWindow(App.Services.GetRequiredService<CompressLogService>())
+            { Owner = Window.GetWindow(this) };
+            win.Show();
+        }
+
         static System.Collections.Generic.IEnumerable<DependencyObject> Logical(DependencyObject root)
         {
             foreach (var obj in LogicalTreeHelper.GetChildren(root))

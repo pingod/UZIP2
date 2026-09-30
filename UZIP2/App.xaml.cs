@@ -54,7 +54,7 @@ namespace UZIP2
             services.AddSingleton<IFileLogger>(logger);
             services.AddSingleton<ISettingsService>(settings);
             services.AddSingleton(passwords);
-            services.AddSingleton<CompressLogService>(sp => new CompressLogService(configDir));
+            services.AddSingleton<CompressLogService>(sp => new CompressLogService(configDir, settings));
             services.AddSingleton<SevenZipClient>();
             services.AddSingleton<ArchiveWorker>();
             services.AddSingleton<ClipboardService>();

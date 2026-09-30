@@ -378,8 +378,14 @@
                         <TextBlock Grid.Column="1" x:Name="Detected7zPath" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                     </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="压缩日志写明密码" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="LogPasswords" Click="OnToggleChanged" />
+                    </Grid>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,6,0,0">
-                        <ui:Button Content="打开最新日志" Click="OnOpenLog" />
+                        <ui:Button Content="检索压缩日志" Appearance="Primary" Click="OnOpenCompressLogSearch" />
+                        <ui:Button Content="打开最新日志" Margin="8,0,0,0" Click="OnOpenLog" />
                         <ui:Button Content="打开压缩日志" Margin="8,0,0,0" Click="OnOpenCompressLog" />
                     </StackPanel>
                 </StackPanel>

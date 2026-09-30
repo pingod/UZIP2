@@ -61,7 +61,7 @@ namespace UZIP2.Services
             _passwords = passwords;
             _settings = settings;
             _logger = logger;
-            _compressLog = compressLog ?? new CompressLogService(settings.ConfigDirectory);
+            _compressLog = compressLog ?? new CompressLogService(settings.ConfigDirectory, settings);
             _jobsView = new ReadOnlyObservableCollection<JobEntry>(_jobs);
             _dispatcher = System.Windows.Application.Current?.Dispatcher;
             try { BindingOperations.EnableCollectionSynchronization(_jobs, _sync); } catch { }
