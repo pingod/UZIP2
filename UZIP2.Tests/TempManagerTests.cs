@@ -41,6 +41,17 @@ namespace UZIP2.Tests
         }
 
         [Fact]
+        public void CreateSessionTemp_token_splits_same_named_archives()
+        {
+            var t1 = TempManager.CreateSessionTemp(_dir, "a\\x.zip", "11");
+            var t2 = TempManager.CreateSessionTemp(_dir, "b\\x.zip", "12");
+            Assert.NotEqual(t1, t2);
+            Assert.EndsWith("UZipTemp_x_11\\", t1);
+            Assert.True(Directory.Exists(t1) && Directory.Exists(t2));
+            Assert.True(File.GetAttributes(t1.TrimEnd('\\')).HasFlag(FileAttributes.Hidden));
+        }
+
+        [Fact]
         public void CreateSessionTemp_accepts_trailing_slash_output()
         {
             var withSlash = TempManager.CreateSessionTemp(_dir + "\\", Path.Combine(_dir, "n.zip"));

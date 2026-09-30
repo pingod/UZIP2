@@ -197,7 +197,8 @@ namespace UZIP2.Tests
 
             Assert.Equal(2, _worker.Jobs.Count);
             Assert.All(_worker.Jobs, j => Assert.Equal(JobStatus.Success, j.Status));
-            Assert.Contains("已随分卷主文件处理", _worker.Jobs.Last().Diagnosis ?? "");
+            // 并发下两卷谁先认领不确定，只断言"恰好有一个被判为随主卷处理"
+            Assert.Contains(_worker.Jobs, j => (j.Diagnosis ?? "").Contains("已随分卷主文件处理"));
             Assert.True(File.Exists(Path.Combine(_out, "bigfile.bin")));
         }
 

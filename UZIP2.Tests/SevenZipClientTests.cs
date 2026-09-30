@@ -95,6 +95,40 @@ namespace UZIP2.Tests
         }
 
         [Fact]
+        public async Task Probe_Detects_Encryption_State()
+        {
+            if (!Has7z) return;
+            var src = Path.Combine(_dir, "p.txt");
+            File.WriteAllText(src, "probe me");
+
+            var plain = Path.Combine(_dir, "plain.zip");
+            Assert.True((await _client.CompressAsync(new[] { src }, plain, null, 0, 0, false, null, CancellationToken.None)).Success);
+            Assert.Equal(EncryptionState.NotEncrypted, await _client.ProbeEncryptionAsync(plain, CancellationToken.None));
+
+            var zipPw = Path.Combine(_dir, "zippw.zip");
+            Assert.True((await _client.CompressAsync(new[] { src }, zipPw, "pw1", 0, 0, false, null, CancellationToken.None)).Success);
+            Assert.Equal(EncryptionState.Encrypted, await _client.ProbeEncryptionAsync(zipPw, CancellationToken.None));
+
+            var sevenPw = Path.Combine(_dir, "sevenpw.7z");
+            Assert.True((await _client.CompressAsync(new[] { src }, sevenPw, "pw2", 1, 0, false, null, CancellationToken.None)).Success);
+            Assert.Equal(EncryptionState.Encrypted, await _client.ProbeEncryptionAsync(sevenPw, CancellationToken.None));
+
+            // 头加密: 连清单都读不出来，必须保守判定为需要密码
+            var headPw = Path.Combine(_dir, "headpw.7z");
+            Assert.True((await _client.CompressAsync(new[] { src }, headPw, "pw3", 1, 0, true, null, CancellationToken.None)).Success);
+            Assert.Equal(EncryptionState.Encrypted, await _client.ProbeEncryptionAsync(headPw, CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task Probe_Non_Archive_Is_Unknown()
+        {
+            if (!Has7z) return;
+            var fake = Path.Combine(_dir, "fake.bin");
+            File.WriteAllText(fake, "definitely not an archive");
+            Assert.Equal(EncryptionState.Unknown, await _client.ProbeEncryptionAsync(fake, CancellationToken.None));
+        }
+
+        [Fact]
         public async Task Missing_7z_Returns_NotFound()
         {
             _settings.Save(s => { s.Customize7z = true; s.Customize7zPath = Path.Combine(_dir, "nope.exe"); });

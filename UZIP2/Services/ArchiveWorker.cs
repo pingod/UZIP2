@@ -11,12 +11,15 @@ using UZIP2.Models;
 
 namespace UZIP2.Services
 {
-    // 任务队列 worker：串行处理解压/压缩作业，完整复刻旧版 ExtractProcessAsync /
-    // CompressProcessAsync 的行为语义（无密码优先、外部密码、文件名密码+提纯、
-    // 密码本按成功次数、密码纸消耗、分卷纠正、过滤、智能建目录、多级解压、删源）。
+    // 任务队列 worker：解压/压缩各一条独立通道、按设置的并行度并发跑，
+    // 完整复刻旧版 ExtractProcessAsync / CompressProcessAsync 的行为语义
+    // （无密码优先、外部密码、文件名密码+提纯、密码本按成功次数、密码纸消耗、
+    //  分卷纠正、过滤、智能建目录、多级解压、删源）。
+    // 并发安全: 每个作业写私有 temp 目录，只有落到共享输出目录的尾段按目录加锁。
     public sealed class ArchiveWorker
     {
         const int MultiLevelDepthLimit = 8;
+        const int MaxParallelism = 8;
 
         private readonly SevenZipClient _zip;
         private readonly PasswordService _passwords;
@@ -24,7 +27,9 @@ namespace UZIP2.Services
         private readonly IFileLogger _logger;
         private readonly CompressLogService _compressLog;
 
-        private readonly Channel<JobEntry> _channel = Channel.CreateUnbounded<JobEntry>();
+        private readonly Channel<JobEntry> _extractChannel = Channel.CreateUnbounded<JobEntry>();
+        private readonly Channel<JobEntry> _compressChannel = Channel.CreateUnbounded<JobEntry>();
+        private readonly Dictionary<string, SemaphoreSlim> _dirGates = new Dictionary<string, SemaphoreSlim>(StringComparer.OrdinalIgnoreCase);
         private readonly ObservableCollection<JobEntry> _jobs = new ObservableCollection<JobEntry>();
         private readonly ReadOnlyObservableCollection<JobEntry> _jobsView;
         private readonly Dictionary<long, CancellationTokenSource> _runners = new Dictionary<long, CancellationTokenSource>();
@@ -32,10 +37,21 @@ namespace UZIP2.Services
         private readonly object _sync = new object();
         private long _seq;
         private int _active;
+        private int _pending;
+        private int _runExtract;
+        private int _runCompress;
+        private int _extractSlots;
+        private int _compressSlots;
+
+        // 运行期观测到的最大同时在跑作业数，用于验证并行设置真的生效
+        public int PeakActive { get; private set; }
 
         public event Action<JobEntry> JobFinished;
 
         public ReadOnlyObservableCollection<JobEntry> Jobs => _jobsView;
+
+        public int MaxConcurrentExtract { get; }
+        public int MaxConcurrentCompress { get; }
 
         public ArchiveWorker(SevenZipClient zip, PasswordService passwords,
             ISettingsService settings, IFileLogger logger = null, CompressLogService compressLog = null)
@@ -47,7 +63,26 @@ namespace UZIP2.Services
             _compressLog = compressLog ?? new CompressLogService(settings.ConfigDirectory);
             _jobsView = new ReadOnlyObservableCollection<JobEntry>(_jobs);
             try { BindingOperations.EnableCollectionSynchronization(_jobs, _sync); } catch { }
-            Task.Run(ConsumeLoopAsync);
+
+            var s = settings.Current;
+            MaxConcurrentExtract = Clamp(s.ParallelExtract);
+            MaxConcurrentCompress = Clamp(s.ParallelCompress);
+            _extractSlots = MaxConcurrentExtract;
+            _compressSlots = MaxConcurrentCompress;
+            settings.Changed += OnSettingsChanged;
+
+            Task.Run(() => DispatchLoopAsync(_extractChannel, isExtract: true));
+            Task.Run(() => DispatchLoopAsync(_compressChannel, isExtract: false));
+        }
+
+        static int Clamp(int v) => v < 1 ? 1 : (v > MaxParallelism ? MaxParallelism : v);
+
+        // 并行度改完立即生效: 放大立刻可用，缩小只限制新作业，不打断正在跑的
+        void OnSettingsChanged(AppSettings s)
+        {
+            if (s == null) return;
+            Volatile.Write(ref _extractSlots, Clamp(s.ParallelExtract));
+            Volatile.Write(ref _compressSlots, Clamp(s.ParallelCompress));
         }
 
         // ---------- 入队 ----------
@@ -81,8 +116,18 @@ namespace UZIP2.Services
                 job.Status = JobStatus.Queued;
                 _jobs.Add(job);
             }
-            _channel.Writer.TryWrite(job);
+            Enqueue(job);
         }
+
+        // _pending 覆盖"已入队但尚未收尾"的全周期，包含还没被派发出去的那段，
+        // 否则 WhenIdleAsync 会在"已出队、还在等并行名额"的窗口里误判为空闲。
+        void Enqueue(JobEntry job)
+        {
+            lock (_sync) _pending++;
+            ChannelFor(job).Writer.TryWrite(job);
+        }
+
+        Channel<JobEntry> ChannelFor(JobEntry job) => job.Kind == "Extract" ? _extractChannel : _compressChannel;
 
         // ---------- 取消 / 重试 ----------
 
@@ -115,7 +160,15 @@ namespace UZIP2.Services
             job.CurrentFile = null;
             job.Diagnosis = null;
             job.Status = JobStatus.Queued;
-            _channel.Writer.TryWrite(job);
+            Enqueue(job);
+        }
+
+        public int RetryAllFailed(string manualPassword = null)
+        {
+            List<JobEntry> failed;
+            lock (_sync) failed = _jobs.Where(j => j.Status == JobStatus.Failed).ToList();
+            foreach (var job in failed) Retry(job, manualPassword);
+            return failed.Count;
         }
 
         // 测试/命令行模式等待整批完成
@@ -125,59 +178,88 @@ namespace UZIP2.Services
             {
                 if (ct.IsCancellationRequested) return;
                 bool idle;
-                lock (_sync) idle = _active == 0 && _channel.Reader.Count == 0;
+                lock (_sync) idle = IsIdleLocked();
                 if (idle) return;
                 await Task.Delay(25, ct).ConfigureAwait(false);
             }
         }
 
+        // 调用方必须持有 _sync
+        bool IsIdleLocked()
+            => _active == 0 && _pending == 0 && _extractChannel.Reader.Count == 0 && _compressChannel.Reader.Count == 0;
+
         // ---------- 消费循环 ----------
 
-        private async Task ConsumeLoopAsync()
+        private async Task DispatchLoopAsync(Channel<JobEntry> channel, bool isExtract)
         {
-            await foreach (var job in _channel.Reader.ReadAllAsync().ConfigureAwait(false))
+            await foreach (var job in channel.Reader.ReadAllAsync().ConfigureAwait(false))
             {
                 if (job.CancelRequested)
                 {
+                    lock (_sync) _pending--;
                     job.Status = JobStatus.Cancelled;
                     FireFinished(job);
                     continue;
                 }
+                await AwaitSlotAsync(isExtract).ConfigureAwait(false);
                 var cts = new CancellationTokenSource();
                 lock (_sync)
                 {
                     _runners[job.Id] = cts;
                     _active++;
+                    if (isExtract) _runExtract++; else _runCompress++;
+                    if (_active > PeakActive) PeakActive = _active;
                     job.Status = JobStatus.Running;
                 }
-                try
+                _ = Task.Run(async () =>
                 {
-                    if (job.Kind == "Extract") await RunExtractAsync(job, cts.Token).ConfigureAwait(false);
-                    else await RunCompressAsync(job, cts.Token).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    job.Status = JobStatus.Cancelled;
-                    job.Diagnosis = "任务已取消";
-                }
-                catch (Exception ex)
-                {
-                    job.Status = JobStatus.Failed;
-                    job.Diagnosis = ex.Message;
-                    _logger?.Error("作业异常 " + job.Archive, ex);
-                }
-                finally
-                {
-                    lock (_sync)
+                    try
                     {
-                        _runners.Remove(job.Id);
-                        _active--;
-                        // 整批完成后清掉分卷去重表，下一批可重新处理同名档案
-                        if (_active == 0 && _channel.Reader.Count == 0) _handledTargets.Clear();
+                        if (isExtract) await RunExtractAsync(job, cts.Token).ConfigureAwait(false);
+                        else await RunCompressAsync(job, cts.Token).ConfigureAwait(false);
                     }
-                    cts.Dispose();
-                    FireFinished(job);
-                }
+                    catch (OperationCanceledException)
+                    {
+                        job.Status = JobStatus.Cancelled;
+                        job.Diagnosis = "任务已取消";
+                    }
+                    catch (Exception ex)
+                    {
+                        job.Status = JobStatus.Failed;
+                        job.Diagnosis = ex.Message;
+                        _logger?.Error("作业异常 " + job.Archive, ex);
+                    }
+                    finally
+                    {
+                        lock (_sync)
+                        {
+                            _runners.Remove(job.Id);
+                            _active--;
+                            _pending--;
+                            if (isExtract) _runExtract--; else _runCompress--;
+                            // 整批完成后清掉分卷去重表，下一批可重新处理同名档案
+                            if (IsIdleLocked())
+                            {
+                                _handledTargets.Clear();
+                                _dirGates.Clear();
+                            }
+                        }
+                        cts.Dispose();
+                        FireFinished(job);
+                    }
+                });
+            }
+        }
+
+        // 单条通道只有一个派发者，因此这里只需等自己的名额被释放
+        private async Task AwaitSlotAsync(bool isExtract)
+        {
+            while (true)
+            {
+                int running = isExtract ? Volatile.Read(ref _runExtract) : Volatile.Read(ref _runCompress);
+                int target = isExtract ? Volatile.Read(ref _extractSlots) : Volatile.Read(ref _compressSlots);
+                if (running < target) return;
+                await Task.Delay(20).ConfigureAwait(false);
             }
         }
 
@@ -186,32 +268,39 @@ namespace UZIP2.Services
             try { JobFinished?.Invoke(job); } catch { }
         }
 
+        SemaphoreSlim DirGate(string dir)
+        {
+            var key = (dir ?? "").TrimEnd('\\').ToLowerInvariant();
+            lock (_sync)
+            {
+                SemaphoreSlim g;
+                if (!_dirGates.TryGetValue(key, out g)) _dirGates[key] = g = new SemaphoreSlim(1, 1);
+                return g;
+            }
+        }
+
         // ---------- 解压 ----------
 
         private async Task RunExtractAsync(JobEntry job, CancellationToken ct)
         {
             var s = _settings.Current;
             string outDir = ResolveExtractOutDir(s, job.Archive, job.Target);
-            string temp = TempManager.CreateSessionTemp(outDir, job.Archive);
+            string temp = TempManager.CreateSessionTemp(outDir, job.Archive, job.Id.ToString());
             var info = ArchiveInspector.Inspect(job.Archive);
             string f = job.Archive;
             bool isVolume = info.Volume.IsVolume;
             if (isVolume && File.Exists(info.Volume.MainVolumePath)) f = info.Volume.MainVolumePath;
 
-            // 分卷去重: 同批中主卷已被处理则静默完成
-            if (isVolume)
+            // 分卷去重: 同批中主卷已被处理则静默完成(并发下必须原子判重)
+            bool claimed;
+            lock (_sync) claimed = _handledTargets.Add(f);
+            if (isVolume && !claimed)
             {
-                bool dup;
-                lock (_sync) dup = _handledTargets.Contains(f);
-                if (dup)
-                {
-                    TryDeleteTemp(temp);
-                    job.Status = JobStatus.Success;
-                    job.Diagnosis = "已随分卷主文件处理";
-                    return;
-                }
+                TryDeleteTemp(temp);
+                job.Status = JobStatus.Success;
+                job.Diagnosis = "已随分卷主文件处理";
+                return;
             }
-            lock (_sync) _handledTargets.Add(f);
 
             // 格式门槛（旧: 扩展名不可解 && 未开解压未知 && 非分卷 → 跳过）
             if (!ArchiveInspector.CanExtractByExtension(job.Archive) && !s.ExtractUnknow && !isVolume)
@@ -229,9 +318,15 @@ namespace UZIP2.Services
             bool fromPaper = false;
             string lastTestOutput = null;
 
-            var ok0 = await _zip.TestAsync(f, null, ct).ConfigureAwait(false);
-            bool ok = ok0.Success;
-            if (!ok) lastTestOutput = ok0.Output;
+            // 清单已确认未加密的包直接空密码解压，省掉一整遍全量读盘
+            var enc = await _zip.ProbeEncryptionAsync(f, ct).ConfigureAwait(false);
+            bool ok = enc == EncryptionState.NotEncrypted;
+            if (!ok)
+            {
+                var ok0 = await _zip.TestAsync(f, null, ct).ConfigureAwait(false);
+                ok = ok0.Success;
+                if (!ok) lastTestOutput = ok0.Output;
+            }
 
             if (!ok && !string.IsNullOrEmpty(job.ManualPassword))
             {
@@ -353,33 +448,40 @@ namespace UZIP2.Services
                 .ToList();
 
             // 智能建目录(移植旧 CreateNewFolder/CreateNameFolder 三分支)
+            // 并发作业只在"落到共享输出目录"这一段按目录串行，避免同名目录判定与互相覆盖打架
             string dest = outDir;
-            var di = new DirectoryInfo(temp);
-            if (s.CreateNewFolder || s.CreateNameFolder)
+            var tail = DirGate(outDir);
+            await tail.WaitAsync(ct).ConfigureAwait(false);
+            try
             {
-                if (di.GetDirectories().Length + di.GetFiles().Length <= 1 && !s.CreateNameFolder)
+                var di = new DirectoryInfo(temp);
+                if (s.CreateNewFolder || s.CreateNameFolder)
                 {
-                    FilterService.MoveFolder(temp, outDir, s.ExtractCoverMode);
+                    if (di.GetDirectories().Length + di.GetFiles().Length <= 1 && !s.CreateNameFolder)
+                    {
+                        FilterService.MoveFolder(temp, outDir, s.ExtractCoverMode);
+                    }
+                    else
+                    {
+                        string newPath = Path.Combine(outDir, fname);
+                        string finalPath = newPath + Path.DirectorySeparatorChar;
+                        int n = 1;
+                        while (Directory.Exists(finalPath))
+                        {
+                            finalPath = newPath + "-New" + n + Path.DirectorySeparatorChar;
+                            n++;
+                        }
+                        Directory.CreateDirectory(finalPath);
+                        dest = finalPath;
+                        FilterService.MoveFolder(temp, finalPath, null);
+                    }
                 }
                 else
                 {
-                    string newPath = Path.Combine(outDir, fname);
-                    string finalPath = newPath + Path.DirectorySeparatorChar;
-                    int n = 1;
-                    while (Directory.Exists(finalPath))
-                    {
-                        finalPath = newPath + "-New" + n + Path.DirectorySeparatorChar;
-                        n++;
-                    }
-                    Directory.CreateDirectory(finalPath);
-                    dest = finalPath;
-                    FilterService.MoveFolder(temp, finalPath, null);
+                    FilterService.MoveFolder(temp, outDir, s.ExtractCoverMode);
                 }
             }
-            else
-            {
-                FilterService.MoveFolder(temp, outDir, s.ExtractCoverMode);
-            }
+            finally { tail.Release(); }
             TryDeleteTemp(temp);
             job.OutputDir = dest;
 

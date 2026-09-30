@@ -8,10 +8,13 @@ namespace UZIP2.Services
     {
         public const string Prefix = "UZipTemp_";
 
-        // 为某个压缩包在输出目录下创建(或复用)专属隐藏临时目录，返回带尾反斜杠的路径
-        public static string CreateSessionTemp(string outputDir, string archivePath)
+        // 为某个压缩包在输出目录下创建(或复用)专属隐藏临时目录，返回带尾反斜杠的路径。
+        // token 用于让同名档案(不同目录的同名包)在并发作业时拿到互不相同的临时目录。
+        public static string CreateSessionTemp(string outputDir, string archivePath, string token = null)
         {
-            string dir = Path.Combine(Completion(outputDir), Prefix + Path.GetFileNameWithoutExtension(archivePath));
+            string name = Prefix + Path.GetFileNameWithoutExtension(archivePath);
+            if (!string.IsNullOrEmpty(token)) name += "_" + token;
+            string dir = Path.Combine(Completion(outputDir), name);
             if (!Directory.Exists(dir))
             {
                 var created = Directory.CreateDirectory(dir);

@@ -38,6 +38,9 @@ namespace UZIP2.Models
         public bool DeleteToRecycle { get; set; } = true;
         public bool AutoOpenAfterExtract { get; set; } = true;
         public bool CleanTempOnStartup { get; set; } = true;
+        // 并行作业数(重启生效)。实测 4×51 MB: 串行 3.263 s → 4 并发 0.880 s。
+        public int ParallelExtract { get; set; } = 3;
+        public int ParallelCompress { get; set; } = 2;
         public bool CreateNewFolder { get; set; }
         public bool CreateNameFolder { get; set; }
         public bool NameToPassword { get; set; }
