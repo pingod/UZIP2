@@ -28,10 +28,12 @@ namespace UZIP2.Services
     public sealed class SevenZipClient
     {
         private readonly ISettingsService _settings;
+        private readonly IFileLogger _logger;
 
-        public SevenZipClient(ISettingsService settings)
+        public SevenZipClient(ISettingsService settings, IFileLogger logger = null)
         {
             _settings = settings;
+            _logger = logger;
         }
 
         public string SevenZipPath => Locate(_settings);
@@ -125,6 +127,7 @@ namespace UZIP2.Services
             var psi = new ProcessStartInfo(exe)
             {
                 UseShellExecute = false,
+                RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true,
@@ -132,6 +135,7 @@ namespace UZIP2.Services
                 WorkingDirectory = Path.GetDirectoryName(exe)
             };
             foreach (var a in args) psi.ArgumentList.Add(a);
+            DebugLog(exe + " " + Redact(args));
 
             var sb = new StringBuilder();
             using (var p = new Process { StartInfo = psi })
@@ -144,6 +148,8 @@ namespace UZIP2.Services
                 {
                     return SevenZipResult.Fail(ex.Message, SevenZipError.NotFound, "无法启动 7z: " + ex.Message);
                 }
+
+                p.StandardInput.Close();
 
                 p.OutputDataReceived += (s, e) =>
                 {
@@ -179,9 +185,26 @@ namespace UZIP2.Services
                 var ok = p.ExitCode == 0 && output.Contains("Everything is Ok");
                 if (ok) return SevenZipResult.Ok(output, archive);
 
+                if (_settings?.Current?.DebugMode == true)
+                    DebugLog("exit=" + p.ExitCode + "\n" + output);
                 var err = Classify(output, p.ExitCode, ct.IsCancellationRequested);
                 return SevenZipResult.Fail(output, err, Diagnose(output, err), archive);
             }
+        }
+
+        private void DebugLog(string message)
+        {
+            if (_settings?.Current?.DebugMode == true)
+                _logger?.Info("[7z] " + message);
+        }
+
+        // 命令行含 -p<密码>，写日志前必须脱敏
+        internal static string Redact(List<string> args)
+        {
+            var copy = new List<string>(args.Count);
+            foreach (var a in args)
+                copy.Add(a.StartsWith("-p", StringComparison.Ordinal) && a.Length > 2 ? "-p***" : a);
+            return string.Join(" ", copy);
         }
 
         public static SevenZipProgress ParseProgressLine(string line)
@@ -200,7 +223,8 @@ namespace UZIP2.Services
             if (cancelled) return SevenZipError.Cancelled;
             var o = (output ?? "").ToLowerInvariant();
             if (o.Contains("wrong password") || o.Contains("cannot open encrypted")
-                || o.Contains("data error in encrypted") || o.Contains("headers error"))
+                || o.Contains("data error in encrypted") || o.Contains("headers error")
+                || o.Contains("enter password"))
                 return SevenZipError.WrongPassword;
             if (o.Contains("crc failed") || o.Contains("data error")) return SevenZipError.Corrupt;
             if (o.Contains("not supported") || o.Contains("cannot open the file as archive")) return SevenZipError.UnsupportedFormat;

@@ -224,6 +224,30 @@ namespace UZIP2.ViewModel
             catch { /* 打开资源管理器失败不影响任务 */ }
         }
 
+        // ---- 批次完成（旧独立结果窗口的数据面） ----
+
+        readonly List<JobEntry> _finished = new List<JobEntry>();
+
+        public event Action<IReadOnlyList<JobEntry>> BatchFinished;
+
+        void TrackCompletion(JobEntry job)
+        {
+            switch (job.Status)
+            {
+                case JobStatus.Success:
+                case JobStatus.Failed:
+                case JobStatus.Cancelled:
+                    if (!_finished.Contains(job)) _finished.Add(job);
+                    break;
+            }
+            if (_finished.Count == 0) return;
+            foreach (var j in _worker.Jobs)
+                if (j.Status == JobStatus.Queued || j.Status == JobStatus.Running) return;
+            var batch = _finished.ToArray();
+            _finished.Clear();
+            BatchFinished?.Invoke(batch);
+        }
+
         // ---- 成功后自动打开输出目录 ----
 
         void OnJobsChanged(object sender, NotifyCollectionChangedEventArgs e)
@@ -243,6 +267,7 @@ namespace UZIP2.ViewModel
         {
             if (e.PropertyName != nameof(JobEntry.Status)) return;
             var job = (JobEntry)sender;
+            TrackCompletion(job);
             if (job.Status != JobStatus.Success) return;
             if (!_settings.Current.AutoOpenAfterExtract) return;
             if (string.IsNullOrEmpty(job.OutputDir) || !_autoOpened.Add(job.Id)) return;

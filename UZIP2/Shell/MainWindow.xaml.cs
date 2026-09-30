@@ -5,6 +5,7 @@ using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using UZIP2.Models;
 using UZIP2.Services;
+using UZIP2.ViewModel;
 using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
 using WpfApplication = System.Windows.Application;
@@ -14,6 +15,7 @@ namespace UZIP2.Shell
     public partial class MainWindow : FluentWindow
     {
         private readonly ISettingsService _settings;
+        private readonly IFileLogger _logger;
         private readonly TrayService _tray;
         private readonly HotKeyService _hotkeys;
         private readonly ClipboardService _clipboard;
@@ -26,6 +28,7 @@ namespace UZIP2.Shell
             InitializeComponent();
 
             _settings = App.Services.GetRequiredService<ISettingsService>();
+            _logger = App.Services.GetRequiredService<IFileLogger>();
             _tray = App.Services.GetRequiredService<TrayService>();
             _hotkeys = App.Services.GetRequiredService<HotKeyService>();
             _clipboard = App.Services.GetRequiredService<ClipboardService>();
@@ -42,6 +45,19 @@ namespace UZIP2.Shell
             });
 
             _clipboard.Info += msg => Dispatcher.Invoke(() => _tray.ShowBalloon("UZIP", msg));
+
+            App.Services.GetRequiredService<HomeViewModel>().BatchFinished += batch =>
+            {
+                try
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        if (!_settings.Current.ResultWindow) return;
+                        new ResultWindow(batch) { Owner = this }.Show();
+                    });
+                }
+                catch (Exception ex) { _logger.Error("结果窗口显示失败", ex); }
+            };
 
             SourceInitialized += (s, e) => _hotkeys.Attach(this);
             Loaded += OnLoaded;

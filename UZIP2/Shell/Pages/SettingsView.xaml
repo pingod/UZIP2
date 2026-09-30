@@ -316,7 +316,10 @@
                         <TextBlock Grid.Column="1" x:Name="Detected7zPath" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                     </Grid>
-                    <ui:Button Content="打开最新日志" HorizontalAlignment="Left" Margin="0,6,0,0" Click="OnOpenLog" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,6,0,0">
+                        <ui:Button Content="打开最新日志" Click="OnOpenLog" />
+                        <ui:Button Content="打开压缩日志" Margin="8,0,0,0" Click="OnOpenCompressLog" />
+                    </StackPanel>
                 </StackPanel>
             </ui:CardExpander>
 

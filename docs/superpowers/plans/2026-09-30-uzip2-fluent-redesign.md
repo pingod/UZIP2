@@ -359,8 +359,8 @@ public sealed class ArchiveWorker {
 ### Task 15: 行为对等回归（命令行/右键/旧链路）
 
 **Files:** Modify: 右键菜单注册脚本或文档说明(旧版如何注册沿用：搜 `UZIP2.reg`/`SendTo`)；Create: `docs/parity-checklist.md`
-- [ ] Step 1: 清单逐项验证并记录结果：① `UZIP2.exe a.zip b.zip`(右键发送到/命令行)直接入队解压；② 第二实例转发；③ 全部密码试错→诊断文案；④ 多级解压嵌套样本；⑤ 分卷 rar/zip.001；⑥ 压缩密码写文件名+随机密码；⑦ 过滤广告文件+HideZipContent；⑧ 压缩日志打开；⑨ 置顶/Debug 模式/ShowDebug；⑩ 独立结果窗口开关(ResultViewModel 简化版窗口沿用旧 ResultWindow 数据面，仅换皮)。失败项回对应服务修复。
-- [ ] Step 2: `dotnet test` 全绿 + checklist 提交。Commit `test: behavior parity checklist and fixes`。
+- [x] Step 1: 清单逐项验证并记录结果：① `UZIP2.exe a.zip b.zip`(右键发送到/命令行)直接入队解压；② 第二实例转发；③ 全部密码试错→诊断文案；④ 多级解压嵌套样本；⑤ 分卷 rar/zip.001；⑥ 压缩密码写文件名+随机密码；⑦ 过滤广告文件+HideZipContent；⑧ 压缩日志打开；⑨ 置顶/Debug 模式/ShowDebug；⑩ 独立结果窗口开关(ResultViewModel 简化版窗口沿用旧 ResultWindow 数据面，仅换皮)。失败项回对应服务修复。实测/测试结果见 `docs/parity-checklist.md`。过程中修出 5 个对等缺陷：7z 无密码试探会等控制台输入挂起(重定向并关闭 stdin)、加密包被误分类为 Unknown 致诊断文案错(新增 `enter password`→WrongPassword)、settings.json 写 camelCase 读却区分大小写(开 `PropertyNameCaseInsensitive`)、结果窗口异常被静默吞掉(捕获并写日志)、压缩日志缺 UI 入口(补"打开压缩日志")。
+- [x] Step 2: `dotnet test` 全绿(129/129，含 `UZIP2.Tests/ParityTests.cs` 8 项真实 7z 端到端) + checklist 提交。Commit `test: behavior parity checklist and fixes`。
 
 ---
 
