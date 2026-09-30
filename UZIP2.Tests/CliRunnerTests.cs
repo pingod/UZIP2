@@ -374,5 +374,143 @@ namespace UZIP2.Tests
             Assert.Equal(1, code);
             Assert.Contains(e, s => s.Contains("版本不一致"));
         }
+
+        // ---------- history ----------
+
+        // 往临时 config 目录里预置若干历史记录，再用 headless CLI 读出来
+        void SeedHistory(params UZIP2.Models.HistoryEntry[] entries)
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(entries,
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(Path.Combine(_config, "history.json"), json);
+        }
+
+        UZIP2.Models.HistoryEntry HEntry(string kind, string status, string src, string pw = null, string advice = null, string err = null)
+            => new UZIP2.Models.HistoryEntry { Kind = kind, Status = status, Source = src, Password = pw, Advice = advice, Error = err, Timestamp = 1700000000000 };
+
+        [Fact]
+        public async Task History_lists_entries_newest_first()
+        {
+            SeedHistory(
+                HEntry("Extract", "Success", "old.zip"),
+                HEntry("Compress", "Failed", "new.7z", err: "磁盘空间不足", advice: "换盘"));
+            var (code, o, _) = await Run(_base, _config, "history");
+            Assert.Equal(0, code);
+            int iNew = o.FindIndex(s => s.Contains("new.7z"));
+            int iOld = o.FindIndex(s => s.Contains("old.zip"));
+            Assert.True(iNew >= 0 && iOld >= 0 && iNew < iOld);
+        }
+
+        [Fact]
+        public async Task History_failed_entry_shows_cause_and_advice()
+        {
+            SeedHistory(HEntry("Extract", "Failed", "enc.zip", err: "密码错误", advice: "确认密码本已收录"));
+            var (code, o, _) = await Run(_base, _config, "history");
+            Assert.Equal(0, code);
+            Assert.Contains(o, s => s.Contains("原因") && s.Contains("密码错误"));
+            Assert.Contains(o, s => s.Contains("建议") && s.Contains("确认密码本"));
+        }
+
+        [Fact]
+        public async Task History_masks_password_unless_show_passwords()
+        {
+            SeedHistory(HEntry("Extract", "Success", "p.zip", pw: "s3cr3t"));
+            var (_, masked, _) = await Run(_base, _config, "history");
+            Assert.DoesNotContain(masked, s => s.Contains("s3cr3t"));
+            var (_, shown, _) = await Run(_base, _config, "history", "--show-passwords");
+            Assert.Contains(shown, s => s.Contains("s3cr3t"));
+        }
+
+        [Fact]
+        public async Task History_json_omits_plaintext_password_by_default()
+        {
+            SeedHistory(HEntry("Compress", "Success", "a.7z", pw: "topsecret"));
+            var (code, o, _) = await Run(_base, _config, "history", "--json");
+            Assert.Equal(0, code);
+            string all = string.Join("\n", o);
+            Assert.DoesNotContain("topsecret", all);
+            Assert.Contains("topsecret",
+                string.Join("\n", (await Run(_base, _config, "history", "--json", "--show-passwords")).o));
+        }
+
+        [Fact]
+        public async Task History_grep_and_limit_filter()
+        {
+            SeedHistory(
+                HEntry("Extract", "Success", "alpha.zip"),
+                HEntry("Extract", "Success", "beta.zip"),
+                HEntry("Compress", "Failed", "gamma.7z", err: "boom"));
+            var (_, o, _) = await Run(_base, _config, "history", "--grep", "gamma");
+            Assert.Contains(o, s => s.Contains("gamma.7z"));
+            Assert.DoesNotContain(o, s => s.Contains("alpha.zip"));
+
+            var (_, limited, _) = await Run(_base, _config, "history", "--limit", "1");
+            Assert.Contains(limited, s => s.Contains("gamma.7z"));    // newest first => first entry
+            Assert.DoesNotContain(limited, s => s.Contains("beta.zip"));
+        }
+
+        [Fact]
+        public async Task History_clear_empties_the_store()
+        {
+            SeedHistory(HEntry("Extract", "Success", "z.zip"));
+            var (code, o, _) = await Run(_base, _config, "history", "--clear");
+            Assert.Equal(0, code);
+            Assert.Contains(o, s => s.Contains("已清空"));
+            Assert.False(File.Exists(Path.Combine(_config, "history.json")));
+            var (_, after, _) = await Run(_base, _config, "history");
+            Assert.Contains(after, s => s.Contains("暂无历史"));
+        }
+
+        [Fact]
+        public async Task History_empty_dir_reports_no_history_without_error()
+        {
+            var (code, o, _) = await Run(_base, Path.Combine(_root, "emptycfg_" + Guid.NewGuid().ToString("N")), "history");
+            Assert.Equal(0, code);
+            Assert.Contains(o, s => s.Contains("暂无历史"));
+        }
+
+        // CLI 侧真实跑一次压缩+解压，应写入历史（源路径为绝对路径，证明相对路径已规范化）
+        [Fact]
+        public async Task Cli_compress_and_extract_record_into_history()
+        {
+            var file = MakeFile("doc.bin", 4);
+            var outDir = Path.Combine(_root, "cout_" + Guid.NewGuid().ToString("N"));
+            var (cc, _, _) = await Run(_base, _config, "compress", file, "-o", outDir, "--name", "rec.zip");
+            Assert.Equal(0, cc);
+            var archive = Path.Combine(outDir, "rec.zip");
+            Assert.True(File.Exists(archive));
+
+            var xout = Path.Combine(_root, "xout_" + Guid.NewGuid().ToString("N"));
+            var (xc, _, _) = await Run(_base, _config, "extract", archive, "-o", xout);
+            Assert.Equal(0, xc);
+
+            var rows = new UZIP2.Services.HistoryService(_config).ReadAll();   // newest first
+            Assert.Contains(rows, r => r.Kind == "Compress" && r.Status == "Success"
+                                        && Path.IsPathRooted(r.Source));
+            Assert.Contains(rows, r => r.Kind == "Extract" && r.Status == "Success"
+                                        && r.Source == archive && r.Destination == xout);
+        }
+
+        // 不带 --auto 解加密包 → 记录一条失败并给出下一步建议
+        [Fact]
+        public async Task Cli_extract_wrong_password_records_failure_with_advice()
+        {
+            var file = MakeFile("secret.bin", 2, fill: 90);
+            var outDir = Path.Combine(_root, "sec_out_" + Guid.NewGuid().ToString("N"));
+            var (cc, _, _) = await Run(_base, _config, "compress", file, "-o", outDir,
+                "--name", "enc.7z", "--type", "7z", "--password", "pw123");
+            Assert.Equal(0, cc);
+            var archive = Path.Combine(outDir, "enc.7z");
+
+            var xout = Path.Combine(_root, "sec_x_" + Guid.NewGuid().ToString("N"));
+            var (xc, _, _) = await Run(_base, _config, "extract", archive, "-o", xout);
+            Assert.Equal(1, xc);
+
+            var fail = new UZIP2.Services.HistoryService(_config).ReadAll()
+                .FirstOrDefault(r => r.Kind == "Extract" && r.Status == "Failed");
+            Assert.NotNull(fail);
+            Assert.False(string.IsNullOrEmpty(fail.Error));
+            Assert.False(string.IsNullOrEmpty(fail.Advice));
+        }
     }
 }

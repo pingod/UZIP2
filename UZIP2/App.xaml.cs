@@ -75,6 +75,7 @@ namespace UZIP2
             services.AddSingleton<ISettingsService>(settings);
             services.AddSingleton(passwords);
             services.AddSingleton<CompressLogService>(sp => new CompressLogService(configDir, settings));
+            services.AddSingleton<IHistoryService>(sp => new HistoryService(configDir, settings));
             services.AddSingleton<SevenZipClient>();
             services.AddSingleton<ArchiveWorker>();
             services.AddSingleton<ClipboardService>();
@@ -88,6 +89,9 @@ namespace UZIP2
                 sp.GetRequiredService<PasswordService>(),
                 Current.Dispatcher,
                 sp.GetRequiredService<ClipboardService>()));
+            services.AddSingleton<HistoryViewModel>(sp => new HistoryViewModel(
+                sp.GetRequiredService<IHistoryService>(),
+                sp.GetRequiredService<ArchiveWorker>()));
             Services = services.BuildServiceProvider();
 
             var window = new MainWindow();

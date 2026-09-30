@@ -91,3 +91,17 @@
 | P3 | `scripts/install.ps1` 免依赖 per-user 安装：自动选/显式指定源、可选打包 `7-Zip\`、复用 `shell register`、建开始菜单快捷方式；**绝不触碰已存在的 `Config\`** | 实测一次性目录跑通安装；就地重装后 `Config\settings.json` 哨兵内容原样存活；装出的 exe `version` 输出 3.4.0 |
 | P4 | `scripts/uninstall.ps1` 默认注销右键+删程序文件+保留 `Config\`+`logs\`；`-Purge` 删数据前需输 `YES`/`-Force` 二次确认 | 实测：安全卸载后 exe 消失、`Config\` 保留；`-Purge -Force` 清空整个目录 |
 | P5 | 可选 NSIS 配方 `scripts/installer.nsi`（本机未装 NSIS，不静默装系统依赖，作为想要 setup.exe 的人的现成配方；per-user 免 UAC，右键仍复用 app 自身命令） | 交付脚本文件；未在本机编译（无 makensis），文档注明构建方式 |
+
+## v3.5 持久化历史库
+
+基线：`dotnet test` 464/464 通过（2026-10-01），主工程 0 警告。本轮新增运行期逻辑（服务/建议/落库钩子/CLI 记录/相对路径修复）与一个 GUI 页，验证以单元测试 + 真机冒烟（CLI 写→GUI 读闭环）为准。
+
+| # | 能力 | 证据 |
+|---|------|------|
+| H1 | `HistoryService`：`Config\history.json` 最新在前、上限 500 丢最旧、原子写、损坏隔离 `history.json.bad-<ts>` 后从空开始；`Record` 只落 Success/Failed | `HistoryServiceTests` 13 个（读写往返、容量裁剪、成功/失败门控、损坏隔离、口令脱敏门控）；真机跑通落盘 |
+| H2 | `HistoryAdvice.For(kind,error)`：关键字→中文下一步建议（密码/分卷/磁盘/占用/路径过长/损坏/格式/回落） | `HistoryAdviceTests` 理论用例逐关键字命中；GUI 历史页与 CLI `history` 均渲染失败建议 |
+| H3 | GUI 收尾钩子落库（`ArchiveWorker.JobFinished`→`_history.Record`）+ DI 注册 `IHistoryService`/`HistoryViewModel` | 主工程 0 警告编译；历史页导航项渲染、绑定 `Rows` 正常 |
+| H4 | CLI `extract`/`compress`/`test`/`watch` 完成后复用 `BuildEntry` 落库，与 GUI 共享同一份历史 | `CliRunnerTests` 端到端 2 个：CLI 压缩+解压写入历史且 `Source` 为绝对路径；错误密码解压记 Failed 且 Advice 非空；真机 `history` 列出四类条目 |
+| H5 | CLI `history` 子命令：列表 / `--grep` / `--limit` / `--json` / `--show-passwords` / `--clear`；默认（含 `--json`）口令脱敏为 `***` | `CliRunnerTests` 历史 7 个；真机验证 masked vs `--show-passwords`、`--json` 打码、`--clear` 删文件、`LogPasswords=false` 时落库不含口令字段（grep 明文 0 命中） |
+| H6 | 历史页（导航"历史"）：搜索、只看失败、显示口令、刷新、清空（确认）、状态胶囊、原因+建议、口令打码、每行"重跑" | `HistoryViewModelTests` 7 个；真机截图确认渲染、默认打码、勾选"显示口令"还原明文 `letmein`、失败行无口令 |
+| H7 | 修复 CLI 相对路径缺陷：文件类命令位置参数与 `-o` 执行前 `Path.GetFullPath` 规范化 | 真机：`compress work/in -o work` 由"文件被占用或无法打开"→ rc=0；H4 端到端断言 `Source` 绝对 |

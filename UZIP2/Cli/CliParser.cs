@@ -21,6 +21,7 @@ namespace UZIP2.Cli
                 { "shell", CliCommand.Shell },
                 { "watch", CliCommand.Watch },
                 { "update", CliCommand.Update },
+                { "history", CliCommand.History },
                 { "help", CliCommand.Help },
                 { "version", CliCommand.Version },
             };
@@ -121,6 +122,7 @@ namespace UZIP2.Cli
                         case "--show-passwords": r.ShowPasswords = true; break;
                         case "--apply": r.Apply = true; break;
                         case "--check": r.Check = true; break;
+                        case "--clear": r.Clear = true; break;
                         default:
                             if (!ValueOptions.Contains(t)) { /* ignore unknown flag */ }
                             break;

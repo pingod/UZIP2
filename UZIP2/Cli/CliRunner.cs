@@ -20,6 +20,7 @@ namespace UZIP2.Cli
         readonly PasswordService _passwords;
         readonly SevenZipClient _zip;
         readonly CompressLogService _compressLog;
+        readonly IHistoryService _history;
 
         public CliRunner(string baseDir, string configDir, Action<string> output, Action<string> error)
         {
@@ -30,6 +31,7 @@ namespace UZIP2.Cli
             _passwords = new PasswordService(configDir, _settings);
             _zip = new SevenZipClient(_settings, logger);
             _compressLog = new CompressLogService(configDir, _settings);
+            _history = new HistoryService(configDir, _settings);
         }
 
         static readonly JsonSerializerOptions Json = new JsonSerializerOptions { WriteIndented = true };
@@ -39,6 +41,10 @@ namespace UZIP2.Cli
             if (r.HasError) { _err(r.Error); _err(""); _err(Usage.OneLine); return 2; }
             if (_zip.SevenZipPath == null && Needs7z(r.Command))
             { _err("未找到 7z.exe，请安装 7-Zip 或用 config set customize7zPath <路径>"); return 1; }
+
+            // 7z 以自身目录为工作目录运行，相对路径会被解析到 7-Zip\ 下；
+            // CLI 面向 shell，先把文件类命令的位置参数与输出目录规范成绝对路径。
+            NormalizePaths(r);
 
             try
             {
@@ -57,6 +63,7 @@ namespace UZIP2.Cli
                     case CliCommand.Shell: return DoShell(r);
                     case CliCommand.Watch: return await DoWatch(r, ct);
                     case CliCommand.Update: return await DoUpdate(r, ct);
+                    case CliCommand.History: return DoHistory(r);
                     default: _out(Usage.Text); return 0;
                 }
             }
@@ -66,6 +73,47 @@ namespace UZIP2.Cli
 
         static bool Needs7z(CliCommand c)
             => c == CliCommand.List || c == CliCommand.Test || c == CliCommand.Extract || c == CliCommand.Compress || c == CliCommand.Watch;
+
+        // 只对"位置参数是文件系统路径"的命令做绝对化，避免误伤 vault/config/log 的子命令关键词。
+        static bool HasPathArgs(CliCommand c)
+            => c == CliCommand.List || c == CliCommand.Test || c == CliCommand.Extract
+            || c == CliCommand.Compress || c == CliCommand.Checksum || c == CliCommand.Watch;
+
+        static void NormalizePaths(CliRequest r)
+        {
+            if (!HasPathArgs(r.Command)) return;
+            for (int i = 0; i < r.Args.Count; i++)
+            {
+                if (r.Command == CliCommand.Watch && i == 0) continue;   // Args[0] 是子命令 "once"
+                try { r.Args[i] = Path.GetFullPath(r.Args[i]); } catch { }
+            }
+            if (!string.IsNullOrWhiteSpace(r.Output))
+            {
+                try { r.Output = Path.GetFullPath(r.Output); } catch { }
+            }
+        }
+
+        // CLI 侧把一次操作映射成历史条目，复用 HistoryService.BuildEntry 的成熟映射（含建议/脱敏）。
+        void RecordHistory(string kind, string source, string dest, bool ok, string diagnosis,
+            string usedPassword, DateTime startedUtc, int count = 1)
+        {
+            try
+            {
+                var job = new JobEntry
+                {
+                    Kind = kind,
+                    Archive = source,
+                    OutputDir = dest,
+                    Status = ok ? JobStatus.Success : JobStatus.Failed,
+                    Diagnosis = diagnosis,
+                    UsedPassword = usedPassword,
+                    Done = count,
+                    StartedUtc = startedUtc
+                };
+                _history.Record(job);
+            }
+            catch { }
+        }
 
         // ---------- version / 通用工具 ----------
 
@@ -144,6 +192,7 @@ namespace UZIP2.Cli
             {
                 if (!File.Exists(f)) { _err(f + ": 文件不存在"); code = 1; continue; }
                 SevenZipResult res = null;
+                var started = DateTime.UtcNow;
                 foreach (var pw in Candidates(f, r))
                 {
                     res = await _zip.TestAsync(f, pw, ct).ConfigureAwait(false);
@@ -151,6 +200,7 @@ namespace UZIP2.Cli
                 }
                 if (res.Success) _out(f + ": 正常");
                 else { _err(f + ": " + (res.Diagnosis ?? "校验失败")); code = 1; }
+                RecordHistory("Test", f, null, res.Success, res.Success ? null : (res.Diagnosis ?? res.Error.ToString()), null, started);
             }
             return code;
         }
@@ -166,9 +216,19 @@ namespace UZIP2.Cli
             foreach (var f in files)
             {
                 string dest = ResolveDest(f, r);
+                var started = DateTime.UtcNow;
                 var (res, used) = await TryExtractAsync(f, dest, r, ct).ConfigureAwait(false);
-                if (res.Success) _out(f + " -> " + dest.TrimEnd('\\'));
-                else { _err(f + ": " + (res.Diagnosis ?? "解压失败")); code = 1; }
+                if (res.Success)
+                {
+                    _out(f + " -> " + dest.TrimEnd('\\'));
+                    RecordHistory("Extract", f, dest.TrimEnd('\\', '/'), true, null, used, started);
+                }
+                else
+                {
+                    _err(f + ": " + (res.Diagnosis ?? "解压失败"));
+                    RecordHistory("Extract", f, dest.TrimEnd('\\', '/'), false, res.Diagnosis ?? res.Error.ToString(), null, started);
+                    code = 1;
+                }
             }
             return code;
         }
@@ -200,15 +260,22 @@ namespace UZIP2.Cli
             string outDir = ResolveCompressOutDir(r, sources[0]);
             string full = ResolveArchivePath(r, sources, outDir, type);
 
+            var started = DateTime.UtcNow;
             var res = await _zip.CompressAsync(sources, full, r.Password, type, level, headers, null, ct,
                 r.Exclude, volume, r.Solid, r.Threads).ConfigureAwait(false);
-            if (!res.Success) { _err("压缩失败: " + (res.Diagnosis ?? res.Error.ToString())); return 1; }
+            if (!res.Success)
+            {
+                _err("压缩失败: " + (res.Diagnosis ?? res.Error.ToString()));
+                RecordHistory("Compress", sources[0], full, false, res.Diagnosis ?? res.Error.ToString(), r.Password, started, sources.Count);
+                return 1;
+            }
 
             string produced = volume == null ? full : full + ".001";
             _compressLog.Log(full, r.Password);
             if (r.DeleteSource)
                 foreach (var s2 in sources)
                     try { if (File.Exists(s2)) File.Delete(s2); } catch { }
+            RecordHistory("Compress", sources[0], produced, true, null, r.Password, started, sources.Count);
             _out(produced);
             return 0;
         }
@@ -490,6 +557,68 @@ namespace UZIP2.Cli
             _err("未知 log 子命令: " + sub); return 2;
         }
 
+        // ---------- history ----------
+
+        static string HistTime(long unixMs)
+        {
+            try { return DateTimeOffset.FromUnixTimeMilliseconds(unixMs).LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss"); }
+            catch { return "?"; }
+        }
+
+        int DoHistory(CliRequest r)
+        {
+            if (r.Clear) { _history.Clear(); _out("已清空历史"); return 0; }
+
+            var rows = _history.ReadAll().ToList();     // newest first
+            if (!string.IsNullOrEmpty(r.Grep))
+            {
+                var q = r.Grep;
+                rows = rows.Where(x =>
+                    (x.Source ?? "").IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    (x.Kind ?? "").IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    (x.Status ?? "").IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    (x.Error ?? "").IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+            }
+            // 默认只看失败需要 --status 之外的过滤；这里保持简单：--grep failed 或全量
+            if (r.Limit > 0) rows = rows.Take(r.Limit.Value).ToList();
+
+            if (r.Json)
+            {
+                var proj = rows.Select(x => new
+                {
+                    time = HistTime(x.Timestamp),
+                    kind = x.Kind,
+                    status = x.Status,
+                    source = x.Source,
+                    destination = x.Destination,
+                    count = x.Count,
+                    durationMs = x.DurationMs,
+                    error = x.Error,
+                    advice = x.Advice,
+                    // 口令只在显式允许时出现，否则连 JSON 也不泄露
+                    password = r.ShowPasswords ? x.Password : (x.Password != null ? "***" : null)
+                });
+                _out(JsonSerializer.Serialize(proj, Json));
+                return 0;
+            }
+
+            if (rows.Count == 0) { _out("（暂无历史）"); return 0; }
+            foreach (var x in rows)
+            {
+                string line = $"{HistTime(x.Timestamp)}  {x.Kind,-8} {x.Status,-7} {x.Source}";
+                if (x.DurationMs > 0) line += $"  ({x.DurationMs} ms)";
+                if (!string.IsNullOrEmpty(x.Destination)) line += $"  -> {x.Destination}";
+                if (r.ShowPasswords && !string.IsNullOrEmpty(x.Password)) line += $"  密码:{x.Password}";
+                _out(line);
+                if (x.Status == "Failed")
+                {
+                    if (!string.IsNullOrEmpty(x.Error)) _out("      原因: " + x.Error);
+                    if (!string.IsNullOrEmpty(x.Advice)) _out("      建议: " + x.Advice);
+                }
+            }
+            return 0;
+        }
+
         // ---------- shell ----------
 
         int DoShell(CliRequest r)
@@ -523,9 +652,19 @@ namespace UZIP2.Cli
             {
                 if (!ArchiveInspector.CanExtractByExtension(f)) continue;
                 string dest = ResolveDest(f, new CliRequest { Output = r.Output, Here = r.Here });
-                var (res, _) = await TryExtractAsync(f, dest, r, ct).ConfigureAwait(false);
-                if (res.Success) { done++; _out(f + " -> " + dest.TrimEnd('\\')); }
-                else { _err(f + ": " + (res.Diagnosis ?? "失败")); code = 1; }
+                var started = DateTime.UtcNow;
+                var (res, used) = await TryExtractAsync(f, dest, r, ct).ConfigureAwait(false);
+                if (res.Success)
+                {
+                    done++; _out(f + " -> " + dest.TrimEnd('\\'));
+                    RecordHistory("Extract", f, dest.TrimEnd('\\', '/'), true, null, used, started);
+                }
+                else
+                {
+                    _err(f + ": " + (res.Diagnosis ?? "失败"));
+                    RecordHistory("Extract", f, dest.TrimEnd('\\', '/'), false, res.Diagnosis ?? res.Error.ToString(), null, started);
+                    code = 1;
+                }
             }
             _out("完成 " + done + " 个");
             return code;

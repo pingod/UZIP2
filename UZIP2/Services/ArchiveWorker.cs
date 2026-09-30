@@ -26,6 +26,7 @@ namespace UZIP2.Services
         private readonly ISettingsService _settings;
         private readonly IFileLogger _logger;
         private readonly CompressLogService _compressLog;
+        private readonly IHistoryService _history;
 
         private readonly Channel<JobEntry> _extractChannel = Channel.CreateUnbounded<JobEntry>();
         private readonly Channel<JobEntry> _compressChannel = Channel.CreateUnbounded<JobEntry>();
@@ -55,13 +56,15 @@ namespace UZIP2.Services
         public int MaxConcurrentCompress { get; }
 
         public ArchiveWorker(SevenZipClient zip, PasswordService passwords,
-            ISettingsService settings, IFileLogger logger = null, CompressLogService compressLog = null)
+            ISettingsService settings, IFileLogger logger = null, CompressLogService compressLog = null,
+            IHistoryService history = null)
         {
             _zip = zip;
             _passwords = passwords;
             _settings = settings;
             _logger = logger;
             _compressLog = compressLog ?? new CompressLogService(settings.ConfigDirectory, settings);
+            _history = history;
             _jobsView = new ReadOnlyObservableCollection<JobEntry>(_jobs);
             _dispatcher = System.Windows.Application.Current?.Dispatcher;
             try { BindingOperations.EnableCollectionSynchronization(_jobs, _sync); } catch { }
@@ -247,6 +250,7 @@ namespace UZIP2.Services
                     if (isExtract) _runExtract++; else _runCompress++;
                     if (_active > PeakActive) PeakActive = _active;
                     job.Status = JobStatus.Running;
+                    job.StartedUtc = DateTime.UtcNow;
                 }
                 _ = Task.Run(async () =>
                 {
@@ -303,6 +307,7 @@ namespace UZIP2.Services
         void FireFinished(JobEntry job)
         {
             try { JobFinished?.Invoke(job); } catch { }
+            try { _history?.Record(job); } catch { }   // 落持久化历史，失败绝不影响主流程
         }
 
         SemaphoreSlim DirGate(string dir)

@@ -20,6 +20,7 @@ namespace UZIP2.Models
         internal int Depth;                         // 多级解压深度
         internal bool CancelRequested;
         internal bool Flat;                         // "解压到当前文件夹"：无视建目录设置
+        internal System.DateTime StartedUtc;        // 进入 Running 的时刻，用于历史耗时
 
         [ObservableProperty] private JobStatus status;
         [ObservableProperty] private double? percent;

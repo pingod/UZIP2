@@ -5,7 +5,7 @@ namespace UZIP2.Cli
     public enum CliCommand
     {
         None, Help, Version, List, Test, Extract, Compress,
-        Checksum, Vault, Config, Log, Shell, Watch, Update
+        Checksum, Vault, Config, Log, Shell, Watch, Update, History
     }
 
     // 解析后的命令行意图。位置参数原样保留在 Args，由 Runner 按命令再解释
@@ -54,6 +54,9 @@ namespace UZIP2.Cli
         // 更新
         public bool Apply;             // --apply     就地下载并安装（仅框架依赖单文件）
         public bool Check;             // --check     仅检查（默认行为）
+
+        // 历史
+        public bool Clear;             // --clear     清空持久化历史
 
         public bool HasError => Error != null;
     }

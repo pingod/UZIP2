@@ -37,6 +37,12 @@
                         <ui:SymbolIcon Symbol="Key24" />
                     </ui:NavigationViewItem.Icon>
                 </ui:NavigationViewItem>
+                <ui:NavigationViewItem Content="历史"
+                                       TargetPageType="{x:Type pages:HistoryView}">
+                    <ui:NavigationViewItem.Icon>
+                        <ui:SymbolIcon Symbol="History24" />
+                    </ui:NavigationViewItem.Icon>
+                </ui:NavigationViewItem>
                 <ui:NavigationViewItem Content="设置"
                                        TargetPageType="{x:Type pages:SettingsView}">
                     <ui:NavigationViewItem.Icon>
