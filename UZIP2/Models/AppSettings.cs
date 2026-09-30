@@ -64,6 +64,9 @@ namespace UZIP2.Models
         public int CompressOutModePop { get; set; }
         public int CompressType { get; set; }        // 旧 CompressTypes 枚举: 0zip 1_7z 2bz 3gz 4tar 5wim 6xz
         public int CompressLevel { get; set; } = 5;  // 旧 CompressLevels: 0/1/3/5/7/9
+        // 分卷大小: 数字+可选 b/k/m/g，如 "700m"、"1g"。空=不分卷。
+        // 分卷时 7z 产出 name.7z.001/.002…，name.7z 本身不存在
+        public string CompressVolume { get; set; } = "";
         public string CompressFilter { get; set; } = "";
         public string NameFilter { get; set; } = "";
         public string NameFilter2 { get; set; } = "";

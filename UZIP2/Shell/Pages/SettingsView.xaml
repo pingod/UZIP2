@@ -245,6 +245,17 @@
                     </Grid>
                     <Grid Style="{StaticResource Row}">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="分卷大小（留空不分卷）" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <ui:TextBox x:Name="VolumeBox" Tag="CompressVolume" Width="120"
+                                        PlaceholderText="如 700m" LostFocus="OnTextChanged"
+                                        TextChanged="OnVolumeTextChanged" />
+                            <TextBlock x:Name="VolumeHint" VerticalAlignment="Center" Margin="10,0,0,0" FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                        </StackPanel>
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                         <TextBlock Style="{StaticResource RowLabel}" Text="多文件逐个压缩（否则合并为一个包）" />
                         <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="CompressAlone" Click="OnToggleChanged" />
                     </Grid>

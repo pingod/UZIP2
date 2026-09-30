@@ -122,6 +122,38 @@ namespace UZIP2.Shell.Pages
                 Vm.SaveProperty(tag, tb.Text);
         }
 
+        void OnVolumeTextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (VolumeHint == null) return;
+            string hint, brush;
+            if (string.IsNullOrWhiteSpace(VolumeBox.Text))
+            {
+                hint = "不分卷";
+                brush = "TextFillColorTertiaryBrush";
+            }
+            else if (VolumeSize.TryParse(VolumeBox.Text, out _, out long bytes))
+            {
+                hint = "每卷 " + HumanSize(bytes);
+                brush = "TextFillColorTertiaryBrush";
+            }
+            else
+            {
+                hint = "格式不对: 数字 + 可选 b/k/m/g，例如 700m";
+                brush = "SystemFillColorCriticalBrush";
+            }
+            VolumeHint.Text = hint;
+            VolumeHint.Foreground = TryFindResource(brush) as Brush ?? Brushes.Gray;
+        }
+
+        static string HumanSize(long bytes)
+        {
+            string[] units = { "B", "KB", "MB", "GB", "TB" };
+            double v = bytes;
+            int i = 0;
+            while (v >= 1024 && i < units.Length - 1) { v /= 1024; i++; }
+            return (i == 0 ? v.ToString("0") : v.ToString("0.#")) + " " + units[i];
+        }
+
         void OnAddFolder(object sender, RoutedEventArgs e) => Vm.AddFolder();
         void OnRemoveFolder(object sender, RoutedEventArgs e) => Vm.RemoveFolder(((FrameworkElement)sender).DataContext as SettingsViewModel.CustomFolderRow);
         void OnAddInternal(object sender, RoutedEventArgs e) => Vm.AddInternal();

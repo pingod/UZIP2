@@ -173,9 +173,10 @@ namespace UZIP2.Services
 
 
         // compressType: 旧 CompressTypes 枚举 (0=zip 1=7z 其余按 -t 名直传)
+        // volumeSize 非空时按 -v 分卷，产出 outArchive + ".001/.002…"
         public Task<SevenZipResult> CompressAsync(IReadOnlyList<string> files, string outArchive, string password,
             int compressType, int level, bool hideContent, IProgress<SevenZipProgress> progress, CancellationToken ct,
-            IReadOnlyList<string> excludeFilters = null)
+            IReadOnlyList<string> excludeFilters = null, string volumeSize = null)
         {
             var args = new List<string> { "a", outArchive };
             foreach (var f in files) args.Add(f);
@@ -183,6 +184,7 @@ namespace UZIP2.Services
             args.Add("-mx" + level);
             if (!string.IsNullOrEmpty(password)) args.Add("-p" + password);
             if (hideContent && compressType == 1) args.Add("-mhe=on");
+            if (!string.IsNullOrEmpty(volumeSize)) args.Add("-v" + volumeSize);
             if (excludeFilters != null)
                 foreach (var x in excludeFilters) args.Add("-xr!" + x);
             args.Add("-y");

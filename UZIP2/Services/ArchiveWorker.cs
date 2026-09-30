@@ -602,6 +602,14 @@ namespace UZIP2.Services
 
             string outArchive = BuildArchivePath(s, sources, outDir, pwSign, password);
 
+            string volume = null;
+            if (!string.IsNullOrWhiteSpace(s.CompressVolume) && !VolumeSize.TryNormalize(s.CompressVolume, out volume))
+            {
+                job.Status = JobStatus.Failed;
+                job.Diagnosis = $"分卷大小格式不正确: {s.CompressVolume}（示例: 700m / 1g / 102400）";
+                return;
+            }
+
             var progress = new Progress<SevenZipProgress>(p =>
             {
                 job.Percent = p.Percent;
@@ -610,7 +618,7 @@ namespace UZIP2.Services
             });
 
             var res = await _zip.CompressAsync(sources, outArchive, password, s.CompressType, s.CompressLevel,
-                s.HideZipContent, progress, ct, FilterService.ParseRules(s.CompressFilter)).ConfigureAwait(false);
+                s.HideZipContent, progress, ct, FilterService.ParseRules(s.CompressFilter), volume).ConfigureAwait(false);
 
             if (!res.Success)
             {
@@ -628,7 +636,8 @@ namespace UZIP2.Services
             job.Percent = 100;
             job.Done = job.Total;
             job.UsedPassword = password;
-            job.OutputDir = outArchive;
+            // 分卷时主文件名不存在，第一卷才是真文件
+            job.OutputDir = volume == null ? outArchive : outArchive + ".001";
             job.Status = JobStatus.Success;
         }
 
