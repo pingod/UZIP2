@@ -21,8 +21,10 @@
     <PackageReference Include="System.Configuration.ConfigurationManager" Version="8.0.0" />
   </ItemGroup>
   <ItemGroup>
-    <!-- 旧工程从未编译此文件（死代码），保持排除 -->
-    <Compile Remove="MyPasswords.cs" />
+    <!-- 旧版界面/静态全局类整体归档，不参与编译 -->
+    <Compile Remove="Legacy/**/*.cs" />
+    <Page Remove="Legacy/**/*.xaml" />
+    <None Include="Legacy/**" />
   </ItemGroup>
   <ItemGroup>
     <Resource Include="*.png" />

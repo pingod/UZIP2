@@ -1,40 +1,90 @@
-﻿using System;
+using System;
 using System.IO;
+using System.Linq;
 using System.Windows;
+using Microsoft.Extensions.DependencyInjection;
+using UZIP2.Services;
+using UZIP2.Shell;
 
 namespace UZIP2
 {
-    /// <summary>
-    /// App.xaml 的交互逻辑
-    /// </summary>
     public partial class App : Application
     {
-        private void OnAppStartup(object sender, StartupEventArgs e)
-        {
-            // 启动时清理上次崩溃残留的临时目录（UZipTemp_*）
-            CleanupTempFolders();
+        public static IServiceProvider Services { get; private set; }
 
-            if (e.Args.Length != 0)
+        private InstanceBus _bus;
+
+        private void OnStartup(object sender, StartupEventArgs e)
+        {
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            string configDir = Path.Combine(baseDir, "Config");
+
+            _bus = new InstanceBus();
+            if (!_bus.TryBecomePrimary())
             {
-                USetting.FileList = e.Args;
-                USetting.IsCmdMode = true;
+                if (InstanceBus.ForwardArgsToPrimary(e.Args))
+                {
+                    Shutdown();
+                    return;
+                }
+                // 转发失败（主实例正在退出）：降级为独立实例继续启动
+                _bus.Dispose();
+                _bus = null;
             }
+
+            var logger = new FileLogger(baseDir);
+            var settings = new SettingsService(configDir, logger);
+
+            // 一次性迁移旧版配置（UZip.config / PasswordNote / PasswordPage -> json）
+            var passwords = new PasswordService(configDir, settings);
+            var migration = LegacyConfigMigrator.TryMigrate(configDir, settings, passwords);
+            if (migration.Performed)
+            {
+                logger.Info("配置迁移: " + migration.Reason);
+                if (!migration.Success)
+                    MessageBox.Show("旧配置迁移失败，将以默认配置启动。\n" + migration.Reason,
+                        "UZIP 配置迁移", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
+            if (settings.Current.CleanTempOnStartup)
+                TempManager.CleanupOnStartup(baseDir);
+
+            var services = new ServiceCollection();
+            services.AddSingleton<IFileLogger>(logger);
+            services.AddSingleton<ISettingsService>(settings);
+            services.AddSingleton(passwords);
+            services.AddSingleton<CompressLogService>(sp => new CompressLogService(configDir));
+            services.AddSingleton<SevenZipClient>();
+            services.AddSingleton<ArchiveWorker>();
+            services.AddSingleton<ClipboardService>();
+            services.AddSingleton<HotKeyService>();
+            services.AddSingleton<TrayService>();
+            Services = services.BuildServiceProvider();
+
+            var window = new MainWindow();
+            MainWindow = window;
+            window.Show();
+
+            if (_bus != null)
+            {
+                _bus.FilesReceived += args => Dispatcher.Invoke(() =>
+                {
+                    window.ShowFromTray();
+                    var files = args.Where(File.Exists).ToArray();
+                    if (files.Length > 0)
+                        Services.GetRequiredService<ArchiveWorker>().EnqueueExtract(files);
+                });
+            }
+
+            var startupFiles = e.Args.Where(File.Exists).ToArray();
+            if (startupFiles.Length > 0)
+                Services.GetRequiredService<ArchiveWorker>().EnqueueExtract(startupFiles);
         }
 
-        // 扫描程序目录下残留的 UZipTemp_* 隐藏目录并删除
-        private void CleanupTempFolders()
+        private void OnExit(object sender, ExitEventArgs e)
         {
-            try
-            {
-                if (!USetting.CleanTempOnStartup) return;
-                string basePath = USetting.BasePath;
-                if (!Directory.Exists(basePath)) return;
-                foreach (string dir in Directory.GetDirectories(basePath, "UZipTemp_*", SearchOption.TopDirectoryOnly))
-                {
-                    try { Directory.Delete(dir, true); } catch { }
-                }
-            }
-            catch { /* 清理失败不影响启动 */ }
+            _bus?.Dispose();
+            (Services as IDisposable)?.Dispose();
         }
     }
 }
