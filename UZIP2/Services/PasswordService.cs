@@ -79,9 +79,7 @@ namespace UZIP2.Services
         private void Save()
         {
             var all = _book.Concat(_paper).ToList();
-            var temp = _storePath + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(all, JsonOptions));
-            File.Move(temp, _storePath, true);
+            AtomicFile.Write(_storePath, JsonSerializer.Serialize(all, JsonOptions));
             Changed?.Invoke();
         }
 

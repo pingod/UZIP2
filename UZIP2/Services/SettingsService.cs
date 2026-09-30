@@ -111,9 +111,7 @@ namespace UZIP2.Services
         private void Write(AppSettings settings)
         {
             Directory.CreateDirectory(ConfigDirectory);
-            var temp = SettingsPath + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(settings, JsonOptions));
-            File.Move(temp, SettingsPath, true);
+            AtomicFile.Write(SettingsPath, JsonSerializer.Serialize(settings, JsonOptions));
         }
     }
 }
