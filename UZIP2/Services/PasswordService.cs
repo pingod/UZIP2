@@ -149,20 +149,27 @@ namespace UZIP2.Services
             }
         }
 
-        public void PasteToPaper(string plain)
+        public const int PaperLimit = 200;
+
+        // 逐行导入密码纸: TrimSpace 开关控制裁剪、去空行、跨密码纸/密码本去重、上限200。返回实际新增数。
+        public int PasteToPaper(string plain)
         {
-            if (string.IsNullOrEmpty(plain)) return;
+            if (string.IsNullOrEmpty(plain)) return 0;
+            int added = 0;
             foreach (var line in plain.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
             {
                 var trimmed = ShouldTrimSpace() ? line.Trim() : line;
                 if (trimmed.Length == 0) continue;
                 lock (_sync)
                 {
+                    if (_paper.Count >= PaperLimit) break;
                     if (_paper.Any(p => p.Text == trimmed) || _book.Any(b => b.Text == trimmed)) continue;
                     _paper.Add(new PasswordEntry { IsPaper = true, Cipher = Dpapi.Encode(trimmed) });
                     Save();
+                    added++;
                 }
             }
+            return added;
         }
 
         public void ClearPaper()
