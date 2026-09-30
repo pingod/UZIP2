@@ -35,6 +35,7 @@ namespace UZIP2.Models
         public string ExtractCoverMode { get; set; } = "-aos"; // 7z 覆盖开关原值: -aoa 覆盖 -aos 跳过 -aou 重命名新 -aot 重命名旧
         public bool ExtractUnknow { get; set; } = true;
         public bool DeleteFinishFile { get; set; }
+        public bool DeleteToRecycle { get; set; } = true;
         public bool AutoOpenAfterExtract { get; set; } = true;
         public bool CleanTempOnStartup { get; set; } = true;
         public bool CreateNewFolder { get; set; }

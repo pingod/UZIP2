@@ -1,0 +1,563 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
+using System.Windows.Data;
+using UZIP2.Models;
+
+namespace UZIP2.Services
+{
+    // 任务队列 worker：串行处理解压/压缩作业，完整复刻旧版 ExtractProcessAsync /
+    // CompressProcessAsync 的行为语义（无密码优先、外部密码、文件名密码+提纯、
+    // 密码本按成功次数、密码纸消耗、分卷纠正、过滤、智能建目录、多级解压、删源）。
+    public sealed class ArchiveWorker
+    {
+        const int MultiLevelDepthLimit = 8;
+
+        private readonly SevenZipClient _zip;
+        private readonly PasswordService _passwords;
+        private readonly ISettingsService _settings;
+        private readonly IFileLogger _logger;
+        private readonly CompressLogService _compressLog;
+
+        private readonly Channel<JobEntry> _channel = Channel.CreateUnbounded<JobEntry>();
+        private readonly ObservableCollection<JobEntry> _jobs = new ObservableCollection<JobEntry>();
+        private readonly ReadOnlyObservableCollection<JobEntry> _jobsView;
+        private readonly Dictionary<long, CancellationTokenSource> _runners = new Dictionary<long, CancellationTokenSource>();
+        private readonly HashSet<string> _handledTargets = new HashSet<string>();
+        private readonly object _sync = new object();
+        private long _seq;
+        private int _active;
+
+        public event Action<JobEntry> JobFinished;
+
+        public ReadOnlyObservableCollection<JobEntry> Jobs => _jobsView;
+
+        public ArchiveWorker(SevenZipClient zip, PasswordService passwords,
+            ISettingsService settings, IFileLogger logger = null, CompressLogService compressLog = null)
+        {
+            _zip = zip;
+            _passwords = passwords;
+            _settings = settings;
+            _logger = logger;
+            _compressLog = compressLog ?? new CompressLogService(settings.ConfigDirectory);
+            _jobsView = new ReadOnlyObservableCollection<JobEntry>(_jobs);
+            try { BindingOperations.EnableCollectionSynchronization(_jobs, _sync); } catch { }
+            Task.Run(ConsumeLoopAsync);
+        }
+
+        // ---------- 入队 ----------
+
+        public void EnqueueExtract(IReadOnlyList<string> archives, string outputDir = null)
+        {
+            foreach (var a in archives)
+                AddJob(new JobEntry { Kind = "Extract", Archive = a, Target = outputDir });
+        }
+
+        public void EnqueueCompress(IReadOnlyList<string> files, string outDir = null)
+        {
+            if (files == null || files.Count == 0) return;
+            var s = _settings.Current;
+            if (s.CompressAlone)
+            {
+                foreach (var f in files)
+                    AddJob(new JobEntry { Kind = "Compress", Archive = f, Target = outDir });
+            }
+            else
+            {
+                AddJob(new JobEntry { Kind = "Compress", Archive = files[0], Target = outDir, Sources = files.ToList() });
+            }
+        }
+
+        void AddJob(JobEntry job)
+        {
+            lock (_sync)
+            {
+                job.Id = ++_seq;
+                job.Status = JobStatus.Queued;
+                _jobs.Add(job);
+            }
+            _channel.Writer.TryWrite(job);
+        }
+
+        // ---------- 取消 / 重试 ----------
+
+        public void Cancel(JobEntry job)
+        {
+            if (job.Status == JobStatus.Queued)
+            {
+                job.CancelRequested = true;
+                return;
+            }
+            lock (_sync)
+                if (_runners.TryGetValue(job.Id, out var cts)) cts.Cancel();
+        }
+
+        public void CancelAll()
+        {
+            lock (_sync)
+            {
+                foreach (var job in _jobs)
+                    if (job.Status == JobStatus.Queued) job.CancelRequested = true;
+                foreach (var cts in _runners.Values) cts.Cancel();
+            }
+        }
+
+        public void Retry(JobEntry job, string manualPassword = null)
+        {
+            if (job.Status == JobStatus.Queued || job.Status == JobStatus.Running) return;
+            job.ManualPassword = manualPassword;
+            job.Percent = null;
+            job.CurrentFile = null;
+            job.Diagnosis = null;
+            job.Status = JobStatus.Queued;
+            _channel.Writer.TryWrite(job);
+        }
+
+        // 测试/命令行模式等待整批完成
+        public async Task WhenIdleAsync(CancellationToken ct = default)
+        {
+            while (true)
+            {
+                if (ct.IsCancellationRequested) return;
+                bool idle;
+                lock (_sync) idle = _active == 0 && _channel.Reader.Count == 0;
+                if (idle) return;
+                await Task.Delay(25, ct).ConfigureAwait(false);
+            }
+        }
+
+        // ---------- 消费循环 ----------
+
+        private async Task ConsumeLoopAsync()
+        {
+            await foreach (var job in _channel.Reader.ReadAllAsync().ConfigureAwait(false))
+            {
+                if (job.CancelRequested)
+                {
+                    job.Status = JobStatus.Cancelled;
+                    FireFinished(job);
+                    continue;
+                }
+                var cts = new CancellationTokenSource();
+                lock (_sync)
+                {
+                    _runners[job.Id] = cts;
+                    _active++;
+                    job.Status = JobStatus.Running;
+                }
+                try
+                {
+                    if (job.Kind == "Extract") await RunExtractAsync(job, cts.Token).ConfigureAwait(false);
+                    else await RunCompressAsync(job, cts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    job.Status = JobStatus.Cancelled;
+                    job.Diagnosis = "任务已取消";
+                }
+                catch (Exception ex)
+                {
+                    job.Status = JobStatus.Failed;
+                    job.Diagnosis = ex.Message;
+                    _logger?.Error("作业异常 " + job.Archive, ex);
+                }
+                finally
+                {
+                    lock (_sync)
+                    {
+                        _runners.Remove(job.Id);
+                        _active--;
+                        // 整批完成后清掉分卷去重表，下一批可重新处理同名档案
+                        if (_active == 0 && _channel.Reader.Count == 0) _handledTargets.Clear();
+                    }
+                    cts.Dispose();
+                    FireFinished(job);
+                }
+            }
+        }
+
+        void FireFinished(JobEntry job)
+        {
+            try { JobFinished?.Invoke(job); } catch { }
+        }
+
+        // ---------- 解压 ----------
+
+        private async Task RunExtractAsync(JobEntry job, CancellationToken ct)
+        {
+            var s = _settings.Current;
+            string outDir = ResolveExtractOutDir(s, job.Archive, job.Target);
+            string temp = TempManager.CreateSessionTemp(outDir, job.Archive);
+            var info = ArchiveInspector.Inspect(job.Archive);
+            string f = job.Archive;
+            bool isVolume = info.Volume.IsVolume;
+            if (isVolume && File.Exists(info.Volume.MainVolumePath)) f = info.Volume.MainVolumePath;
+
+            // 分卷去重: 同批中主卷已被处理则静默完成
+            if (isVolume)
+            {
+                bool dup;
+                lock (_sync) dup = _handledTargets.Contains(f);
+                if (dup)
+                {
+                    TryDeleteTemp(temp);
+                    job.Status = JobStatus.Success;
+                    job.Diagnosis = "已随分卷主文件处理";
+                    return;
+                }
+            }
+            lock (_sync) _handledTargets.Add(f);
+
+            // 格式门槛（旧: 扩展名不可解 && 未开解压未知 && 非分卷 → 跳过）
+            if (!ArchiveInspector.CanExtractByExtension(job.Archive) && !s.ExtractUnknow && !isVolume)
+            {
+                TryDeleteTemp(temp);
+                job.Status = JobStatus.Failed;
+                job.Diagnosis = "不支持的格式";
+                return;
+            }
+
+            string fname = Path.GetFileNameWithoutExtension(job.Archive);
+
+            // ---- 密码尝试链: 无密码 → 人工指定 → 外部 → 文件名 → 密码本(次数降序) → 密码纸 ----
+            string usedPassword = null;
+            bool fromPaper = false;
+            string lastTestOutput = null;
+
+            var ok0 = await _zip.TestAsync(f, null, ct).ConfigureAwait(false);
+            bool ok = ok0.Success;
+            if (!ok) lastTestOutput = ok0.Output;
+
+            if (!ok && !string.IsNullOrEmpty(job.ManualPassword))
+            {
+                ok = (await _zip.TestAsync(f, job.ManualPassword, ct).ConfigureAwait(false)).Success;
+                if (ok) usedPassword = job.ManualPassword;
+            }
+
+            foreach (var pw in Dedup(_passwords.ExternalPasswords()))
+            {
+                if (ct.IsCancellationRequested) break;
+                if (ok) break;
+                if ((await _zip.TestAsync(f, pw, ct).ConfigureAwait(false)).Success)
+                {
+                    usedPassword = pw;
+                    ok = true;
+                }
+            }
+
+            if (!ok && s.NameToPassword && !string.IsNullOrEmpty(s.NameFilter) && !isVolume)
+            {
+                string np = PasswordFromNameService.SplitString(fname, s.NameFilter);
+                if (np != null && (await _zip.TestAsync(f, np, ct).ConfigureAwait(false)).Success)
+                {
+                    usedPassword = np;
+                    ok = true;
+                    fname = PasswordFromNameService.PurifyName(fname, s.NameFilter, np);
+                }
+            }
+
+            if (!ok)
+            {
+                foreach (var e in _passwords.Book.OrderByDescending(e => e.SuccessCount))
+                {
+                    if (ct.IsCancellationRequested) break;
+                    var t = e.Text;
+                    if (string.IsNullOrEmpty(t)) continue;
+                    if ((await _zip.TestAsync(f, t, ct).ConfigureAwait(false)).Success)
+                    {
+                        usedPassword = t;
+                        ok = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!ok)
+            {
+                foreach (var e in _passwords.Paper)
+                {
+                    if (ct.IsCancellationRequested) break;
+                    var t = e.Text;
+                    if (string.IsNullOrEmpty(t)) continue;
+                    if ((await _zip.TestAsync(f, t, ct).ConfigureAwait(false)).Success)
+                    {
+                        usedPassword = t;
+                        fromPaper = true;
+                        ok = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!ok)
+            {
+                TryDeleteTemp(temp);
+                job.Status = ct.IsCancellationRequested ? JobStatus.Cancelled : JobStatus.Failed;
+                job.Diagnosis = ct.IsCancellationRequested
+                    ? "任务已取消"
+                    : SevenZipClient.Classify(lastTestOutput ?? "", 1, false) == SevenZipError.WrongPassword
+                        ? "需要密码，但密码本/密码纸中未找到正确密码"
+                        : "密码本/密码纸中未找到正确密码";
+                return;
+            }
+
+            // ---- 正式解压到临时目录 ----
+            var progress = new Progress<SevenZipProgress>(p =>
+            {
+                job.Percent = p.Percent;
+                if (p.CurrentFile != null) job.CurrentFile = p.CurrentFile;
+                if (p.DoneCount > 0) job.Done = p.DoneCount;
+            });
+
+            var res = await _zip.ExtractAsync(f, temp.TrimEnd('\\'), usedPassword, progress, ct, s.ExtractCoverMode)
+                .ConfigureAwait(false);
+            job.Percent = res.Success ? 100 : job.Percent;
+
+            if (!res.Success)
+            {
+                if (res.Error == SevenZipError.Cancelled || ct.IsCancellationRequested)
+                {
+                    job.Status = JobStatus.Cancelled;
+                    job.Diagnosis = "任务已取消";
+                }
+                else
+                {
+                    job.Status = JobStatus.Failed;
+                    job.Diagnosis = res.Diagnosis ?? "解压失败";
+                }
+                return;
+            }
+
+            // ---- 成功后处理 ----
+            if (usedPassword != null)
+            {
+                _passwords.ReportResult(usedPassword, true);
+                if (fromPaper) _passwords.ConsumePaper(usedPassword);
+            }
+            job.UsedPassword = usedPassword;
+
+            // 文件过滤(旧版为硬删除)
+            if (FilterService.ParseRules(s.ExtractFilter) != null)
+                FilterService.Apply(temp, s.ExtractFilter);
+
+            // 多级解压: 临时目录第一层中仍是压缩包的文件，移动到新位置后继续解压
+            var nestedNames = Directory.GetFiles(temp, "*", SearchOption.TopDirectoryOnly)
+                .Where(x => ArchiveInspector.CanExtractByExtension(x))
+                .Select(Path.GetFileName)
+                .ToList();
+
+            // 智能建目录(移植旧 CreateNewFolder/CreateNameFolder 三分支)
+            string dest = outDir;
+            var di = new DirectoryInfo(temp);
+            if (s.CreateNewFolder || s.CreateNameFolder)
+            {
+                if (di.GetDirectories().Length + di.GetFiles().Length <= 1 && !s.CreateNameFolder)
+                {
+                    FilterService.MoveFolder(temp, outDir, s.ExtractCoverMode);
+                }
+                else
+                {
+                    string newPath = Path.Combine(outDir, fname);
+                    string finalPath = newPath + Path.DirectorySeparatorChar;
+                    int n = 1;
+                    while (Directory.Exists(finalPath))
+                    {
+                        finalPath = newPath + "-New" + n + Path.DirectorySeparatorChar;
+                        n++;
+                    }
+                    Directory.CreateDirectory(finalPath);
+                    dest = finalPath;
+                    FilterService.MoveFolder(temp, finalPath, null);
+                }
+            }
+            else
+            {
+                FilterService.MoveFolder(temp, outDir, s.ExtractCoverMode);
+            }
+            TryDeleteTemp(temp);
+            job.OutputDir = dest;
+
+            // 删除原文件(分卷删整组)
+            if (s.DeleteFinishFile && File.Exists(f))
+            {
+                if (isVolume) ArchiveInspector.DeleteVolumeSet(info.Volume, s.DeleteToRecycle);
+                else FilterService.Delete(f, s.DeleteToRecycle);
+            }
+
+            job.Status = JobStatus.Success;
+
+            if (nestedNames.Count > 0 && job.Depth < MultiLevelDepthLimit)
+            {
+                foreach (var name in nestedNames.Distinct())
+                {
+                    var p = Path.Combine(dest, name);
+                    if (File.Exists(p))
+                        AddJob(new JobEntry { Kind = "Extract", Archive = p, Target = job.Target, Depth = job.Depth + 1 });
+                }
+            }
+        }
+
+        static string ResolveExtractOutDir(AppSettings s, string archivePath, string explicitOverride)
+        {
+            if (!string.IsNullOrWhiteSpace(explicitOverride))
+                return TempFix(explicitOverride);
+            string archiveDir = Path.GetDirectoryName(archivePath);
+            switch (s.ExtractOutMode)
+            {
+                case 1: return TempFix(archiveDir);                       // File: 档案所在目录
+                case 3: return TempFix(Pick(s.LastExtractPath, archiveDir)); // Browse: 上次浏览目录
+                case 0: return TempFix(Pick(s.LastExtractPath, archiveDir)); // Last: 上次输出目录
+                default:
+                    int idx = s.ExtractOutMode - 5;                        // Customize1-8 = 5..12
+                    if (idx >= 0 && idx < s.CustomizeFolders.Count && Directory.Exists(s.CustomizeFolders[idx].Path))
+                        return TempFix(s.CustomizeFolders[idx].Path);
+                    return TempFix(archiveDir);
+            }
+        }
+
+        static string Pick(string preferred, string fallback)
+            => string.IsNullOrWhiteSpace(preferred) ? fallback : preferred;
+
+        static string TempFix(string dir)
+        {
+            Directory.CreateDirectory(dir);
+            return dir.EndsWith("\\") ? dir : dir + "\\";
+        }
+
+        static void TryDeleteTemp(string temp)
+        {
+            try { if (Directory.Exists(temp)) Directory.Delete(temp.TrimEnd('\\'), true); } catch { }
+        }
+
+        // ---------- 压缩 ----------
+
+        private async Task RunCompressAsync(JobEntry job, CancellationToken ct)
+        {
+            var s = _settings.Current;
+            var sources = job.Sources ?? new List<string> { job.Archive };
+
+            string outDir = ResolveCompressOutDir(s, sources[0], job.Target);
+            string password = PickCompressPassword(s, out int randomLen);
+            if (randomLen > 0) password = PasswordGenerator.New(randomLen);
+
+            string pwSign = null;
+            if (s.PasswordToName && password != null)
+                pwSign = string.IsNullOrEmpty(s.NameFilter2) ? " " : s.NameFilter2;
+
+            string outArchive = BuildArchivePath(s, sources, outDir, pwSign, password);
+
+            var progress = new Progress<SevenZipProgress>(p =>
+            {
+                job.Percent = p.Percent;
+                if (p.CurrentFile != null) job.CurrentFile = p.CurrentFile;
+                if (p.DoneCount > 0) job.Done = p.DoneCount;
+            });
+
+            var res = await _zip.CompressAsync(sources, outArchive, password, s.CompressType, s.CompressLevel,
+                s.HideZipContent, progress, ct, FilterService.ParseRules(s.CompressFilter)).ConfigureAwait(false);
+
+            if (!res.Success)
+            {
+                job.Status = res.Error == SevenZipError.Cancelled || ct.IsCancellationRequested
+                    ? JobStatus.Cancelled : JobStatus.Failed;
+                job.Diagnosis = job.Status == JobStatus.Cancelled ? "任务已取消" : res.Diagnosis ?? "压缩失败";
+                return;
+            }
+
+            if (s.DeleteCompressFinish)
+                foreach (var src in sources)
+                    FilterService.Delete(src, s.DeleteToRecycle);
+
+            _compressLog.Log(outArchive, password);
+            job.Percent = 100;
+            job.UsedPassword = password;
+            job.OutputDir = outArchive;
+            job.Status = JobStatus.Success;
+        }
+
+        static string ResolveCompressOutDir(AppSettings s, string firstSource, string explicitOverride)
+        {
+            if (!string.IsNullOrWhiteSpace(explicitOverride))
+                return TempFix(explicitOverride);
+            string srcDir = Path.GetDirectoryName(firstSource);
+            if (s.CompressOutMode == 1) return TempFix(srcDir); // File
+            return TempFix(Pick(s.LastCompressPath, srcDir));   // Browse/Last
+        }
+
+        static string PickCompressPassword(AppSettings s, out int randomLength)
+        {
+            randomLength = 0;
+            switch (s.PasswordMode)
+            {
+                case 2: return NullIfEmpty(s.CustomPasswords, 0);
+                case 3: return NullIfEmpty(s.CustomPasswords, 1);
+                case 4: return NullIfEmpty(s.CustomPasswords, 2);
+                case 6: randomLength = 8; return null;
+                case 7: randomLength = 16; return null;
+                case 8: randomLength = 32; return null;
+                default: return null;
+            }
+        }
+
+        static string NullIfEmpty(List<string> list, int i)
+            => list != null && i < list.Count && !string.IsNullOrEmpty(list[i]) ? list[i] : null;
+
+        // 输出档案命名(移植 UCmd.CompressFile 命名循环: 去 -New 尾巴、-NewN 避让、密码写文件名)
+        static string BuildArchivePath(AppSettings s, List<string> sources, string outDir, string pwSign, string password)
+        {
+            string baseName;
+            bool combined = sources.Count > 1;
+            if (combined)
+            {
+                baseName = Path.GetFileNameWithoutExtension(Path.GetDirectoryName(sources[0]));
+                if (string.IsNullOrEmpty(baseName)) baseName = "NewArchive";
+            }
+            else
+            {
+                baseName = Path.GetFileNameWithoutExtension(sources[0]);
+                int n = baseName.IndexOf("-New", StringComparison.Ordinal);
+                if (n > 0) baseName = baseName.Remove(n);
+            }
+
+            string sign = pwSign != null && password != null ? pwSign + password : "";
+            string ext = ArchiveExtension(s.CompressType);
+
+            int num = 0;
+            string path;
+            do
+            {
+                path = outDir + baseName + (num == 0 ? "" : "-New" + num) + sign + ext;
+                num++;
+            } while (File.Exists(path));
+            return path;
+        }
+
+        static string ArchiveExtension(int compressType)
+        {
+            switch (compressType)
+            {
+                case 0: return ".zip";
+                case 1: return ".7z";
+                case 2: return ".bz2";
+                case 3: return ".gz";
+                case 4: return ".tar";
+                case 5: return ".wim";
+                case 6: return ".xz";
+                default: return ".zip";
+            }
+        }
+
+        static IEnumerable<string> Dedup(IEnumerable<string> src)
+        {
+            var seen = new HashSet<string>();
+            foreach (var x in src)
+                if (!string.IsNullOrEmpty(x) && seen.Add(x))
+                    yield return x;
+        }
+    }
+}

@@ -174,6 +174,24 @@ namespace UZIP2.Services
             }
         }
 
+        // 会话级密码纸废纸篓(关闭程序即清空，与旧 PWRecycle 语义一致)
+        private readonly List<string> _recycle = new List<string>();
+        public IReadOnlyList<string> Recycle { get { lock (_sync) return _recycle.ToList(); } }
+
+        // 解压成功后消耗掉所用密码纸: 移入废纸篓并从密码纸删除
+        public void ConsumePaper(string plain)
+        {
+            if (string.IsNullOrEmpty(plain)) return;
+            lock (_sync)
+            {
+                var hit = _paper.FirstOrDefault(p => p.Text == plain);
+                if (hit == null) return;
+                _paper.Remove(hit);
+                _recycle.Add(plain);
+                Save();
+            }
+        }
+
         private bool ShouldTrimSpace()
         {
             try { return _settings == null || _settings.Current.TrimSpace; }

@@ -1,0 +1,321 @@
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using UZIP2.Models;
+using UZIP2.Services;
+using Xunit;
+
+namespace UZIP2.Tests
+{
+    public class ArchiveWorkerTests : IDisposable
+    {
+        private readonly string _root;
+        private readonly string _src;
+        private readonly string _out;
+        private readonly SettingsService _settings;
+        private readonly PasswordService _passwords;
+        private readonly SevenZipClient _client;
+        private readonly ArchiveWorker _worker;
+
+        public ArchiveWorkerTests()
+        {
+            _root = Path.Combine(Path.GetTempPath(), "UZipWorkerTests_" + Guid.NewGuid().ToString("N"));
+            _src = Path.Combine(_root, "src");
+            _out = Path.Combine(_root, "out");
+            Directory.CreateDirectory(_src);
+            Directory.CreateDirectory(_out);
+
+            _settings = new SettingsService(Path.Combine(_root, "Config"), null);
+            // 解压统一输出到 _out (Browse 模式 + 预设目录)
+            _settings.Current.ExtractOutMode = 3;
+            _settings.Current.LastExtractPath = _out;
+            _passwords = new PasswordService(Path.Combine(_root, "Config"), _settings);
+            _client = new SevenZipClient(_settings);
+            Assert.NotNull(_client.SevenZipPath); // 依赖本机 7-Zip
+            _worker = new ArchiveWorker(_client, _passwords, _settings);
+        }
+
+        public void Dispose()
+        {
+            try { Directory.Delete(_root, true); } catch { }
+        }
+
+        private string MakeFile(string dir, string name, int kb = 4, byte fill = 65)
+        {
+            Directory.CreateDirectory(dir);
+            var buf = new byte[kb * 1024];
+            for (int i = 0; i < buf.Length; i++) buf[i] = (byte)(fill ^ (i & 0x1F));
+            var p = Path.Combine(dir, name);
+            File.WriteAllBytes(p, buf);
+            return p;
+        }
+
+        private Task<SevenZipResult> CompressRaw(string outArchive, string password, int type, params string[] sources)
+            => _client.CompressAsync(sources, outArchive, password, type, 3, false, null, CancellationToken.None);
+
+        // ---------- 解压 ----------
+
+        [Fact]
+        public async Task Extract_plain_zip_success_and_no_temp_left()
+        {
+            var f = MakeFile(_src, "data.bin");
+            var zip = Path.Combine(_root, "plain.zip");
+            Assert.True((await CompressRaw(zip, null, 0, f)).Success);
+
+            _worker.EnqueueExtract(new[] { zip });
+            await _worker.WhenIdleAsync();
+
+            var job = Assert.Single(_worker.Jobs);
+            Assert.Equal(JobStatus.Success, job.Status);
+            Assert.Null(job.UsedPassword);
+            Assert.True(File.Exists(Path.Combine(_out, "data.bin")));
+            Assert.Equal(0, Directory.GetDirectories(_out, "UZipTemp_*").Length);
+        }
+
+        [Fact]
+        public async Task Extract_book_password_success_and_scores()
+        {
+            var f = MakeFile(_src, "d1.bin");
+            var zip = Path.Combine(_root, "locked.zip");
+            Assert.True((await CompressRaw(zip, "bookpw", 0, f)).Success);
+            _passwords.AddBook("常用", "bookpw");
+
+            _worker.EnqueueExtract(new[] { zip });
+            await _worker.WhenIdleAsync();
+
+            var job = Assert.Single(_worker.Jobs);
+            Assert.Equal(JobStatus.Success, job.Status);
+            Assert.Equal("bookpw", job.UsedPassword);
+            Assert.True(File.Exists(Path.Combine(_out, "d1.bin")));
+            Assert.Equal(1, _passwords.Book.Single().SuccessCount);
+        }
+
+        [Fact]
+        public async Task Paper_password_is_consumed_into_recycle()
+        {
+            var f = MakeFile(_src, "d2.bin");
+            var zip = Path.Combine(_root, "paper.zip");
+            Assert.True((await CompressRaw(zip, "paperpw", 0, f)).Success);
+            _passwords.PasteToPaper("paperpw");
+
+            _worker.EnqueueExtract(new[] { zip });
+            await _worker.WhenIdleAsync();
+
+            Assert.Equal(JobStatus.Success, _worker.Jobs.Single().Status);
+            Assert.Empty(_passwords.Paper);
+            Assert.Contains("paperpw", _passwords.Recycle);
+        }
+
+        [Fact]
+        public async Task Extract_without_any_password_fails_with_diagnosis()
+        {
+            var f = MakeFile(_src, "d3.bin");
+            var zip = Path.Combine(_root, "locked2.zip");
+            Assert.True((await CompressRaw(zip, "hidden", 0, f)).Success);
+
+            _worker.EnqueueExtract(new[] { zip });
+            await _worker.WhenIdleAsync();
+
+            var job = Assert.Single(_worker.Jobs);
+            Assert.Equal(JobStatus.Failed, job.Status);
+            Assert.Contains("未找到正确密码", job.Diagnosis);
+            Assert.Equal(0, Directory.GetDirectories(_out, "UZipTemp_*").Length);
+        }
+
+        [Fact]
+        public async Task Name_password_extract_and_purified_folder()
+        {
+            var f = MakeFile(_src, "d4.bin");
+            var zip = Path.Combine(_root, "电影#pw99#.7z");
+            Assert.True((await CompressRaw(zip, "pw99", 1, f)).Success);
+
+            _settings.Current.NameToPassword = true;
+            _settings.Current.NameFilter = "#";
+            _settings.Current.CreateNameFolder = true;
+            _worker.EnqueueExtract(new[] { zip });
+            await _worker.WhenIdleAsync();
+
+            var job = Assert.Single(_worker.Jobs);
+            Assert.Equal(JobStatus.Success, job.Status);
+            Assert.Equal("pw99", job.UsedPassword);
+            Assert.True(Directory.Exists(Path.Combine(_out, "电影")), "应使用提纯后的文件夹名");
+            Assert.True(File.Exists(Path.Combine(_out, "电影", "d4.bin")));
+        }
+
+        [Fact]
+        public async Task MultiLevel_extracts_nested_archive()
+        {
+            var innerFile = MakeFile(_src, "inner.bin", 2);
+            var inner = Path.Combine(_root, "inner.7z");
+            Assert.True((await CompressRaw(inner, "nest99", 1, innerFile)).Success);
+
+            var outer = Path.Combine(_root, "outer.zip");
+            Assert.True((await CompressRaw(outer, null, 0, inner)).Success);
+
+            _passwords.AddBook("内层", "nest99");
+            _worker.EnqueueExtract(new[] { outer });
+            await _worker.WhenIdleAsync();
+
+            Assert.Equal(2, _worker.Jobs.Count);
+            Assert.All(_worker.Jobs, j => Assert.Equal(JobStatus.Success, j.Status));
+            Assert.True(File.Exists(Path.Combine(_out, "inner.bin")), "内层压缩包应被再次解压");
+        }
+
+        [Fact]
+        public async Task Volumes_are_redirected_to_main_and_deduped()
+        {
+            // 随机数据不可压缩, 确保 -v200k 真正分成多卷
+            var rnd = new Random(1234);
+            var buf = new byte[400 * 1024];
+            rnd.NextBytes(buf);
+            var big = Path.Combine(_src, "bigfile.bin");
+            File.WriteAllBytes(big, buf);
+            var psi = new ProcessStartInfo(_client.SevenZipPath) { UseShellExecute = false, CreateNoWindow = true };
+            psi.ArgumentList.Add("a");
+            psi.ArgumentList.Add(Path.Combine(_root, "big.7z"));
+            psi.ArgumentList.Add(big);
+            psi.ArgumentList.Add("-v200k");
+            psi.ArgumentList.Add("-y");
+            using (var p = Process.Start(psi))
+            {
+                p.WaitForExit(60000);
+                Assert.True(p.ExitCode == 0);
+            }
+            Assert.True(File.Exists(Path.Combine(_root, "big.7z.001")));
+            Assert.True(File.Exists(Path.Combine(_root, "big.7z.002")));
+
+            _worker.EnqueueExtract(new[]
+            {
+                Path.Combine(_root, "big.7z.001"),
+                Path.Combine(_root, "big.7z.002"),
+            });
+            await _worker.WhenIdleAsync();
+
+            Assert.Equal(2, _worker.Jobs.Count);
+            Assert.All(_worker.Jobs, j => Assert.Equal(JobStatus.Success, j.Status));
+            Assert.Contains("已随分卷主文件处理", _worker.Jobs.Last().Diagnosis ?? "");
+            Assert.True(File.Exists(Path.Combine(_out, "bigfile.bin")));
+        }
+
+        [Fact]
+        public async Task Volumes_single_part2_redirects_to_missing_main_and_fails_gracefully()
+        {
+            // 只存在 .002 而无 .001 时, 按原文件尝试 → 失败但不崩溃
+            var fake = Path.Combine(_root, "miss.7z.002");
+            File.WriteAllBytes(fake, new byte[] { 0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C, 0, 0 });
+            _worker.EnqueueExtract(new[] { fake });
+            await _worker.WhenIdleAsync();
+
+            var job = Assert.Single(_worker.Jobs);
+            Assert.Equal(JobStatus.Failed, job.Status);
+        }
+
+        [Fact]
+        public async Task Retry_after_adding_password_succeeds()
+        {
+            var f = MakeFile(_src, "d5.bin");
+            var zip = Path.Combine(_root, "late.zip");
+            Assert.True((await CompressRaw(zip, "late99", 0, f)).Success);
+
+            _worker.EnqueueExtract(new[] { zip });
+            await _worker.WhenIdleAsync();
+            var job = Assert.Single(_worker.Jobs);
+            Assert.Equal(JobStatus.Failed, job.Status);
+
+            _passwords.AddBook("迟到", "late99");
+            _worker.Retry(job);
+            await _worker.WhenIdleAsync();
+
+            Assert.Equal(JobStatus.Success, job.Status);
+            Assert.Equal("late99", job.UsedPassword);
+        }
+
+        // ---------- 压缩 ----------
+
+        [Fact]
+        public async Task Compress_alone_with_custom_password_to_name_and_log()
+        {
+            var f = MakeFile(_src, "one.txt", 1);
+            var s = _settings.Current;
+            s.CompressAlone = true;
+            s.CompressType = 1;                       // 7z
+            s.PasswordMode = 2;                       // 自定义1
+            s.CustomPasswords[0] = "cust1";
+            s.PasswordToName = true;
+            s.NameFilter2 = "@";
+            s.CompressOutMode = 1;                    // 输出到源所在目录
+            s.DeleteCompressFinish = true;
+            s.DeleteToRecycle = false;
+
+            _worker.EnqueueCompress(new[] { f });
+            await _worker.WhenIdleAsync();
+
+            var job = Assert.Single(_worker.Jobs);
+            Assert.Equal(JobStatus.Success, job.Status);
+            Assert.Equal("cust1", job.UsedPassword);
+            Assert.True(File.Exists(Path.Combine(_src, "one@cust1.7z")));
+            Assert.False(File.Exists(f));             // 删源
+            var log = File.ReadAllText(Path.Combine(_root, "Config", "Compress.log"), Encoding.UTF8);
+            Assert.Contains("解压密码：cust1", log);
+            Assert.Contains("one@cust1.7z", log);
+        }
+
+        [Fact]
+        public async Task Compress_combined_uses_directory_name()
+        {
+            var pack = Path.Combine(_src, "pack");
+            var a = MakeFile(pack, "a.txt", 1);
+            var b = MakeFile(pack, "b.txt", 1);
+            var s = _settings.Current;
+            s.CompressAlone = false;
+            s.CompressType = 0;
+            s.CompressOutMode = 1;
+            s.PasswordMode = 0;
+
+            _worker.EnqueueCompress(new[] { a, b });
+            await _worker.WhenIdleAsync();
+
+            var job = Assert.Single(_worker.Jobs);
+            Assert.Equal(JobStatus.Success, job.Status);
+            Assert.True(File.Exists(Path.Combine(pack, "pack.zip")));
+        }
+
+        [Fact]
+        public async Task Compress_random_password_generates_and_logs()
+        {
+            var f = MakeFile(_src, "rnd.txt", 1);
+            var s = _settings.Current;
+            s.CompressAlone = true;
+            s.CompressType = 1;
+            s.PasswordMode = 6; // 随机8位
+            s.CompressOutMode = 1;
+
+            _worker.EnqueueCompress(new[] { f });
+            await _worker.WhenIdleAsync();
+
+            var job = Assert.Single(_worker.Jobs);
+            Assert.Equal(JobStatus.Success, job.Status);
+            Assert.Equal(8, (job.UsedPassword ?? "").Length);
+            var log = File.ReadAllText(Path.Combine(_root, "Config", "Compress.log"), Encoding.UTF8);
+            Assert.Contains(job.UsedPassword, log);
+        }
+
+        [Fact]
+        public async Task CancelAll_never_fails_jobs()
+        {
+            var f = MakeFile(_src, "c1.bin");
+            var zip = Path.Combine(_root, "c1.zip");
+            Assert.True((await CompressRaw(zip, null, 0, f)).Success);
+
+            _worker.EnqueueExtract(new[] { zip });
+            _worker.CancelAll();
+            await _worker.WhenIdleAsync();
+
+            Assert.All(_worker.Jobs, j => Assert.Contains(j.Status.ToString(), new[] { "Success", "Cancelled" }));
+        }
+    }
+}

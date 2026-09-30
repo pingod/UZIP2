@@ -10,6 +10,8 @@ namespace UZIP2.Services
         public string ZipType;          // rar / zip / zip-z / zip-zip / 7z / bz2 / gz / tar / wim / xz
         public string BaseName;         // 不含分卷后缀的主名
         public string MainVolumePath;   // null=无需纠正 / 主卷完整路径
+        public string Folder;           // 所在目录(带尾部'\')
+        public string SecondExt;        // 数字分卷的二级后缀, 如 a.zip.001 中的 ".zip"
     }
 
     public sealed class ArchiveInfo
@@ -98,9 +100,13 @@ namespace UZIP2.Services
 
         public static VolumeInfo AnalyzeVolume(string filePath)
         {
-            var v = new VolumeInfo { BaseName = Path.GetFileNameWithoutExtension(filePath) };
+            var v = new VolumeInfo
+            {
+                BaseName = Path.GetFileNameWithoutExtension(filePath),
+                Folder = Path.GetDirectoryName(filePath) + Path.DirectorySeparatorChar
+            };
             var extension = Path.GetExtension(filePath).ToLowerInvariant();
-            var folder = Path.GetDirectoryName(filePath) + Path.DirectorySeparatorChar;
+            var folder = v.Folder;
             var fileName = Path.GetFileNameWithoutExtension(filePath);
 
             if (extension.Length <= 3) return v;
@@ -145,12 +151,44 @@ namespace UZIP2.Services
                 {
                     v.ZipType = mapped;
                     v.IsVolume = true;
+                    v.SecondExt = ext2;
                     fileName = Path.GetFileNameWithoutExtension(fileName);
                     v.BaseName = fileName;
                     v.MainVolumePath = folder + fileName + ext2 + ".001";
                 }
             }
             return v;
+        }
+
+        // 删除整组分卷文件（移植 VolumesFile.DeleteVolumesFile）
+        public static void DeleteVolumeSet(VolumeInfo v, bool toRecycle)
+        {
+            if (v == null || v.ZipType == null) return;
+            switch (v.ZipType)
+            {
+                case "zip-zip":
+                case "zip-z":
+                    Del(v.Folder + v.BaseName + ".zip", toRecycle);
+                    int n = 1;
+                    while (Del(v.Folder + v.BaseName + ".z" + (n++).ToString().PadLeft(2, '0'), toRecycle)) { }
+                    break;
+                case "rar":
+                    int p = 1;
+                    while (Del(v.Folder + v.BaseName + ".part" + p + ".rar", toRecycle)) p++;
+                    break;
+                default:
+                    int d = 1;
+                    while (Del(v.Folder + v.BaseName + v.SecondExt + "." + (d++).ToString().PadLeft(3, '0'), toRecycle)) { }
+                    break;
+            }
+        }
+
+        static bool Del(string path, bool toRecycle)
+        {
+            if (!File.Exists(path)) return false;
+            try { FilterService.Delete(path, toRecycle); }
+            catch { }
+            return true;
         }
 
         public static ArchiveInfo Inspect(string path)
