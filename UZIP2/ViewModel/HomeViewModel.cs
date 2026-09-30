@@ -6,6 +6,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using UZIP2.Models;
@@ -20,15 +21,23 @@ namespace UZIP2.ViewModel
         private readonly ArchiveWorker _worker;
         private readonly ISettingsService _settings;
         private readonly SevenZipClient _zip;
+        private readonly PasswordService _passwords;
+        private readonly ClipboardService _clipboard;
         private readonly HashSet<long> _autoOpened = new HashSet<long>();
 
-        public HomeViewModel(ArchiveWorker worker, ISettingsService settings, SevenZipClient zip)
+        public HomeViewModel(ArchiveWorker worker, ISettingsService settings, SevenZipClient zip,
+            PasswordService passwords, ClipboardService clipboard)
         {
             _worker = worker;
             _settings = settings;
             _zip = zip;
+            _passwords = passwords;
+            _clipboard = clipboard;
             _mode = settings.Current.AppMode;
             _sevenZipMissing = zip.SevenZipPath == null;
+            _paperCount = passwords.Paper.Count;
+            passwords.Changed += () => Dispatcher.CurrentDispatcher.Invoke(() =>
+                PaperCount = passwords.Paper.Count);
             ((INotifyCollectionChanged)_worker.Jobs).CollectionChanged += OnJobsChanged;
             foreach (var job in _worker.Jobs) HookJob(job);
         }
@@ -40,6 +49,10 @@ namespace UZIP2.ViewModel
         [ObservableProperty] private bool _previewIsWarning;
         [ObservableProperty] private bool _isDragging;
         [ObservableProperty] private bool _sevenZipMissing;
+        [ObservableProperty] private int _paperCount;
+
+        [RelayCommand]
+        private void PastePassword() => _clipboard?.PasteFromClipboard();
 
         partial void OnModeChanged(int value)
         {

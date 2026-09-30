@@ -31,7 +31,7 @@
 **Interfaces:**
 - Produces: 可在 `net8.0-windows` 下 `dotnet build` 通过的旧程序(旧 UI 原样)。
 
-- [ ] **Step 1: 安装 .NET 8 SDK（国内镜像）**
+- [x] **Step 1: 安装 .NET 8 SDK（国内镜像）**
 
 ```bash
 # https://dl.microsoft.com 在本机不可靠，走 https://mirrors.tuna.tsinghua.edu.cn/dotnet/ 或 aka.ms 直链
@@ -41,7 +41,7 @@ export PATH=/d/dotnet:$PATH && dotnet --version   # 期望 8.0.x
 ```
 若 aka.ms 超时，改用 TUNA 镜像 `https://mirrors.tuna.tsinghua.edu.cn/dotnet/eol/src/sdk/8.0.411/…`(Windows x64 tar.gz zip 包) 手动解压到 `D:\dotnet`。
 
-- [ ] **Step 2: NuGet 国内源**
+- [x] **Step 2: NuGet 国内源**
 
 ```bash
 mkdir -p /d/githome/UZIP2 && cat > NuGet.Config <<'EOF'
@@ -57,7 +57,7 @@ EOF
 ```
 (azure.cn 源失效则只用 api.nuget.org + 系统代理，安装时验证。)
 
-- [ ] **Step 3: csproj 改 SDK-style**
+- [x] **Step 3: csproj 改 SDK-style**
 
 新 `UZIP2/UZIP2.csproj` 全文：
 
@@ -89,17 +89,17 @@ EOF
 </Project>
 ```
 
-- [ ] **Step 4: 编译并逐个修旧代码不兼容点**
+- [x] **Step 4: 编译并逐个修旧代码不兼容点**
 
 Run: `dotnet build UZIP2/UZIP2.sln -c Release`
 已知必改：`HttpWebRequest`(Mypassword.cs:85)→`HttpClient`；`System.Drawing` 若有引用删；`Properties/Settings.Designer.cs` 报缺 `ApplicationSettingsBase` 时补包 `System.Configuration.ConfigurationManager`(已加)；资源 URI(pack application) 不变。
 Expected: 旧 UI 在 .NET 8 下编译通过并能启动(7z 路径沿用旧 Config)。
 
-- [ ] **Step 5: 冒烟运行**
+- [x] **Step 5: 冒烟运行**
 
 `dotnet run --project UZIP2` 启动旧窗口，拖入任一 zip 确认解压链路未断；Ctrl+C 关闭。
 
-- [ ] **Step 6: Commit** `git add -A && git commit -m "build: migrate project to SDK-style .NET 8 (WPF-UI/Mvvm deps)"`
+- [x] **Step 6: Commit** `git add -A && git commit -m "build: migrate project to SDK-style .NET 8 (WPF-UI/Mvvm deps)"`
 
 ---
 
@@ -141,7 +141,7 @@ public interface ISettingsService {
 public interface IFileLogger { void Info(string m); void Warn(string m); void Error(string m, Exception ex = null); string TailPath { get; } } // logs/app-yyyyMMdd.log, 保留7天
 ```
 
-- [ ] **Step 1: 失败测试**：默认值序列化→反序列化等价；`Save` 原子写并发下不损坏(JSON 合法)。
+- [x] **Step 1: 失败测试**：默认值序列化→反序列化等价；`Save` 原子写并发下不损坏(JSON 合法)。
 
 ```csharp
 [Fact] public void Roundtrip_Preserves_Defaults() {
@@ -153,7 +153,7 @@ public interface IFileLogger { void Info(string m); void Warn(string m); void Er
 }
 ```
 
-- [ ] **Step 2: 实现** `SettingsService`(System.Text.Json，`WriteIndented`)，`FileLogger` 自研滚动。**Step 3:** `dotnet test` 绿。**Step 4:** Commit `feat: settings.json service + file logger`。
+- [x] **Step 2: 实现** `SettingsService`(System.Text.Json，`WriteIndented`)，`FileLogger` 自研滚动。**Step 3:** `dotnet test` 绿。**Step 4:** Commit `feat: settings.json service + file logger`。
 
 ---
 
@@ -167,9 +167,9 @@ public interface IFileLogger { void Info(string m); void Warn(string m); void Er
 - Consumes: `ISettingsService`, 旧 `UZIP2/Config.cs`(Config 类可读旧 XML)。
 - Produces: `static MigrationResult LegacyConfigMigrator.TryMigrate(string legacyConfigPath, ISettingsService settings, IPasswordStore store)`；`IPasswordStore`(Task 4 定义，这里先建接口: `void ImportBook(IEnumerable<PasswordEntry> items); IEnumerable<PasswordEntry> DumpAll();`)。
 
-- [ ] **Step 1: 失败测试**——fixture 复制真实旧文件 `H:/Sync/PublicShare/software/UZip/Config/*.config` 的最小脱敏版到测试数据：断言 61 个 appSettings 键逐一映射正确(重点: `BackNoteNum` 等旧 UI 遗留键忽略、`CustomizeFolder{Name,Path}1..8`→`CustomizeFolders` 列表、`Score_xyz` 前缀键→PasswordEntry.Score、`ExtractCoverMode` 值原样)。
-- [ ] **Step 2: 实现** 映射表(旧键→属性名字符串字典，反射赋值)；`Items` 节 contents 为 DPAPI base64 的原样搬运进新密码文件；成功后旧文件 `File.Move` 加 `.bak`；任何异常→保留原文件、返回 `MigrationResult.Failed(reason)`，调用方(App)仍以默认值启动。
-- [ ] **Step 3:** `dotnet test` 绿；**Step 4:** Commit `feat: legacy config migrator with tests`。
+- [x] **Step 1: 失败测试**——fixture 复制真实旧文件 `H:/Sync/PublicShare/software/UZip/Config/*.config` 的最小脱敏版到测试数据：断言 61 个 appSettings 键逐一映射正确(重点: `BackNoteNum` 等旧 UI 遗留键忽略、`CustomizeFolder{Name,Path}1..8`→`CustomizeFolders` 列表、`Score_xyz` 前缀键→PasswordEntry.Score、`ExtractCoverMode` 值原样)。
+- [x] **Step 2: 实现** 映射表(旧键→属性名字符串字典，反射赋值)；`Items` 节 contents 为 DPAPI base64 的原样搬运进新密码文件；成功后旧文件 `File.Move` 加 `.bak`；任何异常→保留原文件、返回 `MigrationResult.Failed(reason)`，调用方(App)仍以默认值启动。
+- [x] **Step 3:** `dotnet test` 绿；**Step 4:** Commit `feat: legacy config migrator with tests`。
 
 ---
 
@@ -197,9 +197,9 @@ public sealed class PasswordService : IPasswordStore {
 }
 ```
 
-- [ ] **Step 1:** 从 `MainWindow.xaml.cs` 搜索 `LoadScores`/`Score_`/排序打分段(提交 1dc43e0 引入) 摘录行为，写失败测试：去重、打分排序(成功率高→分高、同分新使用优先)、DPAPI 往返、Mypassword 四种读取模式(网络 mock)。
-- [ ] **Step 2:** 实现；内置密码数组与旧 `Mypassword.cs:36-43` 一致并允许用户在 `settings.internalPasswords`(新增 `List<string>` 属性,默认含旧 6 条)配置。
-- [ ] **Step 3:** 测试绿。旧 `Setting.PWPaper/PWBook` 暂不删(Task 10 统一断线)。**Step 4:** Commit `feat: password service (book/paper, dpapi, smart ordering)`。
+- [x] **Step 1:** 从 `MainWindow.xaml.cs` 搜索 `LoadScores`/`Score_`/排序打分段(提交 1dc43e0 引入) 摘录行为，写失败测试：去重、打分排序(成功率高→分高、同分新使用优先)、DPAPI 往返、Mypassword 四种读取模式(网络 mock)。
+- [x] **Step 2:** 实现；内置密码数组与旧 `Mypassword.cs:36-43` 一致并允许用户在 `settings.internalPasswords`(新增 `List<string>` 属性,默认含旧 6 条)配置。
+- [x] **Step 3:** 测试绿。旧 `Setting.PWPaper/PWBook` 暂不删(Task 10 统一断线)。**Step 4:** Commit `feat: password service (book/paper, dpapi, smart ordering)`。
 
 ---
 
@@ -226,10 +226,10 @@ public record SevenZipResult(bool Success, string Output, string ArchivePath, Se
 public enum SevenZipError { None, WrongPassword, Corrupt, UnsupportedFormat, DiskFull, PathTooLong, Cancelled, NotFound }
 ```
 
-- [ ] **Step 1:** 失败测试：进度行解析(`55% 4 file.txt`→Percent/CurrentFile)、`Diagnose7zError` 分类(强化 `Tools.cs:177`：加"磁盘满/路径过长"，密码错=`Data Error in encrypted file`/`Wrong Password`)、取消杀进程树。
-- [ ] **Step 2:** 实现：参数拼装逐字对照旧 `UCmd.ExtractFile/CompressFile`(Tools.cs:663-860)，保持 `-t -mx -mhe=on -y -bb1 -bsp1` 等；`Process.StartInfo` 用 `ArgumentList` 防注入(修正旧版字符串拼接)；stdin 传密码(`-p!stdin` 7z22+) 若失败回退 `-p<pwd>`(仅内存)。
-- [ ] **Step 3:** 集成测试：加密样本 Test 错密码→WrongPassword；对密码→Success；Extract 产物含 hello.txt；Compress→再解 roundtrip。
-- [ ] **Step 4:** Commit `feat: sevenzip client with progress, diagnosis, cancellation`。
+- [x] **Step 1:** 失败测试：进度行解析(`55% 4 file.txt`→Percent/CurrentFile)、`Diagnose7zError` 分类(强化 `Tools.cs:177`：加"磁盘满/路径过长"，密码错=`Data Error in encrypted file`/`Wrong Password`)、取消杀进程树。
+- [x] **Step 2:** 实现：参数拼装逐字对照旧 `UCmd.ExtractFile/CompressFile`(Tools.cs:663-860)，保持 `-t -mx -mhe=on -y -bb1 -bsp1` 等；`Process.StartInfo` 用 `ArgumentList` 防注入(修正旧版字符串拼接)；stdin 传密码(`-p!stdin` 7z22+) 若失败回退 `-p<pwd>`(仅内存)。
+- [x] **Step 3:** 集成测试：加密样本 Test 错密码→WrongPassword；对密码→Success；Extract 产物含 hello.txt；Compress→再解 roundtrip。
+- [x] **Step 4:** Commit `feat: sevenzip client with progress, diagnosis, cancellation`。
 
 ---
 
@@ -240,7 +240,7 @@ public enum SevenZipError { None, WrongPassword, Corrupt, UnsupportedFormat, Dis
 - Test: `UZIP2.Tests/ArchiveInspectorTests.cs`
 
 **Interfaces:** Produces `ArchiveInspector.Inspect(string path) -> ArchiveInfo { bool IsArchive; string RealExt; bool IsVolume; string MainVolumePath; }`。
-- [ ] Step 1 失败测试：各魔数(ZIP/RAR/7z/BZ2/GZ/XZ/WIM/TAR/ISO, 逐字移植 Tools.cs:118-176 的签名表)、`.part1.rar/.r00/.001` 分卷、`.zip.001` 式分卷(VolumesFile.GetMainVolumes)。Step 2 实现。Step 3 绿。Step 4 Commit `feat: archive inspector (magic numbers, volumes)`。
+- [x] Step 1 失败测试：各魔数(ZIP/RAR/7z/BZ2/GZ/XZ/WIM/TAR/ISO, 逐字移植 Tools.cs:118-176 的签名表)、`.part1.rar/.r00/.001` 分卷、`.zip.001` 式分卷(VolumesFile.GetMainVolumes)。Step 2 实现。Step 3 绿。Step 4 Commit `feat: archive inspector (magic numbers, volumes)`。
 
 ---
 
@@ -255,7 +255,7 @@ public enum SevenZipError { None, WrongPassword, Corrupt, UnsupportedFormat, Dis
 - `PasswordFromNameService.Extract(string fileName, string delimiter1, string delimiter2) -> string|null` — 移植 MainWindow 内旧逻辑(搜 `NameToPassword`)。
 - `TempManager`: `string CreateSessionTemp(string outputDir)`(旧 `UZipTemp_` 隐藏目录语义, `MoveFolderHelp`)；`void CleanupOnStartup()`(从 App.xaml.cs 移植)。
 - `CompressLogService`: `void Log(string archivePath, string password)`；`string LogPath`(旧 `Compress.log` 格式逐字保持, `CompressResultToTxt:974`)。
-- [ ] 每服务：失败测试(过滤命中含中文/通配符；`a-b-c.zip` 分隔符 `-` 提 `b`；temp 名冲突；log 追加格式)→实现→绿。分 4 个 commit 或 1 个 `feat: filter/password-from-name/temp/log services`。
+- [x] 每服务：失败测试(过滤命中含中文/通配符；`a-b-c.zip` 分隔符 `-` 提 `b`；temp 名冲突；log 追加格式)→实现→绿。分 4 个 commit 或 1 个 `feat: filter/password-from-name/temp/log services`。
 
 ---
 
@@ -286,7 +286,7 @@ public sealed class ArchiveWorker {
 }
 ```
 串行消费(`System.Threading.Channels`)；解压内部=Test 逐候选密码→Extract；多级解压循环(旧 MainWindow 行为：解出的第一层子包再走同流程，深度上限 5，移植时在代码注释标旧行号)；成功后 Filter→DeleteFinishFile→TempManager 合并移动(`Tools.cs:255 MoveFolder` 移植到内部 `MoveService`)。
-- [ ] Step 1 失败测试(注入 fake SevenZipClient)：入队 3 个→串行执行→Jobs 状态推进；Cancel 当前不影响后续；多级解压两层嵌套样本(用 SevenZipClient 真实样本)。Step 2 实现。Step 3 绿。Step 4 Commit `feat: archive worker queue`。
+- [x] Step 1 失败测试(注入 fake SevenZipClient)：入队 3 个→串行执行→Jobs 状态推进；Cancel 当前不影响后续；多级解压两层嵌套样本(用 SevenZipClient 真实样本)。Step 2 实现。Step 3 绿。Step 4 Commit `feat: archive worker queue`。
 
 ---
 
@@ -297,7 +297,7 @@ public sealed class ArchiveWorker {
 - Test: 仅 ClipboardService 可单测(去重/TrimSpace)，其余编译+手工冒烟。
 
 **Interfaces:** `TrayService.Setup(Action restore, Action quit)`, `void ShowBalloon(string title, string text)`；`HotKeyService.Register(uint vk, bool alt, bool shift, bool ctrl, Action fired)`、`Action OnClipboardPaste`(读剪贴板→`PasswordService.PasteToPaper`)。
-- [ ] Steps: 移植→编译→冒烟(托盘双击恢复、右键退出、热键贴入)→Commit `feat: tray, hotkey, clipboard services on net8`。
+- [x] Steps: 移植→编译→冒烟(托盘双击恢复、右键退出、热键贴入)→Commit `feat: tray, hotkey, clipboard services on net8`。
 
 ---
 
@@ -308,7 +308,7 @@ public sealed class ArchiveWorker {
 - Create: `UZIP2/Services/InstanceBus.cs`(单实例：Mutex+命名 Pipe 转发文件路径；若旧版无单实例则新加，行为=第二进程把 `e.Args` 传给主进程并退出；无参数则提示已在托盘)
 
 **Interfaces:** Produces 全局 `IServiceProvider`；启动管线顺序：`FileLogger`→`SettingsService`(含 `LegacyConfigMigrator.TryMigrate`→ 失败记 banner 状态)→`PasswordService`→`TempManager.CleanupOnStartup`→`InstanceBus`→`MainWindow.Show`。
-- [ ] Step 1: 重写 App.xaml.cs(Hosting.CreateApplicationBuilder + 单例注册所有服务)。Step 2: `dotnet run` 用**真实旧 Config 副本**验证迁移生成 settings.json + passwords.bin + `.bak`(H 盘目录先整份复制到 `D:\uzip2-migration-test`)。Step 3: Commit `feat: app host, DI, single-instance, migration wiring`。**旧 Setting.cs/静态类此任务后不得再被新代码引用。**
+- [x] Step 1: 重写 App.xaml.cs(Hosting.CreateApplicationBuilder + 单例注册所有服务)。Step 2: `dotnet run` 用**真实旧 Config 副本**验证迁移生成 settings.json + passwords.bin + `.bak`(H 盘目录先整份复制到 `D:\uzip2-migration-test`)。Step 3: Commit `feat: app host, DI, single-instance, migration wiring`。**旧 Setting.cs/静态类此任务后不得再被新代码引用。**
 
 ---
 
@@ -319,8 +319,8 @@ public sealed class ArchiveWorker {
 - Test: 手工截图验收
 
 **Interfaces:** Consumes: `ArchiveWorker.Jobs`, `ISettingsService`(Theme/置顶/窗口位置持久化)。
-- [ ] Step 1: `ui:FluentWindow`+`ui:NavigationView`(主页/密码本/设置三 MenuItems)、Mica `BackdropType="Mica"`、`ExtendsContentIntoTitleBar`、置顶切换按钮、`WindowCornerPreference`。深浅色：`Wpf.Ui.Appearance.ApplicationThemeManager.Apply(settings.Theme)` 并订阅 Changed。
-- [ ] Step 2: 尺寸 860×620、`MinWidth=720`，启动恢复 `WindowLeft/Top`(Task 2 字段)。Step 3: 运行截图(浅/深各一)入 git commit message 或 docs；Commit `feat: fluent shell window`。
+- [x] Step 1: `ui:FluentWindow`+`ui:NavigationView`(主页/密码本/设置三 MenuItems)、Mica `BackdropType="Mica"`、`ExtendsContentIntoTitleBar`、置顶切换按钮、`WindowCornerPreference`。深浅色：`Wpf.Ui.Appearance.ApplicationThemeManager.Apply(settings.Theme)` 并订阅 Changed。
+- [x] Step 2: 尺寸 860×620、`MinWidth=720`，启动恢复 `WindowLeft/Top`(Task 2 字段)。Step 3: 运行截图(浅/深各一)入 git commit message 或 docs；Commit `feat: fluent shell window`。
 
 ---
 
@@ -331,28 +331,28 @@ public sealed class ArchiveWorker {
 - Test: HomeViewModel 单测(拖放预告文本纯函数化：`string PreviewFor(mode, droppedFiles)` 可测)
 
 **Interfaces:** Consumes: `ArchiveWorker`, `ISettingsService.AppMode`。
-- [ ] Step 1: 失败测试预告文案：自动模式混合拖入(2 文件 1 压缩包)→"释放以解压 1 个压缩包、压缩 2 个文件…"；仅压缩模式拖文件夹→合法；仅解压拖文件夹→灰警告文案。
-- [ ] Step 2: 拖拽卡实现：`DragOver` 用 `e.Data.GetDataPresent(DataFormats.FileDrop)`+`PreviewFor`；`Drop→Enqueue*`。模式 `ui:Segmented`(不存在则 RadioButton 组包成视觉等价)。队列 `ItemsControl`+`ProgressRing`(绑定 Percent/CurrentFile/Done-Total/取消钮)；成功卡内联"打开目录/删源"，失败卡显示 Diagnosis+重试(调 `ArchiveWorker.Retry`)。底部状态条：`SevenZipPath==null` 时红色 banner(定位按钮→FolderBrowser 写 `Customize7zPath`)。
-- [ ] Step 3: 手动验收：拖 5 个密码包看队列/进度/通知/自动打开。Commit `feat: fluent home page with drag preview and job queue`。
+- [x] Step 1: 失败测试预告文案：自动模式混合拖入(2 文件 1 压缩包)→"释放以解压 1 个压缩包、压缩 2 个文件…"；仅压缩模式拖文件夹→合法；仅解压拖文件夹→灰警告文案。
+- [x] Step 2: 拖拽卡实现：`DragOver` 用 `e.Data.GetDataPresent(DataFormats.FileDrop)`+`PreviewFor`；`Drop→Enqueue*`。模式 `ui:Segmented`(不存在则 RadioButton 组包成视觉等价)。队列 `ItemsControl`+`ProgressRing`(绑定 Percent/CurrentFile/Done-Total/取消钮)；成功卡内联"打开目录/删源"，失败卡显示 Diagnosis+重试(调 `ArchiveWorker.Retry`)。底部状态条：`SevenZipPath==null` 时红色 banner(定位按钮→FolderBrowser 写 `Customize7zPath`)。
+- [x] Step 3: 手动验收：拖 5 个密码包看队列/进度/通知/自动打开。Commit `feat: fluent home page with drag preview and job queue`。
 
 ---
 
 ### Task 13: 密码本页
 
 **Files:** `UZIP2/View/PasswordPage.xaml`, `UZIP2/ViewModel/PasswordBookViewModel.cs`
-- [ ] Step 1 失败测试：VM 增删改查走 `PasswordService`；搜索过滤；揭示密码需命令显式调用(默认打码显示，`Password` 列绑 `RevealCommand` 后 3s 自动回掩码——用 DispatcherTimer)。
-- [ ] Step 2: 实现上列表(名称/密码/使用/成功/得分/操作行内编辑)+下密码纸(ItemsControl chip，`PasteFromClipboardCommand`、清空；数量徽标显示在主页状态条)。删除旧 `KeyBoard.xaml`(功能由粘贴+热键覆盖；若坚持保留虚拟键盘则留 Legacy 引用——默认不保留，spec 已注明)。
-- [ ] Step 3: 验收：迁移来的旧密码本可列出/解出(冒烟一个真实密码包)。Commit `feat: password book/paper page`。
+- [x] Step 1 失败测试：VM 增删改查走 `PasswordService`；搜索过滤；揭示密码需命令显式调用(默认打码显示，`Password` 列绑 `RevealCommand` 后 3s 自动回掩码——用 DispatcherTimer)。
+- [x] Step 2: 实现上列表(名称/密码/使用/成功/得分/操作行内编辑)+下密码纸(ItemsControl chip，`PasteFromClipboardCommand`、清空；数量徽标显示在主页状态条)。删除旧 `KeyBoard.xaml`(功能由粘贴+热键覆盖；若坚持保留虚拟键盘则留 Legacy 引用——默认不保留，spec 已注明)。
+- [x] Step 3: 验收：迁移来的旧密码本可列出/解出(冒烟一个真实密码包)。Commit `feat: password book/paper page`。
 
 ---
 
 ### Task 14: 设置页（全量接线）
 
-**Files:** `UZIP2/View/SettingsPage.xaml`, `UZIP2/ViewModel/SettingsViewModel.cs`
+**Files:** `UZIP2/Shell/Pages/SettingsView.xaml`, `UZIP2/ViewModel/SettingsViewModel.cs`
 **Interfaces:** Consumes: `AppSettings` 每个属性都有对应控件；7z 引导、调试日志尾部查看(`IFileLogger.TailPath` 读尾 200 行进 `ui:TextBox` 只读)。
-- [ ] Step 1: 分组 `ui:SettingsExpander`：常规/解压/压缩/密码/快捷键/关于。自定义目录与过滤规则=可增删条目列表(`ObservableCollection<CustomFolder>` 绑 ItemsControl+添加/删除钮)。热键=四修饰键开关+`ui:KeyBox` 录键→`HotKeyKey/Alt/Shift/Ctrl`。
-- [ ] Step 2: 任何控件变更→`ISettingsService.Save`(即时保存，无保存钮)；涉及服务即时生效项(TrimSpace/HideZipContent/热键重注册)在 Changed 订阅里重连。
-- [ ] Step 3: 对照 spec 第 2 节清单逐项勾选(在计划文档本任务下打钩提交)，回归旧 61 键中有 UI 意义的每一项都有去处。Commit `feat: fluent settings page`。
+- [x] Step 1: 分组 `ui:CardExpander`(WPF-UI 4.0.2 无 `SettingsExpander`，用 CardExpander 等价)：常规/解压/压缩/密码/快捷键/7-Zip 与日志/关于。自定义目录与过滤规则=可增删条目列表(`ObservableCollection<CustomFolderRow>` 绑 ItemsControl+添加/删除钮)。热键=只读输入框捕获 `PreviewKeyDown`(KeyBox 文档缺失，自建捕获)→`HotKeyKey/Alt/Shift/Ctrl`。
+- [x] Step 2: 任何控件变更→`ISettingsService.Save`(即时保存，无保存钮)；涉及服务即时生效项在 `settings.Changed` 订阅里重连(主题 `ApplyTheme`、置顶 `Topmost`、热键 `RegisterHotKey` 先注销旧键再注册)。
+- [x] Step 3: 对照 spec 第 2 节清单逐项勾选，回归旧键中有 UI 意义的每一项都有去处。实测：开关点击→`windowOnTop=false` 落盘；主题下拉→`theme=Light` 且界面即时变浅色；热键录 `Ctrl+Alt+F9`→`hotKeyKey=120/ctrl/alt` 落盘；`ExtractUnknow`、`ReadPasswordMode`(外部密码来源)补入；主页底部新增"贴入剪切板密码"按钮 + 密码纸计数(实测 0→1)与"7-Zip 设置"跳转。Commit `feat: fluent settings page`。
 
 ---
 

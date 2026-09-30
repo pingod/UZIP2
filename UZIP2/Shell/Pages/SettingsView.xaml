@@ -2,11 +2,333 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
-    <Grid Margin="16">
-        <ui:Card>
-            <TextBlock Text="设置：全部选项将分组显示。"
-                       VerticalAlignment="Center" HorizontalAlignment="Center"
-                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-        </ui:Card>
-    </Grid>
+    <UserControl.Resources>
+        <Style x:Key="Row" TargetType="Grid">
+            <Setter Property="Margin" Value="0,7" />
+        </Style>
+        <Style x:Key="RowLabel" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Width" Value="190" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,0,12,0" />
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,12,20,20">
+        <StackPanel MaxWidth="760">
+
+            <!-- 常规 -->
+            <ui:CardExpander Header="常规" Margin="0,0,0,10" IsExpanded="True">
+                <StackPanel>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="主题" />
+                        <ComboBox Grid.Column="1" x:Name="ThemeBox" Width="160" HorizontalAlignment="Left" Tag="Theme" SelectionChanged="OnComboChanged">
+                            <ComboBoxItem Tag="System">跟随系统</ComboBoxItem>
+                            <ComboBoxItem Tag="Light">浅色</ComboBoxItem>
+                            <ComboBoxItem Tag="Dark">深色</ComboBoxItem>
+                            <ComboBoxItem Tag="HighContrast">高对比度</ComboBoxItem>
+                        </ComboBox>
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="窗口置顶" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="WindowOnTop" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="解压完成后自动打开输出目录" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="AutoOpenAfterExtract" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="启动时清理残留临时目录" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="CleanTempOnStartup" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="删除文件时送入回收站" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="DeleteToRecycle" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="显示独立结果窗口" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="ResultWindow" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="调试模式（显示详细日志）" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="DebugMode" Click="OnToggleChanged" />
+                    </Grid>
+                </StackPanel>
+            </ui:CardExpander>
+
+            <!-- 解压 -->
+            <ui:CardExpander Header="解压" Margin="0,0,0,10" IsExpanded="False">
+                <StackPanel>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="默认输出位置" />
+                        <ComboBox Grid.Column="1" x:Name="ExtractModeBox" Width="200" HorizontalAlignment="Left" Tag="ExtractOutMode" SelectionChanged="OnIntComboChanged">
+                            <ComboBoxItem Tag="0">上次使用的目录</ComboBoxItem>
+                            <ComboBoxItem Tag="1">压缩包所在目录</ComboBoxItem>
+                            <ComboBoxItem Tag="3">每次询问</ComboBoxItem>
+                            <ComboBoxItem Tag="5">自定义目录 1</ComboBoxItem>
+                            <ComboBoxItem Tag="6">自定义目录 2</ComboBoxItem>
+                            <ComboBoxItem Tag="7">自定义目录 3</ComboBoxItem>
+                            <ComboBoxItem Tag="8">自定义目录 4</ComboBoxItem>
+                            <ComboBoxItem Tag="9">自定义目录 5</ComboBoxItem>
+                            <ComboBoxItem Tag="10">自定义目录 6</ComboBoxItem>
+                            <ComboBoxItem Tag="11">自定义目录 7</ComboBoxItem>
+                            <ComboBoxItem Tag="12">自定义目录 8</ComboBoxItem>
+                        </ComboBox>
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="同名文件覆盖策略" />
+                        <ComboBox Grid.Column="1" x:Name="CoverBox" Width="200" HorizontalAlignment="Left" Tag="ExtractCoverMode" SelectionChanged="OnComboChanged">
+                            <ComboBoxItem Tag="-aoa">覆盖已有</ComboBoxItem>
+                            <ComboBoxItem Tag="-aos">跳过</ComboBoxItem>
+                            <ComboBoxItem Tag="-aou">重命名已存在</ComboBoxItem>
+                            <ComboBoxItem Tag="-aot">重命名新文件</ComboBoxItem>
+                        </ComboBox>
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="解压到新文件夹" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="CreateNewFolder" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="解压到压缩包同名目录（与上一项互斥）" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="CreateNameFolder" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="从文件名提取密码" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="NameToPassword" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="隐藏压缩包内容列表" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="HideZipContent" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="尝试未知扩展名的压缩包" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="ExtractUnknow" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="解压成功后删除档案（分卷删除整组）" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="DeleteFinishFile" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="广告文件过滤规则（分号分隔，* 通配）" />
+                        <ui:TextBox Grid.Column="1" Tag="ExtractFilter" LostFocus="OnTextChanged" AcceptsReturn="True" MinHeight="40" TextWrapping="Wrap" />
+                    </Grid>
+                    <TextBlock Text="自定义输出目录" Margin="0,10,0,4" FontWeight="SemiBold" />
+                    <ItemsControl x:Name="FolderList" ItemsSource="{Binding Folders}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <ui:TextBox Text="{Binding Name, UpdateSourceTrigger=LostFocus}" Margin="0,0,6,0" PlaceholderText="名称" />
+                                    <ui:TextBox Grid.Column="1" Text="{Binding Path, UpdateSourceTrigger=LostFocus}" PlaceholderText="路径" />
+                                    <ui:Button Grid.Column="2" Icon="{ui:SymbolIcon Delete24}" Padding="6,3" Margin="6,0,0,0" Click="OnRemoveFolder" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <ui:Button Content="添加目录" Icon="{ui:SymbolIcon Add24}" HorizontalAlignment="Left" Margin="0,6,0,0" Click="OnAddFolder" />
+                </StackPanel>
+            </ui:CardExpander>
+
+            <!-- 压缩 -->
+            <ui:CardExpander Header="压缩" Margin="0,0,0,10" IsExpanded="False">
+                <StackPanel>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="默认输出位置" />
+                        <ComboBox Grid.Column="1" x:Name="CompressModeBox" Width="200" HorizontalAlignment="Left" Tag="CompressOutMode" SelectionChanged="OnIntComboChanged">
+                            <ComboBoxItem Tag="0">上次使用的目录</ComboBoxItem>
+                            <ComboBoxItem Tag="1">源文件所在目录</ComboBoxItem>
+                        </ComboBox>
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="压缩格式" />
+                        <ComboBox Grid.Column="1" x:Name="TypeBox" Width="140" HorizontalAlignment="Left" Tag="CompressType" SelectionChanged="OnIntComboChanged">
+                            <ComboBoxItem Tag="0">zip</ComboBoxItem>
+                            <ComboBoxItem Tag="1">7z</ComboBoxItem>
+                            <ComboBoxItem Tag="2">bz2</ComboBoxItem>
+                            <ComboBoxItem Tag="3">gz</ComboBoxItem>
+                            <ComboBoxItem Tag="4">tar</ComboBoxItem>
+                            <ComboBoxItem Tag="5">wim</ComboBoxItem>
+                            <ComboBoxItem Tag="6">xz</ComboBoxItem>
+                        </ComboBox>
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="压缩级别" />
+                        <ComboBox Grid.Column="1" x:Name="LevelBox" Width="140" HorizontalAlignment="Left" Tag="CompressLevel" SelectionChanged="OnIntComboChanged">
+                            <ComboBoxItem Tag="0">仅存储</ComboBoxItem>
+                            <ComboBoxItem Tag="1">最快</ComboBoxItem>
+                            <ComboBoxItem Tag="3">快速</ComboBoxItem>
+                            <ComboBoxItem Tag="5">标准</ComboBoxItem>
+                            <ComboBoxItem Tag="7">较高</ComboBoxItem>
+                            <ComboBoxItem Tag="9">极限</ComboBoxItem>
+                        </ComboBox>
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="多文件逐个压缩（否则合并为一个包）" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="CompressAlone" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="密码写入压缩包文件名" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="PasswordToName" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="压缩成功后删除源文件" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="DeleteCompressFinish" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="文件名净化标记（提纯用）" />
+                        <ui:TextBox Grid.Column="1" Tag="NameFilter" LostFocus="OnTextChanged" MaxWidth="240" HorizontalAlignment="Left" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="文件名后缀标记（密码前签名）" />
+                        <ui:TextBox Grid.Column="1" Tag="NameFilter2" LostFocus="OnTextChanged" MaxWidth="240" HorizontalAlignment="Left" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="压缩排除过滤规则" />
+                        <ui:TextBox Grid.Column="1" Tag="CompressFilter" LostFocus="OnTextChanged" AcceptsReturn="True" MinHeight="40" TextWrapping="Wrap" />
+                    </Grid>
+                </StackPanel>
+            </ui:CardExpander>
+
+            <!-- 密码 -->
+            <ui:CardExpander Header="密码" Margin="0,0,0,10" IsExpanded="False">
+                <StackPanel>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="外部密码读取来源" />
+                        <ComboBox Grid.Column="1" x:Name="ReadModeBox" Width="200" HorizontalAlignment="Left" Tag="ReadPasswordMode" SelectionChanged="OnIntComboChanged">
+                            <ComboBoxItem Tag="0">关闭</ComboBoxItem>
+                            <ComboBoxItem Tag="1">内置备用密码</ComboBoxItem>
+                            <ComboBoxItem Tag="2">外部密码文件</ComboBoxItem>
+                            <ComboBoxItem Tag="3">网络密码地址</ComboBoxItem>
+                            <ComboBoxItem Tag="4">隐藏网络地址</ComboBoxItem>
+                        </ComboBox>
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="压缩时使用的密码" />
+                        <ComboBox Grid.Column="1" x:Name="PwModeBox" Width="200" HorizontalAlignment="Left" Tag="PasswordMode" SelectionChanged="OnIntComboChanged">
+                            <ComboBoxItem Tag="0">不使用</ComboBoxItem>
+                            <ComboBoxItem Tag="2">自定义 1</ComboBoxItem>
+                            <ComboBoxItem Tag="3">自定义 2</ComboBoxItem>
+                            <ComboBoxItem Tag="4">自定义 3</ComboBoxItem>
+                            <ComboBoxItem Tag="6">随机 8 位</ComboBoxItem>
+                            <ComboBoxItem Tag="7">随机 16 位</ComboBoxItem>
+                            <ComboBoxItem Tag="8">随机 32 位</ComboBoxItem>
+                        </ComboBox>
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="自定义密码 1 / 2 / 3" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <ui:TextBox Width="120" Text="{Binding CustomPassword1.Value, UpdateSourceTrigger=LostFocus}" Margin="0,0,6,0" />
+                            <ui:TextBox Width="120" Text="{Binding CustomPassword2.Value, UpdateSourceTrigger=LostFocus}" Margin="0,0,6,0" />
+                            <ui:TextBox Width="120" Text="{Binding CustomPassword3.Value, UpdateSourceTrigger=LostFocus}" />
+                        </StackPanel>
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="外部密码文件（每行一个候选密码）" />
+                        <ui:TextBox Grid.Column="1" Tag="PWUrl" LostFocus="OnTextChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="剪切板贴入密码时去除首尾空格" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="TrimSpace" Click="OnToggleChanged" />
+                    </Grid>
+                    <TextBlock Text="内置备用密码" Margin="0,10,0,4" FontWeight="SemiBold" />
+                    <ItemsControl x:Name="InternalList" ItemsSource="{Binding InternalPasswords}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <ui:TextBox Text="{Binding Value, UpdateSourceTrigger=LostFocus}" />
+                                    <ui:Button Grid.Column="1" Icon="{ui:SymbolIcon Delete24}" Padding="6,3" Margin="6,0,0,0" Click="OnRemoveInternal" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <ui:Button Content="添加备用密码" Icon="{ui:SymbolIcon Add24}" HorizontalAlignment="Left" Margin="0,6,0,0" Click="OnAddInternal" />
+                </StackPanel>
+            </ui:CardExpander>
+
+            <!-- 快捷键 -->
+            <ui:CardExpander Header="快捷键" Margin="0,0,0,10" IsExpanded="False">
+                <StackPanel>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="启用全局快捷键（把剪切板密码贴入密码纸）" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="UseHotKey" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="当前快捷键" />
+                        <ui:TextBox Grid.Column="1" x:Name="HotkeyBox" IsReadOnly="True" MaxWidth="240" HorizontalAlignment="Left"
+                                    PreviewKeyDown="OnHotkeyCapture" />
+                        <ui:Button Grid.Column="2" Content="清除" Margin="8,0,0,0" Click="OnClearHotkey" />
+                    </Grid>
+                    <TextBlock Text="点击输入框后按下组合键（Ctrl/Alt/Shift + 主键）" FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                </StackPanel>
+            </ui:CardExpander>
+
+            <!-- 7-Zip 与日志 -->
+            <ui:CardExpander Header="7-Zip 与日志" Margin="0,0,0,10" IsExpanded="False">
+                <StackPanel>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="使用自定义 7z 路径" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="Customize7z" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="7z.exe 路径" />
+                        <ui:TextBox Grid.Column="1" Tag="Customize7zPath" LostFocus="OnTextChanged" />
+                        <ui:Button Grid.Column="2" Content="浏览" Margin="8,0,0,0" Click="OnBrowse7z" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="检测到的 7-Zip" />
+                        <TextBlock Grid.Column="1" x:Name="Detected7zPath" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </Grid>
+                    <ui:Button Content="打开最新日志" HorizontalAlignment="Left" Margin="0,6,0,0" Click="OnOpenLog" />
+                </StackPanel>
+            </ui:CardExpander>
+
+            <!-- 关于 -->
+            <ui:CardExpander Header="关于" Margin="0,0,0,16" IsExpanded="False">
+                <StackPanel>
+                    <TextBlock Text="UZIP 3.0 — Fluent 重构版" FontWeight="SemiBold" Margin="0,4" />
+                    <TextBlock Text=".NET 8 + WPF-UI；旧版配置自动迁移，旧密码本兼容 DPAPI 加密存储。"
+                               TextWrapping="Wrap" FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4" />
+                </StackPanel>
+            </ui:CardExpander>
+        </StackPanel>
+    </ScrollViewer>
 </UserControl>

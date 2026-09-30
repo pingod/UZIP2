@@ -61,5 +61,10 @@ namespace UZIP2.Shell.Pages
         {
             Vm?.DropFiles(GetFiles(e));
         }
+
+        void OnOpen7zLocation(object sender, RoutedEventArgs e)
+        {
+            (Window.GetWindow(this) as MainWindow)?.NavigateToSettings();
+        }
     }
 }

@@ -18,6 +18,8 @@ namespace UZIP2.Shell
         private readonly HotKeyService _hotkeys;
         private readonly ClipboardService _clipboard;
         private bool _exiting;
+        private uint _registeredVk;
+        private bool _registeredAlt, _registeredShift, _registeredCtrl;
 
         public MainWindow()
         {
@@ -36,6 +38,7 @@ namespace UZIP2.Shell
             {
                 ApplyTheme(s);
                 Topmost = s.WindowOnTop;
+                RegisterHotKey(s);
             });
 
             _clipboard.Info += msg => Dispatcher.Invoke(() => _tray.ShowBalloon("UZIP", msg));
@@ -61,8 +64,9 @@ namespace UZIP2.Shell
             Hide();
         }
 
-        public void ShowFromTray()
-        {
+        public void NavigateToSettings() => NavView.Navigate(typeof(Pages.SettingsView));
+
+        public void ShowFromTray()        {
             Show();
             if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
             Activate();
@@ -77,9 +81,18 @@ namespace UZIP2.Shell
 
         private void RegisterHotKey(AppSettings s)
         {
+            if (_registeredVk != 0)
+            {
+                _hotkeys.Unregister(_registeredVk, _registeredAlt, _registeredShift, _registeredCtrl);
+                _registeredVk = 0;
+            }
             if (!s.UseHotKey || s.HotKeyKey == 0) return;
             _hotkeys.Register(s.HotKeyKey, s.HotKeyAlt, s.HotKeyShift, s.HotKeyCtrl,
                 () => _clipboard.PasteFromClipboard());
+            _registeredVk = s.HotKeyKey;
+            _registeredAlt = s.HotKeyAlt;
+            _registeredShift = s.HotKeyShift;
+            _registeredCtrl = s.HotKeyCtrl;
         }
 
         private static void ApplyTheme(AppSettings s)

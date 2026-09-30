@@ -163,6 +163,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <ui:InfoBar Grid.Row="0" Title="未找到 7-Zip" Severity="Error"
@@ -225,5 +226,21 @@
                 <ItemsControl ItemsSource="{Binding Jobs}" ItemTemplate="{StaticResource JobCard}" />
             </ScrollViewer>
         </Grid>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="2,10,0,0">
+            <ui:Button Content="贴入剪切板密码" FontSize="12" Padding="10,4"
+                       Command="{Binding PastePasswordCommand}" />
+            <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                <Run Text="密码纸 " /><Run Text="{Binding PaperCount, Mode=OneWay}" /><Run Text=" / 200" />
+            </TextBlock>
+            <ui:SymbolIcon Symbol="Archive24" FontSize="14" Margin="16,0,0,0" VerticalAlignment="Center"
+                           ToolTip="7-Zip 路径"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            <TextBlock Margin="4,0,0,0" VerticalAlignment="Center" FontSize="12"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                <Hyperlink Click="OnOpen7zLocation"><Run Text="7-Zip 设置" /></Hyperlink>
+            </TextBlock>
+        </StackPanel>
     </Grid>
 </UserControl>
