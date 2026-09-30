@@ -269,5 +269,110 @@ namespace UZIP2.Tests
             Assert.NotEqual(2, code);              // 只会是 0/1，绝不会写注册表
             Assert.Contains(o, s => s.Contains("状态"));
         }
+
+        // ---------- update（注入 seam，离线可控）----------
+
+        string AppLikeExe()
+        {
+            var p = Path.Combine(_root, "UZIP2.exe");
+            File.WriteAllBytes(p, new byte[100 * 1024]);   // 100KB < 40MB 阈值
+            return p;
+        }
+
+        async Task<(int code, List<string> o, List<string> e)> RunUpdate(
+            UpdateInfo info, string exePath,
+            Func<UpdateInfo, string, IProgress<long>, CancellationToken, Task<(bool Ok, string Error)>> stage,
+            params string[] args)
+        {
+            var o = new List<string>(); var e = new List<string>();
+            var runner = new CliRunner(_base, _config, s => o.Add(s), s => e.Add(s))
+            {
+                UpdateCheck = _ => Task.FromResult(info),
+                ExePathProvider = () => exePath,
+                StageApply = stage,
+            };
+            var code = await runner.RunAsync(CliParser.Parse(args));
+            return (code, o, e);
+        }
+
+        static UpdateInfo New(string ver, string url = "https://gh/x", string dl = "https://gh/UZIP2.exe", long size = 8_400_000)
+            => new UpdateInfo { Version = ver, Url = url, DownloadUrl = dl, Size = size };
+
+        [Fact]
+        public async Task Update_check_reports_available_update_and_hints_apply()
+        {
+            var (code, o, _) = await RunUpdate(New("99.0.0"), AppLikeExe(), null, "update");
+            Assert.Equal(0, code);
+            Assert.Contains(o, s => s.Contains("99.0.0"));
+            Assert.Contains(o, s => s.Contains("update --apply"));
+        }
+
+        [Fact]
+        public async Task Update_check_says_latest_when_not_newer()
+        {
+            var (code, o, _) = await RunUpdate(New("0.0.1"), AppLikeExe(), null, "update");
+            Assert.Equal(0, code);
+            Assert.Contains(o, s => s.Contains("已是最新"));
+        }
+
+        [Fact]
+        public async Task Update_json_includes_download_url_and_can_apply()
+        {
+            var (code, o, _) = await RunUpdate(New("99.0.0"), AppLikeExe(), null, "update", "--json");
+            Assert.Equal(0, code);
+            var json = string.Join("\n", o);
+            Assert.Contains("\"updateAvailable\": true", json);
+            Assert.Contains("\"canApply\": true", json);
+            Assert.Contains("https://gh/UZIP2.exe", json);
+        }
+
+        [Fact]
+        public async Task Update_apply_skips_when_already_latest()
+        {
+            bool called = false;
+            var (code, o, _) = await RunUpdate(New("0.0.1"), AppLikeExe(),
+                (i, e2, p, c) => { called = true; return Task.FromResult((true, "")); }, "update", "--apply");
+            Assert.Equal(0, code);
+            Assert.False(called);
+            Assert.Contains(o, s => s.Contains("无需更新"));
+        }
+
+        [Fact]
+        public async Task Update_apply_errors_when_no_direct_asset()
+        {
+            var (code, _, e) = await RunUpdate(New("99.0.0", dl: null), AppLikeExe(), null, "update", "--apply");
+            Assert.Equal(1, code);
+            Assert.Contains(e, s => s.Contains("没有框架依赖直链"));
+        }
+
+        [Fact]
+        public async Task Update_apply_errors_when_in_place_not_possible()
+        {
+            // exe 指向不存在的路径 -> CanApplyInPlace=false
+            var (code, _, e) = await RunUpdate(New("99.0.0"), Path.Combine(_root, "missing.exe"),
+                null, "update", "--apply");
+            Assert.Equal(1, code);
+            Assert.Contains(e, s => s.Contains("不支持就地更新"));
+        }
+
+        [Fact]
+        public async Task Update_apply_stages_and_reports_ready()
+        {
+            bool called = false;
+            var (code, o, _) = await RunUpdate(New("99.0.0"), AppLikeExe(),
+                (i, e2, p, c) => { called = true; return Task.FromResult((true, "")); }, "update", "--apply");
+            Assert.Equal(0, code);
+            Assert.True(called);
+            Assert.Contains(o, s => s.Contains("更新已就绪"));
+        }
+
+        [Fact]
+        public async Task Update_apply_surfaces_stage_failure()
+        {
+            var (code, _, e) = await RunUpdate(New("99.0.0"), AppLikeExe(),
+                (i, e2, p, c) => Task.FromResult((false, "校验失败: 版本不一致")), "update", "--apply");
+            Assert.Equal(1, code);
+            Assert.Contains(e, s => s.Contains("版本不一致"));
+        }
     }
 }

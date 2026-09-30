@@ -150,6 +150,11 @@ namespace UZIP2.Tests
             Assert.NotNull(t.GetProperty("UpdateMessage"));
             Assert.NotNull(t.GetProperty("OpenUpdatePageCommand"));
             Assert.NotNull(t.GetProperty("DismissUpdateCommand"));
+            // 一键就地更新按钮：命令 + 可见性 + 进度文案 + 忙碌态
+            Assert.NotNull(t.GetProperty("ApplyUpdateCommand"));
+            Assert.NotNull(t.GetProperty("CanAutoUpdate"));
+            Assert.NotNull(t.GetProperty("UpdateStatus"));
+            Assert.NotNull(t.GetProperty("IsUpdating"));
         }
 
         [Fact]
@@ -178,6 +183,53 @@ namespace UZIP2.Tests
             {
                 try { Directory.Delete(dir, true); } catch { }
             }
+        }
+
+        // ---------- 自更新直链：从 assets 里挑 UZIP2.exe ----------
+
+        [Fact]
+        public void ParseRelease_picks_the_framework_dependent_asset()
+        {
+            var info = UpdateService.ParseRelease(
+                "{\"tag_name\":\"v3.3.0\",\"assets\":["
+                + "{\"name\":\"UZIP-3.3.0-win-x64-selfcontained.zip\",\"browser_download_url\":\"https://gh/sc.zip\",\"size\":68000000},"
+                + "{\"name\":\"UZIP2.exe\",\"browser_download_url\":\"https://gh/UZIP2.exe\",\"size\":8400000}"
+                + "]}");
+            Assert.Equal("https://gh/UZIP2.exe", info.DownloadUrl);
+            Assert.Equal(8400000, info.Size);
+        }
+
+        [Fact]
+        public void Asset_matching_is_case_insensitive()
+        {
+            var info = UpdateService.ParseRelease(
+                "{\"tag_name\":\"v3.3.0\",\"assets\":[{\"name\":\"uzip2.EXE\",\"browser_download_url\":\"https://gh/a.exe\",\"size\":1}]}");
+            Assert.Equal("https://gh/a.exe", info.DownloadUrl);
+        }
+
+        [Fact]
+        public void No_matching_asset_leaves_download_url_null()
+        {
+            var info = UpdateService.ParseRelease(
+                "{\"tag_name\":\"v3.3.0\",\"assets\":[{\"name\":\"UZIP-3.3.0-win-x64-selfcontained.zip\",\"browser_download_url\":\"https://gh/sc.zip\",\"size\":68000000}]}");
+            Assert.Null(info.DownloadUrl);
+            Assert.Equal(0, info.Size);
+        }
+
+        [Fact]
+        public void Missing_assets_array_leaves_download_url_null()
+        {
+            var info = UpdateService.ParseRelease("{\"tag_name\":\"v3.3.0\"}");
+            Assert.Null(info.DownloadUrl);
+        }
+
+        [Fact]
+        public void Non_numeric_size_is_ignored()
+        {
+            var info = UpdateService.ParseRelease(
+                "{\"tag_name\":\"v3.3.0\",\"assets\":[{\"name\":\"UZIP2.exe\",\"browser_download_url\":\"https://gh/a.exe\"}]}");
+            Assert.Equal("https://gh/a.exe", info.DownloadUrl);
+            Assert.Equal(0, info.Size);
         }
     }
 }

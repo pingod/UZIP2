@@ -65,3 +65,17 @@
 | C6 | 退出码 `0/1/2`（操作失败/用法错误），`--json` 结构化输出 | 测试：`CliRunnerTests`（缺文件→2、错误密码→1、未知键→1）；实测：`list`（无包）退出 2 |
 | C7 | 安全：`vault list`/`log compress` 默认脱敏，`--show-passwords` 才还原；错误报告不含密码 | 测试：`CliRunnerTests`（vault 掩码 + 导出件不含明文/口令 + 日志默认脱敏）；实测：`vault list` 无值、`--show-passwords` 见值、`log compress` 显示 `***` |
 | C8 | WinExe 控制台接管 + 进程退出：`AttachConsole` 输出、跑完 `Environment.Exit(code)`、headless 作业放线程池避开 UI 线程死锁 | 实测：Git Bash 下 `version`/`compress`/`checksum` 等即时返回并给出正确退出码（修复前 await 类命令挂死、`Shutdown()` 不终止进程） |
+
+## v3.3 一键自更新（就地换体）
+
+基线：`dotnet test` 417/417 通过（2026-10-01），主工程 0 警告。仅框架依赖单文件可就地更新；自包含/缓存路径回落"打开发布页"。验证方式：**测试** = `UpdateServiceTests`（资产直链解析）+ `SelfUpdaterTests`（判定/校验/中继，含一个真实 `_rel/fd/UZIP2.exe` 端到端换体）+ `CliRunnerTests`（`update`/`--apply` 注入 seam 分支）。
+
+| # | 能力 | 证据 |
+|---|------|------|
+| S1 | 从最新 Release 的 assets 里挑 `UZIP2.exe` 直链，填 `DownloadUrl`/`Size`；命中不到留 null 回落 | 测试：`UpdateServiceTests.ParseRelease_picks_the_framework_dependent_asset`、`Asset_matching_is_case_insensitive`、`No_matching_asset_leaves_download_url_null` |
+| S2 | `CanApplyInPlace`：小体积真实 exe 放行；>40MB（自包含）、`\.net\UZIP2` 缓存、不存在/空路径一律拒绝 | 测试：`SelfUpdaterTests.CanApply_*`（4 例） |
+| S3 | `Verify`：`MZ` 头 + `FileVersionInfo` 逐段版本比对，过小/非 PE/有 MZ 但读不到版本/版本不符分别拒绝 | 测试：`SelfUpdaterTests.Verify_*`（6 例，含用真实程序集自身版本放行、`0.0.1` 触发不符） |
+| S4 | 中继 `cmd`：等 PID 退出→重试覆盖 `new`→`exe`→拉起新版→删临时体与脚本自身；路径带空格仍正确加引号 | 测试：`SelfUpdaterTests.Relay_*`（字符串断言 tasklist/copy/start/`del %~f0`）+ **实测端到端**：`Relay_end_to_end_swaps_real_exe_and_cleans_up` 用真 exe 死 PID 完成换体、`.new` 与脚本均消失、`--version` 无窗口退出 |
+| S5 | CLI `update`（默认 `--check`，`--json` 含 `downloadUrl/size/canApply`）与 `update --apply`（下载→校验→就位退出） | 测试：`CliRunnerTests.Update_*`（8 例：有更新提示 apply、已是最新、JSON canApply、`--apply` 各分支与失败上报，全部离线注入） |
+| S6 | GUI 主页"可更新"横幅新增**一键更新**按钮（`CanAutoUpdate` 把关）+ 下载进度文案 + 就绪自动重启 | 测试：`UpdateServiceTests.Banner_bindings_resolve_against_the_view_model`（校验 `ApplyUpdateCommand`/`CanAutoUpdate`/`UpdateStatus`/`IsUpdating` 绑定解析）；`ApplyUpdate` 走 S2 的就地判定与安全回落 |
+| S7 | 安全边界：64MB 体积上限、版本精确匹配、只覆盖自身 exe 不碰 `Config`/`7-Zip`/`Bandizip`、失败/取消清理 `.update.new`、复用同一环境代理 | 代码：`SelfUpdater.StageAndApplyAsync` 失败路径 `TryDelete(temp)`；`UpdateService.MaxDownloadBytes`；实测换体仅在临时目录进行，绝不触碰部署目录 |

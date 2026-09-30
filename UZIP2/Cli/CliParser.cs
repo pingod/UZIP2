@@ -119,6 +119,8 @@ namespace UZIP2.Cli
                         case "--verify": r.Verify = true; break;
                         case "--json": r.Json = true; break;
                         case "--show-passwords": r.ShowPasswords = true; break;
+                        case "--apply": r.Apply = true; break;
+                        case "--check": r.Check = true; break;
                         default:
                             if (!ValueOptions.Contains(t)) { /* ignore unknown flag */ }
                             break;

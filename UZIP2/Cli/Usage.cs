@@ -28,7 +28,7 @@ namespace UZIP2.Cli
   log compress [--grep 关键字] [--limit N] | log app [--tail N] [--show-passwords]
   shell register|unregister|status                 HKCU 右键菜单
   watch once <目录> [-o 解压到] [--auto]            扫描目录内所有压缩包并解压
-  update                                           检查 GitHub Releases 新版本
+  update [--check|--apply]                         检查 GitHub Releases 新版本; --apply 就地自动更新(仅框架依赖版)
   help | version
 
 通用选项: --json 结构化输出   -o/--out 输出目录   --auto 自动试密码本/密码纸";

@@ -198,17 +198,27 @@ namespace UZIP2.ViewModel
             OpenChecksum(dlg.FileNames);
         }
 
-        // ---- 更新检查 ----
+        // ---- 更新检查 / 自更新 ----
 
         [ObservableProperty] private string _updateVersion;
+        [ObservableProperty] private bool _isUpdating;
+        [ObservableProperty] private string _updateStatus = "";
+        private UpdateInfo _pendingInfo;      // 最近一次发现的可用更新（含直链/体积）
+
         public bool HasUpdate => !string.IsNullOrEmpty(UpdateVersion);
         public string UpdateMessage => string.IsNullOrEmpty(UpdateVersion) ? ""
             : $"发现新版本 UZIP {UpdateVersion}（当前 {UpdateService.CurrentVersion()}）。";
+
+        // 只有框架依赖单文件、且拿到了直链，才允许一键就地更新；否则回落到"打开发布页"
+        public bool CanAutoUpdate => HasUpdate && _pendingInfo != null
+            && !string.IsNullOrEmpty(_pendingInfo.DownloadUrl)
+            && SelfUpdater.CanApplyInPlace(SelfUpdater.CurrentExePath());
 
         partial void OnUpdateVersionChanged(string value)
         {
             OnPropertyChanged(nameof(HasUpdate));
             OnPropertyChanged(nameof(UpdateMessage));
+            OnPropertyChanged(nameof(CanAutoUpdate));
         }
 
         // 一天问一次就够；force 用于设置页上的"检查更新"按钮
@@ -234,6 +244,7 @@ namespace UZIP2.ViewModel
             // 用户点过"不再提示"的这个版本不再打扰，等下一个版本
             if (string.Equals(info.Version, s.LatestSeenVersion, StringComparison.OrdinalIgnoreCase))
                 return $"新版 {info.Version} 已被你忽略";
+            _pendingInfo = info;
             _ui.Invoke(() => UpdateVersion = info.Version);
             return $"发现新版本 {info.Version}，主页顶部已提示";
         }
@@ -242,6 +253,7 @@ namespace UZIP2.ViewModel
         void DismissUpdate()
         {
             var seen = UpdateVersion;
+            _pendingInfo = null;
             UpdateVersion = null;
             if (!string.IsNullOrEmpty(seen)) _settings.Save(x => x.LatestSeenVersion = seen);
         }
@@ -254,6 +266,41 @@ namespace UZIP2.ViewModel
                 Process.Start(new ProcessStartInfo(UpdateService.ReleasePageUrl) { UseShellExecute = true });
             }
             catch { }
+        }
+
+        // 一键就地更新：下载→校验→写中继脚本→脱离启动，然后本进程退出，
+        // 由中继脚本等我们退出后换体并拉起新版。仅框架依赖单文件可用（CanAutoUpdate 已把关）。
+        // AsyncRelayCommand 运行期间自动禁用按钮，天然防重复点击。
+        [RelayCommand]
+        async System.Threading.Tasks.Task ApplyUpdate()
+        {
+            var info = _pendingInfo;
+            if (info == null || string.IsNullOrEmpty(info.DownloadUrl)) { OpenUpdatePage(); return; }
+
+            string exe = SelfUpdater.CurrentExePath();
+            if (!SelfUpdater.CanApplyInPlace(exe))
+            { UpdateStatus = "当前运行方式不支持就地更新，已打开下载页"; OpenUpdatePage(); return; }
+
+            IsUpdating = true;
+            UpdateStatus = "正在下载更新…";
+            var progress = new Progress<long>(bytes =>
+                UpdateStatus = info.Size > 0
+                    ? $"下载中… {Math.Min(100, bytes * 100 / info.Size)}%"
+                    : $"下载中… {bytes / 1024} KB");
+
+            var res = await SelfUpdater.StageAndApplyAsync(info, exe, progress, default);
+            if (res.Ok)
+            {
+                UpdateStatus = "更新已就绪，正在重启到新版本…";
+                IsUpdating = false;
+                await System.Threading.Tasks.Task.Delay(700);   // 让这条提示先渲染
+                System.Windows.Application.Current?.Shutdown();  // 进程退出后中继脚本接手换体
+            }
+            else
+            {
+                UpdateStatus = res.Error;
+                IsUpdating = false;
+            }
         }
 
         // ---- 任务卡命令 ----

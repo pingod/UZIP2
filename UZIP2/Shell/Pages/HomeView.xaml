@@ -190,8 +190,12 @@
                         IsOpen="{Binding HasUpdate, Mode=OneWay}" Margin="0,0,0,10">
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                     <TextBlock Text="{Binding UpdateMessage}" VerticalAlignment="Center" Margin="0,0,12,0" />
-                    <ui:Button Content="打开发布页" Appearance="Primary" Command="{Binding OpenUpdatePageCommand}" />
+                    <ui:Button Content="一键更新" Appearance="Primary" Command="{Binding ApplyUpdateCommand}"
+                               Visibility="{Binding CanAutoUpdate, Converter={StaticResource BoolToVis}}" />
+                    <ui:Button Content="打开发布页" Margin="8,0,0,0" Command="{Binding OpenUpdatePageCommand}" />
                     <ui:Button Content="不再提示" Margin="8,0,0,0" Command="{Binding DismissUpdateCommand}" />
+                    <TextBlock Text="{Binding UpdateStatus}" VerticalAlignment="Center" Margin="12,0,0,0"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
             </ui:InfoBar>
         </StackPanel>

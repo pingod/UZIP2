@@ -51,6 +51,10 @@ namespace UZIP2.Cli
         public string Grep;            // --grep
         public bool ShowPasswords;     // --show-passwords
 
+        // 更新
+        public bool Apply;             // --apply     就地下载并安装（仅框架依赖单文件）
+        public bool Check;             // --check     仅检查（默认行为）
+
         public bool HasError => Error != null;
     }
 }

@@ -56,7 +56,7 @@ namespace UZIP2.Cli
                     case CliCommand.Log: return DoLog(r);
                     case CliCommand.Shell: return DoShell(r);
                     case CliCommand.Watch: return await DoWatch(r, ct);
-                    case CliCommand.Update: return await DoUpdate(ct);
+                    case CliCommand.Update: return await DoUpdate(r, ct);
                     default: _out(Usage.Text); return 0;
                 }
             }
@@ -533,14 +533,77 @@ namespace UZIP2.Cli
 
         // ---------- update ----------
 
-        async Task<int> DoUpdate(CancellationToken ct)
+        // 测试注入点：默认走真实的 UpdateService / SelfUpdater，单测里替换成假的，
+        // 让 --apply 的分支判断可离线、可控地验证（不触发真实下载与换体）。
+        public Func<CancellationToken, Task<UpdateInfo>> UpdateCheck;
+        public Func<string> ExePathProvider;
+        public Func<UpdateInfo, string, IProgress<long>, CancellationToken, Task<(bool Ok, string Error)>> StageApply;
+
+        async Task<int> DoUpdate(CliRequest r, CancellationToken ct)
         {
-            var info = await UpdateService.CheckAsync(null, ct).ConfigureAwait(false);
+            var check = UpdateCheck ?? (c => UpdateService.CheckAsync(null, c));
+            var info = await check(ct).ConfigureAwait(false);
             if (info == null) { _err("没问到版本信息：离线、代理不通或已被限流"); return 1; }
+
             string cur = UpdateService.CurrentVersion();
             bool newer = UpdateService.IsNewer(cur, info.Version);
-            _out(JsonSerializer.Serialize(new { current = cur, latest = info.Version, updateAvailable = newer, url = info.Url }, Json));
+            string exe = (ExePathProvider ?? SelfUpdater.CurrentExePath)();
+            bool canApply = newer && !string.IsNullOrEmpty(info.DownloadUrl) && SelfUpdater.CanApplyInPlace(exe);
+
+            // 非 --apply：只报告（--check 与默认一致）
+            if (!r.Apply)
+            {
+                if (r.Json)
+                    _out(JsonSerializer.Serialize(new
+                    {
+                        current = cur, latest = info.Version, updateAvailable = newer,
+                        downloadUrl = info.DownloadUrl, size = info.Size, canApply, url = info.Url
+                    }, Json));
+                else
+                {
+                    _out("当前版本: " + cur);
+                    _out("最新版本: " + info.Version);
+                    if (!newer) _out("已是最新");
+                    else if (canApply) _out("有可用更新，运行 uzip2 update --apply 自动更新");
+                    else _out("有可用更新，请从下载页手动更新: " + info.Url);
+                }
+                return 0;
+            }
+
+            // --apply
+            if (!newer) { _out("已是最新版本 " + cur + "，无需更新"); return 0; }
+            if (string.IsNullOrEmpty(info.DownloadUrl))
+            { _err("最新版本没有框架依赖直链，请从下载页手动更新: " + info.Url); return 1; }
+            if (!SelfUpdater.CanApplyInPlace(exe))
+            { _err("当前运行方式不支持就地更新（自包含版或缓存路径），请从下载页手动更新: " + info.Url); return 1; }
+
+            long lastPct = -1;
+            var progress = new Progress<long>(bytes =>
+            {
+                if (info.Size > 0)
+                {
+                    long pct = Math.Min(100, bytes * 100 / info.Size);
+                    if (pct != lastPct) { lastPct = pct; _err($"下载中… {pct}%  ({Human(bytes)}/{Human(info.Size)})"); }
+                }
+                else _err("下载中… " + Human(bytes));
+            });
+
+            _out($"正在更新 {cur} -> {info.Version} …");
+            var stage = StageApply ?? ((i, e, p, c) => SelfUpdater.StageAndApplyAsync(i, e, p, c));
+            var res = await stage(info, exe, progress, ct).ConfigureAwait(false);
+            if (!res.Ok) { _err(res.Error); return 1; }
+            _out("更新已就绪，程序即将退出并在几秒后自动启动新版本。");
             return 0;
+        }
+
+        static string Human(long bytes)
+        {
+            if (bytes < 1024) return bytes + " B";
+            double kb = bytes / 1024.0;
+            if (kb < 1024) return kb.ToString("0.#") + " KB";
+            double mb = kb / 1024.0;
+            if (mb < 1024) return mb.ToString("0.#") + " MB";
+            return (mb / 1024.0).ToString("0.##") + " GB";
         }
     }
 }
