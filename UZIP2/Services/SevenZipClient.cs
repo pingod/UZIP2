@@ -176,7 +176,19 @@ namespace UZIP2.Services
         // volumeSize 非空时按 -v 分卷，产出 outArchive + ".001/.002…"
         public Task<SevenZipResult> CompressAsync(IReadOnlyList<string> files, string outArchive, string password,
             int compressType, int level, bool hideContent, IProgress<SevenZipProgress> progress, CancellationToken ct,
-            IReadOnlyList<string> excludeFilters = null, string volumeSize = null)
+            IReadOnlyList<string> excludeFilters = null, string volumeSize = null,
+            string solid = null, string threads = null)
+        {
+            var args = BuildCompressArgs(files, outArchive, password, compressType, level, hideContent,
+                excludeFilters, volumeSize, solid, threads);
+            return RunAsync(args, outArchive, ct, progress, isExtractOp: false);
+        }
+
+        // -ms 和 -mhe 只有 7z 认（zip 下 7z 直接 System ERROR），-mmt 两种都吃。
+        // 空值一律不传，交给 7z 默认: 固实开、线程占满。
+        public static List<string> BuildCompressArgs(IReadOnlyList<string> files, string outArchive, string password,
+            int compressType, int level, bool hideContent, IReadOnlyList<string> excludeFilters,
+            string volumeSize, string solid, string threads)
         {
             var args = new List<string> { "a", outArchive };
             foreach (var f in files) args.Add(f);
@@ -184,12 +196,14 @@ namespace UZIP2.Services
             args.Add("-mx" + level);
             if (!string.IsNullOrEmpty(password)) args.Add("-p" + password);
             if (hideContent && compressType == 1) args.Add("-mhe=on");
+            if (compressType == 1 && !string.IsNullOrWhiteSpace(solid)) args.Add("-ms=" + solid.Trim());
+            if (!string.IsNullOrWhiteSpace(threads)) args.Add("-mmt=" + threads.Trim());
             if (!string.IsNullOrEmpty(volumeSize)) args.Add("-v" + volumeSize);
             if (excludeFilters != null)
                 foreach (var x in excludeFilters) args.Add("-xr!" + x);
             args.Add("-y");
             args.Add("-bsp1");
-            return RunAsync(args, outArchive, ct, progress, isExtractOp: false);
+            return args;
         }
 
         public string ListContent(string archive, string password)

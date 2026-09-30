@@ -618,7 +618,8 @@ namespace UZIP2.Services
             });
 
             var res = await _zip.CompressAsync(sources, outArchive, password, s.CompressType, s.CompressLevel,
-                s.HideZipContent, progress, ct, FilterService.ParseRules(s.CompressFilter), volume).ConfigureAwait(false);
+                s.HideZipContent, progress, ct, FilterService.ParseRules(s.CompressFilter), volume,
+                s.CompressSolid, s.CompressThreads).ConfigureAwait(false);
 
             if (!res.Success)
             {

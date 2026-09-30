@@ -142,7 +142,7 @@ namespace UZIP2.Tests
             var job = Assert.Single(_worker.Jobs);
             Assert.Equal(JobStatus.Failed, job.Status);
             Assert.Contains("分卷大小", job.Diagnosis);
-            Assert.Equal(0, Directory.GetFiles(_src, "blob.zip*").Length);
+            Assert.Empty(Directory.GetFiles(_src, "blob.zip*"));
         }
 
         [Fact]
@@ -158,7 +158,7 @@ namespace UZIP2.Tests
             Assert.Equal(JobStatus.Success, job.Status);
             Assert.EndsWith(".zip", job.OutputDir);
             Assert.True(File.Exists(job.OutputDir));
-            Assert.Equal(0, Directory.GetFiles(_src, "*.001").Length);
+            Assert.Empty(Directory.GetFiles(_src, "*.001"));
         }
     }
 }

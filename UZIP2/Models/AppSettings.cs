@@ -55,7 +55,6 @@ namespace UZIP2.Models
         public bool CreateNewFolder { get; set; }
         public bool CreateNameFolder { get; set; }
         public bool NameToPassword { get; set; }
-        public bool HideZipContent { get; set; }
         public string ExtractFilter { get; set; } = "";
         public List<CustomFolder> CustomizeFolders { get; set; } = new List<CustomFolder>();
 
@@ -67,6 +66,12 @@ namespace UZIP2.Models
         // 分卷大小: 数字+可选 b/k/m/g，如 "700m"、"1g"。空=不分卷。
         // 分卷时 7z 产出 name.7z.001/.002…，name.7z 本身不存在
         public string CompressVolume { get; set; } = "";
+        // 固实块(仅 7z): "" 默认 / "on" / "off"。关掉后单个文件恢复更快，代价是压缩率下降。
+        public string CompressSolid { get; set; } = "";
+        // 压缩线程: "" 默认占满 / "off" 单线程 / "2" "4" "8"。压低线程可以给前台让路。
+        public string CompressThreads { get; set; } = "";
+        // 旧名沿用: 压缩时给 7z 加 -mhe=on，连文件名一起加密（仅 7z 有效）
+        public bool HideZipContent { get; set; }
         public string CompressFilter { get; set; } = "";
         public string NameFilter { get; set; } = "";
         public string NameFilter2 { get; set; } = "";

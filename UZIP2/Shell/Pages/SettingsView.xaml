@@ -152,11 +152,6 @@
                     </Grid>
                     <Grid Style="{StaticResource Row}">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Style="{StaticResource RowLabel}" Text="隐藏压缩包内容列表" />
-                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="HideZipContent" Click="OnToggleChanged" />
-                    </Grid>
-                    <Grid Style="{StaticResource Row}">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                         <TextBlock Style="{StaticResource RowLabel}" Text="尝试未知扩展名的压缩包" />
                         <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="ExtractUnknow" Click="OnToggleChanged" />
                     </Grid>
@@ -241,6 +236,31 @@
                             <ComboBoxItem Tag="5">标准</ComboBoxItem>
                             <ComboBoxItem Tag="7">较高</ComboBoxItem>
                             <ComboBoxItem Tag="9">极限</ComboBoxItem>
+                        </ComboBox>
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="加密文件名（仅 7z，连包内列表一起加密）" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="HideZipContent" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="固实块（仅 7z）" />
+                        <ComboBox Grid.Column="1" x:Name="SolidBox" Width="160" HorizontalAlignment="Left" Tag="CompressSolid" SelectionChanged="OnComboChanged">
+                            <ComboBoxItem Tag="">默认（固实）</ComboBoxItem>
+                            <ComboBoxItem Tag="on">开启</ComboBoxItem>
+                            <ComboBoxItem Tag="off">关闭（单文件恢复更快）</ComboBoxItem>
+                        </ComboBox>
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="压缩线程" />
+                        <ComboBox Grid.Column="1" x:Name="ThreadsBox" Width="160" HorizontalAlignment="Left" Tag="CompressThreads" SelectionChanged="OnComboChanged">
+                            <ComboBoxItem Tag="">默认（占满核心）</ComboBoxItem>
+                            <ComboBoxItem Tag="off">单线程（不抢前台）</ComboBoxItem>
+                            <ComboBoxItem Tag="2">2 线程</ComboBoxItem>
+                            <ComboBoxItem Tag="4">4 线程</ComboBoxItem>
+                            <ComboBoxItem Tag="8">8 线程</ComboBoxItem>
                         </ComboBox>
                     </Grid>
                     <Grid Style="{StaticResource Row}">

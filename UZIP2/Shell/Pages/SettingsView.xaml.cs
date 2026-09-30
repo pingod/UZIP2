@@ -40,6 +40,8 @@ namespace UZIP2.Shell.Pages
                 SelectComboInt(CompressModeBox, (int)Vm.Read("CompressOutMode"));
                 SelectComboInt(TypeBox, (int)Vm.Read("CompressType"));
                 SelectComboInt(LevelBox, (int)Vm.Read("CompressLevel"));
+                SelectCombo(SolidBox, Vm.Read("CompressSolid")?.ToString());
+                SelectCombo(ThreadsBox, Vm.Read("CompressThreads")?.ToString());
                 SelectComboInt(PwModeBox, (int)Vm.Read("PasswordMode"));
                 SelectComboInt(ReadModeBox, (int)Vm.Read("ReadPasswordMode"));
                 SelectComboInt(ParallelExtractBox, ClampToItem(ParallelExtractBox, (int)Vm.Read("ParallelExtract")));
@@ -50,6 +52,7 @@ namespace UZIP2.Shell.Pages
                         tb.Text = Vm.Read(tag)?.ToString() ?? "";
 
                 HotkeyBox.Text = Vm.HotkeyText;
+                UpdateVolumeHint();
                 Detected7zPath.Text = App.Services.GetRequiredService<SevenZipClient>().SevenZipPath ?? "未检测到";
                 RefreshShellStatus();
             }
@@ -122,9 +125,11 @@ namespace UZIP2.Shell.Pages
                 Vm.SaveProperty(tag, tb.Text);
         }
 
-        void OnVolumeTextChanged(object sender, TextChangedEventArgs e)
+        void OnVolumeTextChanged(object sender, TextChangedEventArgs e) => UpdateVolumeHint();
+
+        void UpdateVolumeHint()
         {
-            if (VolumeHint == null) return;
+            if (VolumeHint == null || VolumeBox == null) return;
             string hint, brush;
             if (string.IsNullOrWhiteSpace(VolumeBox.Text))
             {
