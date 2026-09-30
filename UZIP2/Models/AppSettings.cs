@@ -14,9 +14,9 @@ namespace UZIP2.Models
         public int AppMode { get; set; }
         public string Theme { get; set; } = "System"; // System|Light|Dark
 
-        public bool WindowOnTop { get; set; }
+        public bool WindowOnTop { get; set; } = true;
         public bool UseHotKey { get; set; }
-        public bool TrimSpace { get; set; } = true;
+        public bool TrimSpace { get; set; }
         public bool ResultWindow { get; set; }
         public bool ShowDebug { get; set; }
         public bool DebugMode { get; set; }
@@ -32,8 +32,8 @@ namespace UZIP2.Models
         // 解压
         public int ExtractOutMode { get; set; }
         public int ExtractOutModePop { get; set; }
-        public string ExtractCoverMode { get; set; } = "ask";
-        public bool ExtractUnknow { get; set; }
+        public string ExtractCoverMode { get; set; } = "-aos"; // 7z 覆盖开关原值: -aoa 覆盖 -aos 跳过 -aou 重命名新 -aot 重命名旧
+        public bool ExtractUnknow { get; set; } = true;
         public bool DeleteFinishFile { get; set; }
         public bool AutoOpenAfterExtract { get; set; } = true;
         public bool CleanTempOnStartup { get; set; } = true;
@@ -47,13 +47,14 @@ namespace UZIP2.Models
         // 压缩
         public int CompressOutMode { get; set; }
         public int CompressOutModePop { get; set; }
-        public string CompressType { get; set; } = "7z";
-        public string CompressLevel { get; set; } = "-mx5";
+        public int CompressType { get; set; }        // 旧 CompressTypes 枚举: 0zip 1_7z 2bz 3gz 4tar 5wim 6xz
+        public int CompressLevel { get; set; } = 5;  // 旧 CompressLevels: 0/1/3/5/7/9
         public string CompressFilter { get; set; } = "";
         public string NameFilter { get; set; } = "";
         public string NameFilter2 { get; set; } = "";
+        public List<string> CustomPasswords { get; set; } = new List<string> { "", "", "" }; // 旧 CustomizePassword1-3
         public bool PasswordToName { get; set; }
-        public bool CompressAlone { get; set; }
+        public bool CompressAlone { get; set; } = true;
         public bool DeleteCompressFinish { get; set; }
 
         // 密码

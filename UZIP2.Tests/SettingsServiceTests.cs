@@ -29,9 +29,9 @@ namespace UZIP2.Tests
         public void Missing_File_Creates_Defaults()
         {
             var svc = NewService();
-            Assert.Equal("ask", svc.Current.ExtractCoverMode);
+            Assert.Equal("-aos", svc.Current.ExtractCoverMode);
             Assert.True(svc.Current.AutoOpenAfterExtract);
-            Assert.True(svc.Current.TrimSpace);
+            Assert.False(svc.Current.TrimSpace);
             Assert.True(File.Exists(svc.SettingsPath));
         }
 
@@ -80,7 +80,7 @@ namespace UZIP2.Tests
         {
             File.WriteAllText(Path.Combine(_dir, "settings.json"), "{ not json !!");
             var svc = NewService();
-            Assert.Equal("ask", svc.Current.ExtractCoverMode); // 回退默认值
+            Assert.Equal("-aos", svc.Current.ExtractCoverMode); // 回退默认值
             Assert.NotEmpty(Directory.GetFiles(_dir, "settings.json.corrupt-*"));
         }
     }

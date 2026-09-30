@@ -68,6 +68,7 @@ namespace UZIP2.Tests
         [Fact]
         public void Paper_Dedups_Against_Itself_And_Book_And_Trims()
         {
+            _settings.Save(s => s.TrimSpace = true);
             var svc = NewService();
             svc.AddBook("b", "bookpw");
             svc.PasteToPaper("bookpw\n  newpw \nnewpw\n");

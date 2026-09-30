@@ -92,6 +92,7 @@ namespace UZIP2.Services
                 foreach (var e in entries)
                 {
                     e.IsPaper = false;
+                    e.Cipher = Dpapi.Encode(e.Text); // 明文条目自动加密
                     if (!string.IsNullOrEmpty(e.Text) && !_book.Any(b => b.Text == e.Text))
                         _book.Add(e);
                 }
@@ -106,6 +107,7 @@ namespace UZIP2.Services
                 foreach (var e in entries)
                 {
                     e.IsPaper = true;
+                    e.Cipher = Dpapi.Encode(e.Text);
                     if (!string.IsNullOrEmpty(e.Text) && !_paper.Any(p => p.Text == e.Text))
                         _paper.Add(e);
                 }
