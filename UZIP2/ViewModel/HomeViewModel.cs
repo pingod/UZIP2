@@ -167,6 +167,37 @@ namespace UZIP2.ViewModel
             win.ShowDialog();
         }
 
+        // ---- 校验和 ----
+
+        void OpenChecksum(IEnumerable<string> files)
+        {
+            var mw = System.Windows.Application.Current?.MainWindow;
+            var win = new UZIP2.Shell.ChecksumWindow(files)
+            {
+                Owner = mw != null && mw.IsVisible ? mw : null
+            };
+            win.Show();
+        }
+
+        [RelayCommand]
+        void ChecksumJob(JobEntry job)
+        {
+            if (job != null && File.Exists(job.Archive)) OpenChecksum(new[] { job.Archive });
+        }
+
+        [RelayCommand]
+        void BrowseChecksum()
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog
+            {
+                Multiselect = true,
+                Title = "选择要校验的文件",
+                Filter = "所有文件|*.*"
+            };
+            if (dlg.ShowDialog() != true) return;
+            OpenChecksum(dlg.FileNames);
+        }
+
         // ---- 任务卡命令 ----
 
         [RelayCommand]

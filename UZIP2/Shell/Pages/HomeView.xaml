@@ -153,6 +153,10 @@
                                    Command="{Binding DataContext.OpenOutputCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                    CommandParameter="{Binding}"
                                    Visibility="{Binding Status, Converter={conv:EqualVisibility Success}}" />
+                        <ui:Button Content="校验" Appearance="Secondary" FontSize="12" Padding="10,4" Margin="0,0,6,0"
+                                   Command="{Binding DataContext.ChecksumJobCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                   CommandParameter="{Binding}"
+                                   Visibility="{Binding Status, Converter={conv:AnyVisibility 'Success,Failed'}}" />
                         <ui:Button Content="删除源文件" Appearance="Secondary" FontSize="12" Padding="10,4"
                                    Command="{Binding DataContext.DeleteSourceCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                    CommandParameter="{Binding}"
@@ -227,6 +231,10 @@
                              Checked="OnModeChecked" Tag="1" />
                 <RadioButton x:Name="RbCompress" Content="仅压缩" Style="{StaticResource ModeRadio}"
                              Checked="OnModeChecked" Tag="2" />
+                <ui:Button Content="校验文件…" Appearance="Secondary" FontSize="12" Padding="10,4"
+                           Margin="12,0,0,0" VerticalAlignment="Center"
+                           Command="{Binding BrowseChecksumCommand}"
+                           ToolTip="计算 SHA-256，并核对同目录的 .sfv / .md5 / .sha256 校验文件" />
             </StackPanel>
             <Border Grid.Row="1" CornerRadius="6" Padding="10,6" Margin="2,0,0,8"
                     Background="{DynamicResource SystemFillColorCriticalBackgroundBrush}"
