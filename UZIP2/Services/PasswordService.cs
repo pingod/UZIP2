@@ -19,10 +19,23 @@ namespace UZIP2.Services
         public int SuccessCount { get; set; }
         public bool IsPaper { get; set; }
 
+        // 试密码时每个候选都要比对/排序，逐次解出明文会把 DPAPI 打成热路径。
+        // 密文变了才重新解；同一份密文只解一次。
+        private string _plain;
+        private string _plainFor;
+
         [JsonIgnore]
         public string Text
         {
-            get => Dpapi.Decode(Cipher);
+            get
+            {
+                if (_plainFor != Cipher)
+                {
+                    _plain = Dpapi.Decode(Cipher);
+                    _plainFor = Cipher;
+                }
+                return _plain;
+            }
             set => Cipher = Dpapi.Encode(value);
         }
     }
@@ -154,18 +167,19 @@ namespace UZIP2.Services
         {
             if (string.IsNullOrEmpty(plain)) return 0;
             int added = 0;
-            foreach (var line in plain.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            lock (_sync)
             {
-                var trimmed = ShouldTrimSpace() ? line.Trim() : line;
-                if (trimmed.Length == 0) continue;
-                lock (_sync)
+                foreach (var line in plain.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
                 {
+                    var trimmed = ShouldTrimSpace() ? line.Trim() : line;
+                    if (trimmed.Length == 0) continue;
                     if (_paper.Count >= PaperLimit) break;
                     if (_paper.Any(p => p.Text == trimmed) || _book.Any(b => b.Text == trimmed)) continue;
                     _paper.Add(new PasswordEntry { IsPaper = true, Cipher = Dpapi.Encode(trimmed) });
-                    Save();
                     added++;
                 }
+                // 一次粘贴只落盘一次
+                if (added > 0) Save();
             }
             return added;
         }
@@ -225,13 +239,13 @@ namespace UZIP2.Services
 
         public void ReportResult(string passwordUsed, bool success)
         {
-            if (string.IsNullOrEmpty(passwordUsed)) return;
+            if (string.IsNullOrEmpty(passwordUsed) || !success) return;
             lock (_sync)
             {
                 var entry = _book.FirstOrDefault(b => b.Text == passwordUsed)
                          ?? _paper.FirstOrDefault(p => p.Text == passwordUsed);
-                if (entry != null && success)
-                    entry.SuccessCount++;
+                if (entry == null) return;
+                entry.SuccessCount++;
                 Save();
             }
         }

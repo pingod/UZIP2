@@ -113,5 +113,50 @@ namespace UZIP2.Tests
             Assert.Equal("migrated", reloaded.Book[0].Text);
             Assert.Equal(3, reloaded.Book[0].SuccessCount);
         }
+
+        [Fact]
+        public void Cached_Text_Follows_Both_Ways()
+        {
+            var entry = new PasswordEntry { Cipher = Dpapi.Encode("first") };
+            Assert.Equal("first", entry.Text);
+            Assert.Equal("first", entry.Text);      // 第二次走缓存
+            entry.Text = "second";
+            Assert.Equal("second", entry.Text);     // 改完不能还吐旧值
+            entry.Cipher = Dpapi.Encode("third");
+            Assert.Equal("third", entry.Text);      // 直接换密文也要重解
+        }
+
+        [Fact]
+        public void ReportResult_Only_Writes_When_It_Actually_Changed()
+        {
+            var svc = NewService();
+            svc.AddBook("论坛A", "hit");
+            int saves = 0;
+            svc.Changed += () => saves++;
+
+            svc.ReportResult("miss", true);     // 不在库里
+            svc.ReportResult("hit", false);     // 失败不改计数
+            svc.ReportResult("", true);
+            Assert.Equal(0, saves);
+
+            svc.ReportResult("hit", true);
+            Assert.Equal(1, saves);
+            Assert.Equal(1, NewService().Book[0].SuccessCount);
+        }
+
+        [Fact]
+        public void PasteToPaper_Writes_Once_Per_Paste()
+        {
+            var svc = NewService();
+            int saves = 0;
+            svc.Changed += () => saves++;
+
+            Assert.Equal(3, svc.PasteToPaper("a\nb\nc\n"));
+            Assert.Equal(1, saves);
+            Assert.Equal(3, NewService().Paper.Count);
+
+            Assert.Equal(0, svc.PasteToPaper("a\na\n"));   // 全重复: 不落盘
+            Assert.Equal(1, saves);
+        }
     }
 }
