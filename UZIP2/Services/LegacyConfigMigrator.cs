@@ -98,7 +98,8 @@ namespace UZIP2.Services
                 var paper = CollectEntries(pageMap, "PWPaper"); // v2.22 遗留: 纯数字键
                 if (paper.Count == 0)
                     foreach (var kv in pageMap)
-                        if (IsPureDigits(kv.Key)) paper.Add(new PasswordEntry { Cipher = kv.Value ?? "" });
+                        if (IsPureDigits(kv.Key) && !string.IsNullOrEmpty(kv.Value))
+                            paper.Add(new PasswordEntry { Cipher = kv.Value });
 
                 ApplyScores(book, noteMap, "PWNote");
                 ApplyScores(paper, pageMap, "PWPaper");

@@ -125,5 +125,38 @@ namespace UZIP2.Tests
             var r = LegacyConfigMigrator.TryMigrate(_dir, settings, passwords);
             Assert.False(r.Performed);
         }
+
+        // 真实旧配置形态: 密码本槽位尾部留空、密码纸用纯数字键且含空槽
+        [Fact]
+        public void Empty_Legacy_Slots_Are_Not_Counted_As_Entries()
+        {
+            File.WriteAllText(Path.Combine(_dir, "UZip.config"), MainConfig);
+            File.WriteAllText(Path.Combine(_dir, "PasswordNote.config"),
+                @"<?xml version=""1.0"" encoding=""utf-8""?>
+<configuration><appSettings>
+  <add key=""PWNote0"" value=""book-a"" />
+  <add key=""PWNote1"" value=""book-b"" />
+  <add key=""PWNote2"" value="""" />
+  <add key=""PWNote3"" value=""book-c"" />
+</appSettings></configuration>");
+            File.WriteAllText(Path.Combine(_dir, "PasswordPage.config"),
+                @"<?xml version=""1.0"" encoding=""utf-8""?>
+<configuration><appSettings>
+  <add key=""0"" value=""paper-a"" />
+  <add key=""1"" value="""" />
+</appSettings></configuration>");
+
+            var settings = new SettingsService(_dir, null);
+            var passwords = new PasswordService(_dir, settings);
+            var result = LegacyConfigMigrator.TryMigrate(_dir, settings, passwords);
+
+            Assert.True(result.Success, result.Reason);
+            Assert.Equal("迁移完成: 密码本 2 条, 密码纸 1 条", result.Reason);
+
+            var reloaded = new PasswordService(_dir, settings);
+            // 空槽之前的条目保留；空槽之后的 PWNote3 因旧版按连续槽位存储而不可达
+            Assert.Equal(new[] { "book-a", "book-b" }, reloaded.Book.Select(b => b.Text).OrderBy(x => x));
+            Assert.Equal("paper-a", Assert.Single(reloaded.Paper).Text);
+        }
     }
 }
