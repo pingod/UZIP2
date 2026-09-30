@@ -44,6 +44,9 @@ namespace UZIP2.Models
         public bool MiniPuck { get; set; }
         public double PuckLeft { get; set; } = -1;
         public double PuckTop { get; set; } = -1;
+        // 监听目录: 下载工具把包丢进去就自动解压（写完才动手，不递归子目录）
+        public bool WatchEnabled { get; set; }
+        public string WatchFolder { get; set; } = "";
         // 并行作业数(改完即时生效，缩小只限制新作业)。实测 8×20 MB: 串行 712 ms → 8 路 122 ms。
         public int ParallelExtract { get; set; } = 3;
         public int ParallelCompress { get; set; } = 2;

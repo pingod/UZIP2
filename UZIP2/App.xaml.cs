@@ -59,6 +59,7 @@ namespace UZIP2
             services.AddSingleton<ArchiveWorker>();
             services.AddSingleton<ClipboardService>();
             services.AddSingleton<HotKeyService>();
+            services.AddSingleton<WatchFolderService>();
             services.AddSingleton<TrayService>();
             services.AddSingleton<HomeViewModel>();
             services.AddSingleton<SettingsViewModel>();
@@ -86,6 +87,11 @@ namespace UZIP2
             var startupFiles = e.Args.Where(File.Exists).ToArray();
             if (startupFiles.Length > 0)
                 Services.GetRequiredService<ArchiveWorker>().EnqueueExtract(startupFiles);
+
+            // 监听目录跟随设置即时生效
+            var watcher = Services.GetRequiredService<WatchFolderService>();
+            settings.Changed += _ => Dispatcher.Invoke(watcher.Apply);
+            watcher.Apply();
         }
 
         private void OnExit(object sender, ExitEventArgs e)

@@ -164,6 +164,25 @@ namespace UZIP2.Shell.Pages
                     sw.IsChecked = true;
         }
 
+        void OnBrowseWatchFolder(object sender, RoutedEventArgs e)
+        {
+            using var dlg = new System.Windows.Forms.FolderBrowserDialog
+            {
+                Description = "选择要监听的下载文件夹"
+            };
+            var cur = Vm.Read("WatchFolder") as string;
+            if (!string.IsNullOrEmpty(cur) && System.IO.Directory.Exists(cur)) dlg.SelectedPath = cur;
+            if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+            Vm.SaveProperty("WatchFolder", dlg.SelectedPath);
+            Vm.SaveProperty("WatchEnabled", true);
+            foreach (var tb in Logical(this).OfType<TextBox>())
+                if (tb.Tag is string tw && tw == "WatchFolder")
+                    tb.Text = dlg.SelectedPath;
+            foreach (var sw in Logical(this).OfType<ToggleSwitch>())
+                if (sw.Tag is string ts && ts == "WatchEnabled")
+                    sw.IsChecked = true;
+        }
+
         void OnOpenLog(object sender, RoutedEventArgs e)
         {
             var path = App.Services.GetRequiredService<IFileLogger>().LatestLogPath;

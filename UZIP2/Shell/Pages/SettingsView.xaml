@@ -187,6 +187,26 @@
                 </StackPanel>
             </ui:CardExpander>
 
+            <!-- 监听目录 -->
+            <ui:CardExpander Header="监听目录" Margin="0,0,0,10" IsExpanded="False">
+                <StackPanel>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="自动解压监听目录" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="WatchEnabled" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="监听的文件夹" />
+                        <ui:TextBox Grid.Column="1" Tag="WatchFolder" LostFocus="OnTextChanged" />
+                        <ui:Button Grid.Column="2" Content="浏览" Margin="8,0,0,0" Click="OnBrowseWatchFolder" />
+                    </Grid>
+                    <TextBlock Text="下载工具把压缩包写进这个文件夹就会自动解压；只监听该层，未写完的文件会等落盘后再处理。"
+                               FontSize="11" Margin="0,2,0,4" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                </StackPanel>
+            </ui:CardExpander>
+
             <!-- 压缩 -->
             <ui:CardExpander Header="压缩" Margin="0,0,0,10" IsExpanded="False">
                 <StackPanel>

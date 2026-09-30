@@ -35,6 +35,7 @@ namespace UZIP2.Services
         private readonly Dictionary<long, CancellationTokenSource> _runners = new Dictionary<long, CancellationTokenSource>();
         private readonly HashSet<string> _handledTargets = new HashSet<string>();
         private readonly object _sync = new object();
+        private readonly System.Windows.Threading.Dispatcher _dispatcher;
         private long _seq;
         private int _active;
         private int _pending;
@@ -62,6 +63,7 @@ namespace UZIP2.Services
             _logger = logger;
             _compressLog = compressLog ?? new CompressLogService(settings.ConfigDirectory);
             _jobsView = new ReadOnlyObservableCollection<JobEntry>(_jobs);
+            _dispatcher = System.Windows.Application.Current?.Dispatcher;
             try { BindingOperations.EnableCollectionSynchronization(_jobs, _sync); } catch { }
 
             var s = settings.Current;
@@ -115,7 +117,15 @@ namespace UZIP2.Services
             {
                 job.Id = ++_seq;
                 job.Status = JobStatus.Queued;
-                _jobs.Add(job);
+            }
+            // 绑定到 UI 后这个集合只能在调度线程改（监听目录、多级解压都从后台线程入队）
+            if (_dispatcher == null || _dispatcher.CheckAccess())
+            {
+                lock (_sync) _jobs.Add(job);
+            }
+            else
+            {
+                _dispatcher.Invoke(() => { lock (_sync) _jobs.Add(job); });
             }
             Enqueue(job);
         }

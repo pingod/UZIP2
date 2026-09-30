@@ -24,6 +24,8 @@ namespace UZIP2.ViewModel
         private readonly PasswordService _passwords;
         private readonly ClipboardService _clipboard;
         private readonly HashSet<long> _autoOpened = new HashSet<long>();
+        private readonly Dispatcher _ui = System.Windows.Application.Current?.Dispatcher
+            ?? Dispatcher.CurrentDispatcher;
 
         public HomeViewModel(ArchiveWorker worker, ISettingsService settings, SevenZipClient zip,
             PasswordService passwords, ClipboardService clipboard)
@@ -36,8 +38,7 @@ namespace UZIP2.ViewModel
             _mode = settings.Current.AppMode;
             _sevenZipMissing = zip.SevenZipPath == null;
             _paperCount = passwords.Paper.Count;
-            passwords.Changed += () => Dispatcher.CurrentDispatcher.Invoke(() =>
-                PaperCount = passwords.Paper.Count);
+            passwords.Changed += () => _ui.Invoke(() => PaperCount = passwords.Paper.Count);
             ((INotifyCollectionChanged)_worker.Jobs).CollectionChanged += OnJobsChanged;
             foreach (var job in _worker.Jobs) HookJob(job);
         }
