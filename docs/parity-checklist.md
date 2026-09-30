@@ -50,3 +50,18 @@
 | N13 | 校验面板：SHA-256 + `.sfv` / `.md5` / `.sha256` 旁挂逐条核对（含分卷缺失、未收录） | 测试：`ChecksumServiceTests`；实测：离屏渲染快照核对四种状态色与图标 |
 | N14 | 检查更新：启动至多一天问一次 GitHub Releases，可关可手动，失败静默；代理优先读 `HTTP(S)_PROXY` | 测试：`UpdateServiceTests`；实测：带代理环境变量启动后 `settings.json` 写入 `latestSeenVersion` |
 | N15 | 密码本明文按密文缓存，且只在真正改动时写 `passwords.json` | 测试：`PasswordServiceTests`（`Changed` 次数即落盘次数） |
+
+## v3.2 命令行 CLI（全新入口）
+
+基线：`dotnet test` 385/385 通过（2026-10-01）。CLI 复用 GUI 同一套服务，headless 运行。验证方式：**测试** = `UZIP2.Tests/CliParserTests` + `CliRunnerTests`（真实 7z.exe）；**实测** = 从 Git Bash 直接跑 `bin/Release/net8.0-windows/UZIP2.exe <命令>` 核对退出码与输出。
+
+| # | 能力 | 证据 |
+|---|------|------|
+| C1 | 显式命令词才进 CLI；`--extract`/`--compress`/`--register-shell`/裸文件路径仍走 GUI/单实例 | 测试：`CliParserTests.IsCli_*`（命令词 true、菜单开关 false） |
+| C2 | `list`/`test`/`extract`：`-o`/`--here`/`--password`/`--auto`/`--entries`/`--cover` | 测试：`CliRunnerTests` 的 compress→list→extract 往返、`--here`、加密需密码、`--entries` 只解选中项 |
+| C3 | `compress`：`-o`/`--name`/`--type`/`--level`/`--password`/`--volume`/`--solid`/`--threads`/`--headers`/`--exclude`/`--delete-source`，成功写压缩日志 | 测试：`CliRunnerTests` + `Usage`；实测：`compress --name pack.zip` 产出可 `list` 的包 |
+| C4 | `checksum`：SHA-256 展示 / `--verify` / `--write` | 测试：`CliRunnerTests.Checksum_*`（写入→核对→篡改退出 1）；实测：`--write` 出 `.sha256`，`--verify` OK |
+| C5 | `vault` 子命令 + `config show/get/set` + `log compress/app` + `shell register/unregister/status` + `watch once` + `update` | 测试：`CliRunnerTests` 各子命令；实测：`config get/set Theme`、`shell status`、`log compress` |
+| C6 | 退出码 `0/1/2`（操作失败/用法错误），`--json` 结构化输出 | 测试：`CliRunnerTests`（缺文件→2、错误密码→1、未知键→1）；实测：`list`（无包）退出 2 |
+| C7 | 安全：`vault list`/`log compress` 默认脱敏，`--show-passwords` 才还原；错误报告不含密码 | 测试：`CliRunnerTests`（vault 掩码 + 导出件不含明文/口令 + 日志默认脱敏）；实测：`vault list` 无值、`--show-passwords` 见值、`log compress` 显示 `***` |
+| C8 | WinExe 控制台接管 + 进程退出：`AttachConsole` 输出、跑完 `Environment.Exit(code)`、headless 作业放线程池避开 UI 线程死锁 | 实测：Git Bash 下 `version`/`compress`/`checksum` 等即时返回并给出正确退出码（修复前 await 类命令挂死、`Shutdown()` 不终止进程） |

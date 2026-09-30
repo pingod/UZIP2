@@ -46,6 +46,18 @@ namespace UZIP2.Services
             return HashFile(path, sha, progress, ct);
         }
 
+        // CLI 写旁挂校验文件用: 支持 sha256/sha1/md5/crc32，返回小写十六进制。
+        public static string Compute(string path, string algorithm, CancellationToken ct = default)
+        {
+            switch ((algorithm ?? "sha256").ToLowerInvariant())
+            {
+                case "md5": return HashWith(MD5.Create(), path);
+                case "sha1": return HashWith(SHA1.Create(), path);
+                case "crc32": return Crc32Hex(Crc32File(path, ct));
+                default: return Sha256File(path, null, ct);
+            }
+        }
+
         static string HashFile(string path, HashAlgorithm hash, IProgress<double> progress, CancellationToken ct)
         {
             using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1 << 18);

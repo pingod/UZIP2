@@ -11,7 +11,28 @@
 4. 优化临时缓存文件夹相关代码，每个压缩包有单独的缓存文件夹，并且该文件夹是隐藏的。
 5. 支持多级解压，压缩包内第一层压缩包再次解压，持续符合条件时会循环解压。
 
-## 本次增强（v3.1）
+## 本次增强（v3.2 — 命令行 CLI）
+
+给整个程序加了一层无窗口的命令行入口，`UZIP2.exe <命令> ...` 直接复用 GUI 的同一套内核（`SevenZipClient` / `PasswordService` / `ChecksumService` / `ShellMenuService` …），headless 跑完即退、绝不弹主窗口，方便脚本化、批处理、远程与 CI 调用。
+
+1. **显式命令词才走 CLI**：只有第一个非空参数是命令词（`list`/`test`/`extract`/`compress`/`checksum`/`vault`/`config`/`log`/`shell`/`watch`/`update`/`help`/`version`）或 `--help`/`--version` 时才进入命令行模式。右键菜单与"发送到"用的 `--extract`/`--compress`/`--register-shell`、以及拖进来的裸文件路径仍走原来的 GUI/单实例转发路径，老行为一点没变。
+2. **覆盖全部功能**：
+   - `list` / `test` / `extract`：列出、校验、解压，支持 `-o DIR` / `--here`（解到包所在目录）、`--password` / `--auto`（自动试密码本与密码纸）、`--entries a;b`（只解指定项）、`--cover -aoa`。
+   - `compress`：`-o DIR` / `--name x.7z`、`--type 7z|zip|bz2|gz|tar|wim|xz`、`--level`、`--password`、`--volume 700m|1g`、`--solid on|off`、`--threads N|off`、`--headers`（文件名加密）、`--exclude`、`--delete-source`。压缩成功照常写压缩日志。
+   - `checksum`：展示 SHA-256、`--verify` 旁挂核对、`--write sha256|md5|sha1` 生成校验文件。
+   - `vault`：密码库 `list`/`add`/`remove`/`clear-paper`/`gen`/`export`/`import`。
+   - `config`：`show`/`get <键>`/`set <键> <值>` 读写 `settings.json`。
+   - `log`：`compress [--grep 关键字] [--limit N]` 检索压缩日志，`app [--tail N]` 看运行日志。
+   - `shell`：`register`/`unregister`/`status` 管理 HKCU 右键菜单。
+   - `watch once <目录>`、`update`、`help`、`version`。
+3. **退出码**：`0` 成功 / `1` 操作失败（如错误密码、包损坏）/ `2` 用法错误。`--json` 给结构化输出，便于脚本消费。
+4. **安全边界**：`vault list` 默认不打印明文口令，要 `--show-passwords` 才显示；`log compress` 默认把密码脱敏为 `***`，同样 `--show-passwords` 才还原；错误报告只回原因不回密码。压缩预设继续不含密码。
+5. **WinExe 等待注意**：主程序是 GUI 子系统（`WinExe`）。用 `AttachConsole` 接管父控制台，所以在 Git Bash / 交互终端里能直接看到输出并正常拿到退出码；但若从 cmd/PowerShell 脚本调用且需要**阻塞等待**，请用 `start "" /wait UZIP2.exe ...` 或 `Start-Process UZIP2.exe -ArgumentList ... -Wait`（详见 `UZIP2.exe help`）。
+6. **无窗口挂死修复**：早期版本 `OnStartup` 里调 `Application.Shutdown()` 结束 CLI，但本工程 `ShutdownMode=OnExplicitShutdown` 且无窗口，dispatcher 循环尚未开始，导致进程挂住不退出——改为跑完 `Environment.Exit(code)` 直接终止；并把 headless 作业放到线程池上 `await`，避开 WPF UI 线程 `SynchronizationContext` 在 dispatcher 未泵消息时的经典死锁。
+
+测试从 329 个增加到 **385 个**（新增 `CliParserTests` + `CliRunnerTests` 共 55 个，用真实 7z.exe 端到端验证 compress→list→extract 往返、加密解压需密码、校验篡改检出、密码库加/列/删、导出件不含明文与口令、配置读写、日志脱敏、错误用法退出码）。程序集版本同步到 3.2.0。
+
+## 历史增强（v3.1）
 
 v3.0 换完皮之后的功能增量，逐条验证记录见 [`docs/parity-checklist.md`](docs/parity-checklist.md) 的"v3.1 增量能力"。
 
