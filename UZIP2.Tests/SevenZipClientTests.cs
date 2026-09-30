@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using UZIP2.Models;
@@ -34,6 +36,62 @@ namespace UZIP2.Tests
         public void Classifies_Errors(string output, SevenZipError expected)
         {
             Assert.Equal(expected, SevenZipClient.Classify(output, 1, false));
+        }
+    }
+
+    public class ArchiveListingParsing
+    {
+        // 7z 26.03 `l -slt` 真实片段: 头块有 Path 无 Folder，必须被丢弃
+        const string Sample = @"7-Zip 26.03 (x64)
+
+Listing archive: test.zip
+
+--
+Path = test.zip
+Type = zip
+Physical Size = 936
+
+----------
+Path = a.txt
+Folder = -
+Size = 1
+Packed Size = 1
+Attributes = A
+Method = Store
+Offset = 0
+
+Path = deep
+Folder = +
+Size = 0
+Attributes = D
+
+Path = deep\nest\c[1].dat
+Folder = -
+Size = 2
+Method = Deflate
+
+Errors: 0
+";
+
+        [Fact]
+        public void Keeps_Only_Entry_Blocks()
+        {
+            var e = SevenZipClient.ParseEntries(Sample);
+            Assert.Equal(3, e.Count);
+            Assert.Equal("a.txt", e[0].Path);
+            Assert.False(e[0].IsFolder);
+            Assert.Equal(1, e[0].Size);
+            Assert.Equal("Store", e[0].Method);
+            Assert.True(e[1].IsFolder);
+            Assert.Equal("deep\\nest\\c[1].dat", e[2].Path);
+            Assert.Equal("Deflate", e[2].Method);
+        }
+
+        [Fact]
+        public void Empty_Input_Yields_No_Entries()
+        {
+            Assert.Empty(SevenZipClient.ParseEntries(null));
+            Assert.Empty(SevenZipClient.ParseEntries(""));
         }
     }
 
@@ -126,6 +184,57 @@ namespace UZIP2.Tests
             var fake = Path.Combine(_dir, "fake.bin");
             File.WriteAllText(fake, "definitely not an archive");
             Assert.Equal(EncryptionState.Unknown, await _client.ProbeEncryptionAsync(fake, CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task List_Entries_And_Selective_Extract()
+        {
+            if (!Has7z) return;
+            var root = Path.Combine(_dir, "src");
+            Directory.CreateDirectory(Path.Combine(root, "中文目录"));
+            Directory.CreateDirectory(Path.Combine(root, "deep", "nest"));
+            File.WriteAllText(Path.Combine(root, "a.txt"), "A");
+            File.WriteAllText(Path.Combine(root, "deep", "nest", "c[1].dat"), "BB");
+            File.WriteAllText(Path.Combine(root, "中文目录", "说明.txt"), "CCC");
+
+            var archive = Path.Combine(_dir, "multi.zip");
+            Assert.True((await _client.CompressAsync(new[] { root }, archive, null, 0, 0, false, null, CancellationToken.None)).Success);
+
+            var listing = await _client.ListEntriesAsync(archive, null, CancellationToken.None);
+            Assert.True(listing.Success, listing.Diagnosis);
+            Assert.Contains(listing.Entries, x => x.Path.EndsWith("c[1].dat") && !x.IsFolder);
+            Assert.Contains(listing.Entries, x => x.Path.Contains("中文目录") && !x.IsFolder);
+            Assert.DoesNotContain(listing.Entries, x => x.Path.EndsWith("multi.zip"));
+
+            var pick = listing.Entries
+                .Where(x => !x.IsFolder && x.Path.Contains("中文"))
+                .Select(x => x.Path).ToList();
+            var outDir = Path.Combine(_dir, "out");
+            var r = await _client.ExtractAsync(archive, outDir, null, null, CancellationToken.None, "-aos", pick);
+            Assert.True(r.Success, r.Output);
+
+            var dropped = Directory.GetFiles(outDir, "*", SearchOption.AllDirectories);
+            Assert.Single(dropped);
+            Assert.Equal("说明.txt", Path.GetFileName(dropped[0]));
+        }
+
+        [Fact]
+        public async Task Listing_Encrypted_Archive_Reports_Wrong_Password()
+        {
+            if (!Has7z) return;
+            var src = Path.Combine(_dir, "s.txt");
+            File.WriteAllText(src, "hidden");
+            var archive = Path.Combine(_dir, "enc.7z");
+            Assert.True((await _client.CompressAsync(new[] { src }, archive, "pw", 1, 0, true, null, CancellationToken.None)).Success);
+
+            var bad = await _client.ListEntriesAsync(archive, "nope", CancellationToken.None);
+            Assert.False(bad.Success);
+            Assert.Equal(SevenZipError.WrongPassword, bad.Error);
+            Assert.NotEmpty(bad.Diagnosis);
+
+            var good = await _client.ListEntriesAsync(archive, "pw", CancellationToken.None);
+            Assert.True(good.Success, good.Diagnosis);
+            Assert.Contains(good.Entries, x => x.Path.EndsWith("s.txt"));
         }
 
         [Fact]

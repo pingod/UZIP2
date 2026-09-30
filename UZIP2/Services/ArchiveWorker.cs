@@ -87,10 +87,11 @@ namespace UZIP2.Services
 
         // ---------- 入队 ----------
 
-        public void EnqueueExtract(IReadOnlyList<string> archives, string outputDir = null)
+        public void EnqueueExtract(IReadOnlyList<string> archives, string outputDir = null,
+            List<string> onlyEntries = null)
         {
             foreach (var a in archives)
-                AddJob(new JobEntry { Kind = "Extract", Archive = a, Target = outputDir });
+                AddJob(new JobEntry { Kind = "Extract", Archive = a, Target = outputDir, SelectedEntries = onlyEntries });
         }
 
         public void EnqueueCompress(IReadOnlyList<string> files, string outDir = null)
@@ -169,6 +170,32 @@ namespace UZIP2.Services
             lock (_sync) failed = _jobs.Where(j => j.Status == JobStatus.Failed).ToList();
             foreach (var job in failed) Retry(job, manualPassword);
             return failed.Count;
+        }
+
+        // ---------- 预览 ----------
+
+        // 清单读取不读数据，按解压同款密码链试一遍也很便宜
+        public async Task<ArchiveListing> PreviewAsync(string archive, string password = null, CancellationToken ct = default)
+        {
+            var first = await _zip.ListEntriesAsync(archive, password, ct).ConfigureAwait(false);
+            if (first.Success || first.Error != SevenZipError.WrongPassword) return first;
+
+            var s = _settings.Current;
+            var candidates = new List<string>();
+            candidates.AddRange(_passwords.ExternalPasswords());
+            candidates.AddRange(_passwords.Book.OrderByDescending(e => e.SuccessCount).Select(e => e.Text));
+            candidates.AddRange(_passwords.Paper.Select(e => e.Text));
+            if (s.NameToPassword && !string.IsNullOrEmpty(s.NameFilter))
+                candidates.Add(PasswordFromNameService.SplitString(Path.GetFileNameWithoutExtension(archive), s.NameFilter));
+
+            foreach (var c in Dedup(candidates))
+            {
+                if (ct.IsCancellationRequested) break;
+                if (string.IsNullOrEmpty(c)) continue;
+                var r = await _zip.ListEntriesAsync(archive, c, ct).ConfigureAwait(false);
+                if (r.Success) return r;
+            }
+            return first;
         }
 
         // 测试/命令行模式等待整批完成
@@ -409,8 +436,8 @@ namespace UZIP2.Services
                 if (p.DoneCount > 0) job.Done = p.DoneCount;
             });
 
-            var res = await _zip.ExtractAsync(f, temp.TrimEnd('\\'), usedPassword, progress, ct, s.ExtractCoverMode)
-                .ConfigureAwait(false);
+            var res = await _zip.ExtractAsync(f, temp.TrimEnd('\\'), usedPassword, progress, ct,
+                s.ExtractCoverMode, job.SelectedEntries).ConfigureAwait(false);
             job.Percent = res.Success ? 100 : job.Percent;
             if (res.Success) job.Done = job.Total;
 

@@ -132,16 +132,28 @@ namespace UZIP2.ViewModel
             switch (Mode)
             {
                 case 1:
-                    if (archives.Count > 0) _worker.EnqueueExtract(archives);
+                    if (archives.Count == 1 && _settings.Current.PreviewBeforeExtract) OpenPreview(archives[0]);
+                    else if (archives.Count > 0) _worker.EnqueueExtract(archives);
                     break;
                 case 2:
                     _worker.EnqueueCompress(list);
                     break;
                 default:
-                    if (archives.Count > 0) _worker.EnqueueExtract(archives);
+                    if (archives.Count == 1 && _settings.Current.PreviewBeforeExtract) OpenPreview(archives[0]);
+                    else if (archives.Count > 0) _worker.EnqueueExtract(archives);
                     if (others.Count > 0) _worker.EnqueueCompress(others);
                     break;
             }
+        }
+
+        void OpenPreview(string archive)
+        {
+            var mw = System.Windows.Application.Current?.MainWindow;
+            var win = new UZIP2.Shell.PreviewWindow(archive, null, _worker)
+            {
+                Owner = mw != null && mw.IsVisible ? mw : null
+            };
+            win.ShowDialog();
         }
 
         // ---- 任务卡命令 ----
@@ -150,6 +162,20 @@ namespace UZIP2.ViewModel
         void CancelJob(JobEntry job)
         {
             if (job != null) _worker.Cancel(job);
+        }
+
+        // 解压前先看包内清单，可勾选只解其中几项
+        [RelayCommand]
+        void PreviewJob(JobEntry job)
+        {
+            if (job == null || string.IsNullOrEmpty(job.Archive)) return;
+            if (!File.Exists(job.Archive)) return;
+            var mw = System.Windows.Application.Current?.MainWindow;
+            var win = new UZIP2.Shell.PreviewWindow(job.Archive, job.UsedPassword, _worker)
+            {
+                Owner = mw != null && mw.IsVisible ? mw : null
+            };
+            win.ShowDialog();
         }
 
         [RelayCommand]

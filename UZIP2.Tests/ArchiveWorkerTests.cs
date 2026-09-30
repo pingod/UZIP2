@@ -235,6 +235,49 @@ namespace UZIP2.Tests
             Assert.Equal("late99", job.UsedPassword);
         }
 
+        // ---------- 预览 / 勾选解压 ----------
+
+        [Fact]
+        public async Task Preview_lists_entries_and_finds_password_without_extracting()
+        {
+            var a = MakeFile(_src, "one.bin", 1);
+            var b = MakeFile(_src, "two.bin", 1, 66);
+            var zip = Path.Combine(_root, "pv.zip");
+            Assert.True((await CompressRaw(zip, "pv-pw", 0, a, b)).Success);
+            _passwords.AddBook("pv", "pv-pw");
+
+            var listing = await _worker.PreviewAsync(zip);
+            Assert.True(listing.Success, listing.Diagnosis);
+            Assert.Equal(2, listing.Entries.Count(e => !e.IsFolder));
+            // 预览只读清单，不应产生任何解压输出
+            Assert.Empty(_worker.Jobs);
+            Assert.Equal(0, Directory.GetFiles(_out, "*.bin").Length);
+        }
+
+        [Fact]
+        public async Task Selected_entries_only_extract_the_checked_files()
+        {
+            var dir = Path.Combine(_root, "pvsrc");
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "keep.txt"), "KEEP");
+            File.WriteAllText(Path.Combine(dir, "drop.txt"), "DROP");
+            var zip = Path.Combine(_root, "pick.zip");
+            Assert.True((await CompressRaw(zip, null, 0, dir)).Success);
+
+            var listing = await _worker.PreviewAsync(zip);
+            Assert.True(listing.Success, listing.Diagnosis);
+            var pick = listing.Entries.Where(e => !e.IsFolder && e.Path.EndsWith("keep.txt"))
+                                      .Select(e => e.Path).ToList();
+
+            _worker.EnqueueExtract(new[] { zip }, null, pick);
+            await _worker.WhenIdleAsync();
+
+            Assert.Equal(JobStatus.Success, _worker.Jobs.Single().Status);
+            var dropped = Directory.GetFiles(_out, "*", SearchOption.AllDirectories);
+            Assert.Contains("keep.txt", dropped.Select(Path.GetFileName));
+            Assert.DoesNotContain("drop.txt", dropped.Select(Path.GetFileName));
+        }
+
         // ---------- 压缩 ----------
 
         [Fact]

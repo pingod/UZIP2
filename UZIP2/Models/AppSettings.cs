@@ -37,6 +37,8 @@ namespace UZIP2.Models
         public bool DeleteFinishFile { get; set; }
         public bool DeleteToRecycle { get; set; } = true;
         public bool AutoOpenAfterExtract { get; set; } = true;
+        // 拖入压缩包后先弹清单，勾选后再解压（关闭则直接进队列，保持旧行为）
+        public bool PreviewBeforeExtract { get; set; }
         public bool CleanTempOnStartup { get; set; } = true;
         // 迷你拖拽方块: 桌面只留一个小方块接收拖放
         public bool MiniPuck { get; set; }

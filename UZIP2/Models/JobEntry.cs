@@ -14,6 +14,7 @@ namespace UZIP2.Models
         public string Archive { get; set; }         // 拖入的档案/源文件
         public string Target { get; set; }          // 输出目录(可选覆盖)
         public List<string> Sources { get; set; }   // 合并压缩时的全部来源
+        public List<string> SelectedEntries { get; set; } // 勾选解压时的包内路径，null=全部
 
         internal string ManualPassword;             // Retry 时人工指定的密码
         internal int Depth;                         // 多级解压深度

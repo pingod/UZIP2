@@ -105,6 +105,11 @@
                 <StackPanel>
                     <Grid Style="{StaticResource Row}">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="拖入单个压缩包时先预览包内清单" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="PreviewBeforeExtract" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                         <TextBlock Style="{StaticResource RowLabel}" Text="默认输出位置" />
                         <ComboBox Grid.Column="1" x:Name="ExtractModeBox" Width="200" HorizontalAlignment="Left" Tag="ExtractOutMode" SelectionChanged="OnIntComboChanged">
                             <ComboBoxItem Tag="0">上次使用的目录</ComboBoxItem>

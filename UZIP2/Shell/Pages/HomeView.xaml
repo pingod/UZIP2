@@ -140,6 +140,10 @@
                                    Command="{Binding DataContext.CancelJobCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                    CommandParameter="{Binding}"
                                    Visibility="{Binding Status, Converter={conv:AnyVisibility 'Queued,Running'}}" />
+                        <ui:Button Content="预览" Appearance="Secondary" FontSize="12" Padding="10,4" Margin="0,0,6,0"
+                                   Command="{Binding DataContext.PreviewJobCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                   CommandParameter="{Binding}"
+                                   Visibility="{Binding Kind, Converter={conv:EqualVisibility Extract}}" />
                         <ui:Button Content="重试" Appearance="Secondary" FontSize="12" Padding="10,4" Margin="0,0,6,0"
                                    Command="{Binding DataContext.RetryJobCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                    CommandParameter="{Binding}"
