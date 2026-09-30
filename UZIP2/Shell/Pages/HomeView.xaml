@@ -175,17 +175,26 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <ui:InfoBar Grid.Row="0" Title="未找到 7-Zip" Severity="Error"
-                    IsOpen="{Binding SevenZipMissing, Mode=OneWay}"
-                    Margin="0,0,0,10">
-            <ui:InfoBar.Content>
+        <StackPanel Grid.Row="0">
+            <ui:InfoBar Title="未找到 7-Zip" Severity="Error"
+                        IsOpen="{Binding SevenZipMissing, Mode=OneWay}"
+                        Margin="0,0,0,10">
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                     <TextBlock Text="解压/压缩需要 7z.exe。安装 7-Zip 或手动指定其目录。"
                                VerticalAlignment="Center" Margin="0,0,12,0" />
                     <ui:Button Content="选择 7-Zip 目录" Command="{Binding Locate7zCommand}" />
                 </StackPanel>
-            </ui:InfoBar.Content>
-        </ui:InfoBar>
+            </ui:InfoBar>
+
+            <ui:InfoBar Title="可更新" Severity="Success" IsClosable="False"
+                        IsOpen="{Binding HasUpdate, Mode=OneWay}" Margin="0,0,0,10">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBlock Text="{Binding UpdateMessage}" VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <ui:Button Content="打开发布页" Appearance="Primary" Command="{Binding OpenUpdatePageCommand}" />
+                    <ui:Button Content="不再提示" Margin="8,0,0,0" Command="{Binding DismissUpdateCommand}" />
+                </StackPanel>
+            </ui:InfoBar>
+        </StackPanel>
 
         <Border x:Name="DropCard" Grid.Row="1"
                 Height="120" CornerRadius="10" Margin="0,0,0,14"

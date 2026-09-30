@@ -72,6 +72,14 @@ namespace UZIP2.Shell
             RegisterHotKey(_settings.Current);
             NavView.Navigate(typeof(Pages.HomeView));
             SyncPuck();
+            _ = UpdateNotice();
+        }
+
+        // 更新检查在后台跑，失败静默，不影响启动
+        async System.Threading.Tasks.Task UpdateNotice()
+        {
+            try { await App.Services.GetRequiredService<HomeViewModel>().CheckForUpdateAsync(); }
+            catch (Exception ex) { _logger.Error("更新检查失败", ex); }
         }
 
         // 迷你方块: 设置开着就存在，关掉设置即消失

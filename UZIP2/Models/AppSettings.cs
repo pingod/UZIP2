@@ -21,6 +21,11 @@ namespace UZIP2.Models
         public bool ShowDebug { get; set; }
         public bool DebugMode { get; set; }
 
+        // 更新检查: 启动时最多一天问一次 GitHub Releases，失败静默
+        public bool CheckUpdateOnStartup { get; set; } = true;
+        public System.DateTime LastUpdateCheck { get; set; }
+        public string LatestSeenVersion { get; set; } = "";
+
         public uint HotKeyKey { get; set; }
         public bool HotKeyAlt { get; set; }
         public bool HotKeyShift { get; set; }

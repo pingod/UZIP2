@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -54,6 +55,7 @@ namespace UZIP2.Shell.Pages
                 HotkeyBox.Text = Vm.HotkeyText;
                 UpdateVolumeHint();
                 Detected7zPath.Text = App.Services.GetRequiredService<SevenZipClient>().SevenZipPath ?? "未检测到";
+                CurrentVersionText.Text = UpdateService.CurrentVersion();
                 RefreshShellStatus();
             }
             finally { _loading = false; }
@@ -252,6 +254,28 @@ namespace UZIP2.Shell.Pages
             var win = new CompressLogWindow(App.Services.GetRequiredService<CompressLogService>())
             { Owner = Window.GetWindow(this) };
             win.Show();
+        }
+
+        // ---- 检查更新 ----
+
+        async void OnCheckUpdate(object sender, RoutedEventArgs e)
+        {
+            var home = App.Services.GetRequiredService<HomeViewModel>();
+            CheckUpdateButton.IsEnabled = false;
+            UpdateStatus.Text = "正在检查…";
+            try
+            {
+                var message = await home.CheckForUpdateAsync(force: true);
+                UpdateStatus.Text = message ?? "没问到版本信息：离线、代理不通或已被限流";
+            }
+            catch (Exception ex)
+            {
+                UpdateStatus.Text = "检查失败: " + ex.Message;
+            }
+            finally
+            {
+                CheckUpdateButton.IsEnabled = true;
+            }
         }
 
         // ---- Windows 右键菜单 (HKCU) ----

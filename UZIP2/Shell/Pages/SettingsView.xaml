@@ -509,6 +509,25 @@
                     <TextBlock Text=".NET 8 + WPF-UI；旧版配置自动迁移，旧密码本兼容 DPAPI 加密存储。"
                                TextWrapping="Wrap" FontSize="12"
                                Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4" />
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="当前版本" />
+                        <TextBlock Grid.Column="1" x:Name="CurrentVersionText" VerticalAlignment="Center" FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="启动时检查更新" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="CheckUpdateOnStartup" Click="OnToggleChanged" />
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,6,0,0">
+                        <ui:Button x:Name="CheckUpdateButton" Content="检查更新" Click="OnCheckUpdate" />
+                        <TextBlock x:Name="UpdateStatus" Margin="10,0,0,0" VerticalAlignment="Center" FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <TextBlock Text="只访问 GitHub Releases 的公开接口，不上传任何本地信息；离线或被限流时静默跳过。"
+                               TextWrapping="Wrap" FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}" Margin="0,6,0,0" />
                 </StackPanel>
             </ui:CardExpander>
         </StackPanel>

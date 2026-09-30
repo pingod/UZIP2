@@ -198,6 +198,64 @@ namespace UZIP2.ViewModel
             OpenChecksum(dlg.FileNames);
         }
 
+        // ---- 更新检查 ----
+
+        [ObservableProperty] private string _updateVersion;
+        public bool HasUpdate => !string.IsNullOrEmpty(UpdateVersion);
+        public string UpdateMessage => string.IsNullOrEmpty(UpdateVersion) ? ""
+            : $"发现新版本 UZIP {UpdateVersion}（当前 {UpdateService.CurrentVersion()}）。";
+
+        partial void OnUpdateVersionChanged(string value)
+        {
+            OnPropertyChanged(nameof(HasUpdate));
+            OnPropertyChanged(nameof(UpdateMessage));
+        }
+
+        // 一天问一次就够；force 用于设置页上的"检查更新"按钮
+        public static bool ShouldCheck(bool enabled, DateTime last, DateTime now)
+            => enabled && (last == default || (now - last).TotalHours >= 20);
+
+        // 返回一行给人看的结果（设置页用）；null = 没问到，启动路径直接忽略
+        public async System.Threading.Tasks.Task<string> CheckForUpdateAsync(bool force = false)
+        {
+            var s = _settings.Current;
+            if (!force && !ShouldCheck(s.CheckUpdateOnStartup, s.LastUpdateCheck, DateTime.Now)) return null;
+            _settings.Save(x => x.LastUpdateCheck = DateTime.Now);
+
+            var info = await UpdateService.CheckAsync().ConfigureAwait(false);
+            if (info == null) return null;
+
+            string current = UpdateService.CurrentVersion();
+            if (!UpdateService.IsNewer(current, info.Version))
+            {
+                _settings.Save(x => x.LatestSeenVersion = info.Version);
+                return $"已是最新版本（{current}）";
+            }
+            // 用户点过"不再提示"的这个版本不再打扰，等下一个版本
+            if (string.Equals(info.Version, s.LatestSeenVersion, StringComparison.OrdinalIgnoreCase))
+                return $"新版 {info.Version} 已被你忽略";
+            _ui.Invoke(() => UpdateVersion = info.Version);
+            return $"发现新版本 {info.Version}，主页顶部已提示";
+        }
+
+        [RelayCommand]
+        void DismissUpdate()
+        {
+            var seen = UpdateVersion;
+            UpdateVersion = null;
+            if (!string.IsNullOrEmpty(seen)) _settings.Save(x => x.LatestSeenVersion = seen);
+        }
+
+        [RelayCommand]
+        void OpenUpdatePage()
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(UpdateService.ReleasePageUrl) { UseShellExecute = true });
+            }
+            catch { }
+        }
+
         // ---- 任务卡命令 ----
 
         [RelayCommand]
