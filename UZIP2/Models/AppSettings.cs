@@ -13,12 +13,12 @@ namespace UZIP2.Models
         // 0=自动 1=仅解压 2=仅压缩 (与旧 AppMode 编号一致)
         public int AppMode { get; set; }
         public string Theme { get; set; } = "System"; // System|Light|Dark
+        // 主页任务列表排序: 0=加入顺序 1=最新在前 2=按状态 3=按文件名
+        public int JobSort { get; set; }
 
         public bool WindowOnTop { get; set; } = true;
         public bool UseHotKey { get; set; }
         public bool TrimSpace { get; set; }
-        public bool ResultWindow { get; set; }
-        public bool ShowDebug { get; set; }
         public bool DebugMode { get; set; }
 
         // 更新检查: 启动时最多一天问一次 GitHub Releases，失败静默
@@ -36,7 +36,6 @@ namespace UZIP2.Models
 
         // 解压
         public int ExtractOutMode { get; set; }
-        public int ExtractOutModePop { get; set; }
         public string ExtractCoverMode { get; set; } = "-aos"; // 7z 覆盖开关原值: -aoa 覆盖 -aos 跳过 -aou 重命名新 -aot 重命名旧
         public bool ExtractUnknow { get; set; } = true;
         public bool DeleteFinishFile { get; set; }
@@ -65,7 +64,6 @@ namespace UZIP2.Models
 
         // 压缩
         public int CompressOutMode { get; set; }
-        public int CompressOutModePop { get; set; }
         public int CompressType { get; set; }        // 旧 CompressTypes 枚举: 0zip 1_7z 2bz 3gz 4tar 5wim 6xz
         public int CompressLevel { get; set; } = 5;  // 旧 CompressLevels: 0/1/3/5/7/9
         // 分卷大小: 数字+可选 b/k/m/g，如 "700m"、"1g"。空=不分卷。
@@ -91,7 +89,6 @@ namespace UZIP2.Models
         public int ReadPasswordMode { get; set; }
         public string PWUrl { get; set; } = "";
         public int PasswordMode { get; set; }
-        public int PasswordModePop { get; set; }
         public List<string> InternalPasswords { get; set; } = new List<string>
         {
             "password1", "password2", "password3", "password4", "password5", "password6"

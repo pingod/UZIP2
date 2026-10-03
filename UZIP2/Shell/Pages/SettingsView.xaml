@@ -52,11 +52,6 @@
                     </Grid>
                     <Grid Style="{StaticResource Row}">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Style="{StaticResource RowLabel}" Text="显示独立结果窗口" />
-                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="ResultWindow" Click="OnToggleChanged" />
-                    </Grid>
-                    <Grid Style="{StaticResource Row}">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                         <TextBlock Style="{StaticResource RowLabel}" Text="迷你拖拽方块（桌面只留一枚方块接收拖放）" />
                         <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="MiniPuck" Click="OnToggleChanged" />
                     </Grid>
@@ -506,7 +501,7 @@
             <ui:CardExpander Header="关于" Margin="0,0,0,16" IsExpanded="False">
                 <StackPanel>
                     <TextBlock Text="UZIP · Fluent 重构版" FontWeight="SemiBold" Margin="0,4" />
-                    <TextBlock Text=".NET 8 + WPF-UI；旧版配置自动迁移，旧密码本兼容 DPAPI 加密存储。"
+                    <TextBlock Text=".NET 8 + WPF-UI；密码本使用 DPAPI 加密存储（绑定当前 Windows 用户）。"
                                TextWrapping="Wrap" FontSize="12"
                                Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4" />
                     <Grid Style="{StaticResource Row}">

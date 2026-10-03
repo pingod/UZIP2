@@ -24,8 +24,12 @@ namespace UZIP2.ViewModel
         private readonly PasswordService _passwords;
         private readonly ClipboardService _clipboard;
         private readonly HashSet<long> _autoOpened = new HashSet<long>();
+        private readonly ObservableCollection<JobEntry> _jobs = new ObservableCollection<JobEntry>(); // 排序后的显示镜像
         private readonly Dispatcher _ui = System.Windows.Application.Current?.Dispatcher
             ?? Dispatcher.CurrentDispatcher;
+
+        // 终态卡片自动回收上限：长会话连跑几百个文件也不让列表无限堆积
+        const int TerminalKeepCap = 200;
 
         public HomeViewModel(ArchiveWorker worker, ISettingsService settings, SevenZipClient zip,
             PasswordService passwords, ClipboardService clipboard)
@@ -36,30 +40,62 @@ namespace UZIP2.ViewModel
             _passwords = passwords;
             _clipboard = clipboard;
             _mode = settings.Current.AppMode;
+            var sort = settings.Current.JobSort;
+            _sortMode = sort >= 0 && sort <= JobOrder.ByName ? sort : JobOrder.AddOrder;
             _sevenZipMissing = zip.SevenZipPath == null;
             _paperCount = passwords.Paper.Count;
             passwords.Changed += () => _ui.Invoke(() => PaperCount = passwords.Paper.Count);
+            _jobs.CollectionChanged += (s, e) => OnPropertyChanged(nameof(HasJobs));
             ((INotifyCollectionChanged)_worker.Jobs).CollectionChanged += OnJobsChanged;
             foreach (var job in _worker.Jobs) HookJob(job);
+            RebuildMirror();
+            RefreshSummary();
         }
 
-        public ReadOnlyObservableCollection<JobEntry> Jobs => _worker.Jobs;
+        // 主页列表是 _worker.Jobs 的排序镜像；绑定名保持不变
+        public ObservableCollection<JobEntry> Jobs => _jobs;
+        public bool HasJobs => _jobs.Count > 0;
+
+        public string[] SortOptions { get; } = JobOrder.Names;
 
         [ObservableProperty] private int _mode;
         [ObservableProperty] private string _previewText = "";
         [ObservableProperty] private bool _previewIsWarning;
-        [ObservableProperty] private bool _isDragging;
         [ObservableProperty] private bool _sevenZipMissing;
         [ObservableProperty] private int _paperCount;
         [ObservableProperty] private int _failedCount;
+        [ObservableProperty] private int _finishedCount;
+        [ObservableProperty] private int _activeCount;
+        [ObservableProperty] private int _sortMode;
 
         public bool HasFailures => FailedCount > 0;
+        public bool HasFinished => FinishedCount > 0;
+        public bool HasActive => ActiveCount > 0;
 
         partial void OnFailedCountChanged(int value)
         {
             OnPropertyChanged(nameof(HasFailures));
             RetryAllFailedCommand.NotifyCanExecuteChanged();
             ExportFailuresCommand.NotifyCanExecuteChanged();
+            ClearFailedCommand.NotifyCanExecuteChanged();
+        }
+
+        partial void OnFinishedCountChanged(int value)
+        {
+            OnPropertyChanged(nameof(HasFinished));
+            ClearFinishedCommand.NotifyCanExecuteChanged();
+        }
+
+        partial void OnActiveCountChanged(int value)
+        {
+            OnPropertyChanged(nameof(HasActive));
+            CancelAllJobsCommand.NotifyCanExecuteChanged();
+        }
+
+        partial void OnSortModeChanged(int value)
+        {
+            _settings.Save(s => s.JobSort = value);
+            RebuildMirror();
         }
 
         [RelayCommand]
@@ -116,7 +152,6 @@ namespace UZIP2.ViewModel
 
         public void ShowPreview(string[] files)
         {
-            IsDragging = true;
             var p = PreviewFor(Mode, files ?? Array.Empty<string>());
             PreviewText = p.Text;
             PreviewIsWarning = p.IsWarning;
@@ -124,7 +159,6 @@ namespace UZIP2.ViewModel
 
         public void ClearPreview()
         {
-            IsDragging = false;
             PreviewText = "";
             PreviewIsWarning = false;
         }
@@ -331,9 +365,24 @@ namespace UZIP2.ViewModel
             if (job != null) _worker.Retry(job);
         }
 
+        // 单卡"移除"：只对终态生效（worker 侧对活动项免疫），历史页不受影响
+        [RelayCommand]
+        void RemoveJob(JobEntry job) => _worker.Remove(job);
+
         // 一次卡多个包失败时，逐个点重试太慢；批量重跑一遍（密码链会重新走）
         [RelayCommand(CanExecute = nameof(HasFailures))]
         void RetryAllFailed() => _worker.RetryAllFailed();
+
+        // 清除按钮只动主页列表，不动历史——历史页仍然可查全部记录
+        [RelayCommand(CanExecute = nameof(HasFinished))]
+        void ClearFinished() =>
+            _worker.RemoveTerminal(j => j.Status == JobStatus.Success || j.Status == JobStatus.Cancelled);
+
+        [RelayCommand(CanExecute = nameof(HasFailures))]
+        void ClearFailed() => _worker.RemoveTerminal(j => j.Status == JobStatus.Failed);
+
+        [RelayCommand(CanExecute = nameof(HasActive))]
+        void CancelAllJobs() => _worker.CancelAll();
 
         [RelayCommand(CanExecute = nameof(HasFailures))]
         void ExportFailures()
@@ -419,43 +468,80 @@ namespace UZIP2.ViewModel
             catch { /* 打开资源管理器失败不影响任务 */ }
         }
 
-        // ---- 批次完成（旧独立结果窗口的数据面） ----
+        // ---- 列表镜像：_jobs 始终保持按 SortMode 排序 ----
 
-        readonly List<JobEntry> _finished = new List<JobEntry>();
+        // 镜像自身的小锁：真实运行时所有镜像操作都编组在 UI 线程（锁永不争用），
+        // 单元测试没有消息泵、动作会内联到后台线程执行，这把锁保证读写不撕裂。
+        private readonly object _mirrorGate = new object();
 
-        public event Action<IReadOnlyList<JobEntry>> BatchFinished;
-
-        void TrackCompletion(JobEntry job)
+        // UI 线程直接执行；单元测试没有消息泵，也直接执行；只有真实后台线程才编组
+        void Post(Action action)
         {
-            switch (job.Status)
+            if (_ui.CheckAccess() || System.Windows.Application.Current == null)
             {
-                case JobStatus.Success:
-                case JobStatus.Failed:
-                case JobStatus.Cancelled:
-                    if (!_finished.Contains(job)) _finished.Add(job);
-                    break;
+                action();
+                return;
             }
-            if (_finished.Count == 0) return;
-            foreach (var j in _worker.Jobs)
-                if (j.Status == JobStatus.Queued || j.Status == JobStatus.Running) return;
-            var batch = _finished.ToArray();
-            _finished.Clear();
-            BatchFinished?.Invoke(batch);
+            _ui.BeginInvoke(action);
         }
 
-        // ---- 成功后自动打开输出目录 ----
+        void RebuildMirror() => Post(RebuildMirrorCore);
 
-        void OnJobsChanged(object sender, NotifyCollectionChangedEventArgs e)
+        void RebuildMirrorCore()
         {
-            if (e.NewItems != null)
-                foreach (JobEntry job in e.NewItems) HookJob(job);
-            if (e.OldItems != null)
-                foreach (JobEntry job in e.OldItems) job.PropertyChanged -= OnJobPropertyChanged;
-            RefreshFailedCount();
+            var sorted = _worker.Jobs.ToList();
+            sorted.Sort((a, b) => JobOrder.Compare(a, b, SortMode));
+            lock (_mirrorGate)
+            {
+                _jobs.Clear();
+                foreach (var j in sorted) _jobs.Add(j);
+            }
         }
+
+        void RepositionJob(JobEntry job) => Post(() =>
+        {
+            lock (_mirrorGate)
+            {
+                int cur = _jobs.IndexOf(job);
+                if (cur < 0) return;
+                int target = JobOrder.InsertIndex(_jobs, job, SortMode, cur);
+                if (target != cur) _jobs.Move(cur, target);
+            }
+        });
+
+        void OnJobsChanged(object sender, NotifyCollectionChangedEventArgs e) => Post(() =>
+        {
+            lock (_mirrorGate)
+            {
+                switch (e.Action)
+                {
+                    case NotifyCollectionChangedAction.Add:
+                        foreach (JobEntry job in e.NewItems)
+                        {
+                            HookJob(job);
+                            if (!_jobs.Contains(job))
+                                _jobs.Insert(JobOrder.InsertIndex(_jobs, job, SortMode), job);
+                        }
+                        break;
+                    case NotifyCollectionChangedAction.Remove:
+                        foreach (JobEntry job in e.OldItems)
+                        {
+                            job.PropertyChanged -= OnJobPropertyChanged;
+                            _jobs.Remove(job);
+                        }
+                        break;
+                    default:
+                        foreach (var job in _worker.Jobs) HookJob(job);
+                        RebuildMirrorCore();
+                        break;
+                }
+            }
+            RefreshSummaryCore();
+        });
 
         void HookJob(JobEntry job)
         {
+            job.PropertyChanged -= OnJobPropertyChanged;   // 防重复订阅
             job.PropertyChanged += OnJobPropertyChanged;
         }
 
@@ -463,28 +549,42 @@ namespace UZIP2.ViewModel
         {
             if (e.PropertyName != nameof(JobEntry.Status)) return;
             var job = (JobEntry)sender;
-            TrackCompletion(job);
-            if (job.Status == JobStatus.Failed || job.Status == JobStatus.Success
-                || job.Status == JobStatus.Cancelled)
-                RefreshFailedCount();
+
+            if (job.IsTerminal)
+                Post(() => _worker.TrimTerminal(TerminalKeepCap));   // 终态卡片自动回收
+            if (SortMode == JobOrder.StatusFirst)
+                RepositionJob(job);                                  // "按状态"下状态一变就要挪位置
+
+            RefreshSummary();
+
             if (job.Status != JobStatus.Success) return;
             if (!_settings.Current.AutoOpenAfterExtract) return;
             if (string.IsNullOrEmpty(job.OutputDir) || !_autoOpened.Add(job.Id)) return;
             OpenInExplorer(job.OutputDir);
         }
 
-        void RefreshFailedCount()
+        // 三个计数是按钮可用性与横幅的唯一数据源，全部在 UI 线程刷新
+        void RefreshSummary() => Post(RefreshSummaryCore);
+
+        void RefreshSummaryCore()
         {
-            // 状态变更来自后台作业线程：计数和命令可用性都只能在 UI 线程动
-            if (!_ui.CheckAccess())
+            int failed = 0, finished = 0, active = 0;
+            lock (_mirrorGate)
             {
-                _ui.BeginInvoke(new Action(RefreshFailedCount));
-                return;
+                foreach (var j in _jobs)
+                {
+                    switch (j.Status)
+                    {
+                        case JobStatus.Failed: failed++; break;
+                        case JobStatus.Success:
+                        case JobStatus.Cancelled: finished++; break;
+                        default: active++; break;
+                    }
+                }
             }
-            int n = 0;
-            foreach (var j in Jobs)
-                if (j.Status == JobStatus.Failed) n++;
-            FailedCount = n;
+            FailedCount = failed;
+            FinishedCount = finished;
+            ActiveCount = active;
         }
     }
 }

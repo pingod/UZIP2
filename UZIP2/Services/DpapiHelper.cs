@@ -2,12 +2,12 @@ using System;
 using System.Text;
 using System.Security.Cryptography;
 
-namespace UZIP2
+namespace UZIP2.Services
 {
     /// <summary>
     /// 用 Windows DPAPI (ProtectedData) 对密码做对称加密。
     /// 密文与当前 Windows 用户账户绑定，其他账户无法解密。
-    /// 存储时统一加 "DPAPI:" 前缀，用于和旧版明文配置区分。
+    /// 存储时统一加 "DPAPI:" 前缀。
     /// </summary>
     public static class DpapiHelper
     {
@@ -15,7 +15,7 @@ namespace UZIP2
         private static readonly byte[] entropy = Encoding.UTF8.GetBytes("UZIP2.v1");
 
         /// <summary>把明文密码加密成可落盘的字符串（带 DPAPI: 前缀）。失败时回退返回明文。</summary>
-        public static string Encrypt(string plain)
+        public static string Encode(string plain)
         {
             if (string.IsNullOrEmpty(plain)) return plain;
             try

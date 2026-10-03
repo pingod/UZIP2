@@ -15,7 +15,7 @@ namespace UZIP2.Services
     public sealed class PasswordEntry
     {
         public string Name { get; set; } = "";
-        public string Cipher { get; set; } = "";   // DPAPI base64（Dpapi.Encode 格式，含 "DPAPI:" 前缀）
+        public string Cipher { get; set; } = "";   // DPAPI base64（DpapiHelper.Encode 格式，含 "DPAPI:" 前缀）
         public int SuccessCount { get; set; }
         public bool IsPaper { get; set; }
 
@@ -31,12 +31,12 @@ namespace UZIP2.Services
             {
                 if (_plainFor != Cipher)
                 {
-                    _plain = Dpapi.Decode(Cipher);
+                    _plain = DpapiHelper.Decode(Cipher);
                     _plainFor = Cipher;
                 }
                 return _plain;
             }
-            set => Cipher = Dpapi.Encode(value);
+            set => Cipher = DpapiHelper.Encode(value);
         }
     }
 
@@ -103,7 +103,7 @@ namespace UZIP2.Services
                 foreach (var e in entries)
                 {
                     e.IsPaper = false;
-                    e.Cipher = Dpapi.Encode(e.Text); // 明文条目自动加密
+                    e.Cipher = DpapiHelper.Encode(e.Text); // 明文条目自动加密
                     if (!string.IsNullOrEmpty(e.Text) && !_book.Any(b => b.Text == e.Text))
                         _book.Add(e);
                 }
@@ -118,7 +118,7 @@ namespace UZIP2.Services
                 foreach (var e in entries)
                 {
                     e.IsPaper = true;
-                    e.Cipher = Dpapi.Encode(e.Text);
+                    e.Cipher = DpapiHelper.Encode(e.Text);
                     if (!string.IsNullOrEmpty(e.Text) && !_paper.Any(p => p.Text == e.Text))
                         _paper.Add(e);
                 }
@@ -136,7 +136,7 @@ namespace UZIP2.Services
             lock (_sync)
             {
                 if (_book.Any(b => b.Text == plain)) return; // 去重
-                _book.Add(new PasswordEntry { Name = name ?? "", Cipher = Dpapi.Encode(plain) });
+                _book.Add(new PasswordEntry { Name = name ?? "", Cipher = DpapiHelper.Encode(plain) });
                 Save();
             }
         }
@@ -155,7 +155,7 @@ namespace UZIP2.Services
             lock (_sync)
             {
                 entry.Name = name ?? entry.Name;
-                entry.Cipher = Dpapi.Encode(plain);
+                entry.Cipher = DpapiHelper.Encode(plain);
                 Save();
             }
         }
@@ -175,7 +175,7 @@ namespace UZIP2.Services
                     if (trimmed.Length == 0) continue;
                     if (_paper.Count >= PaperLimit) break;
                     if (_paper.Any(p => p.Text == trimmed) || _book.Any(b => b.Text == trimmed)) continue;
-                    _paper.Add(new PasswordEntry { IsPaper = true, Cipher = Dpapi.Encode(trimmed) });
+                    _paper.Add(new PasswordEntry { IsPaper = true, Cipher = DpapiHelper.Encode(trimmed) });
                     added++;
                 }
                 // 一次粘贴只落盘一次

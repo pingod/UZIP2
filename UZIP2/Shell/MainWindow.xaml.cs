@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Drawing;
+using System.Linq;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using UZIP2.Models;
@@ -19,6 +20,9 @@ namespace UZIP2.Shell
         private readonly TrayService _tray;
         private readonly HotKeyService _hotkeys;
         private readonly ClipboardService _clipboard;
+        private readonly ArchiveWorker _worker;
+        private readonly System.Windows.Threading.DispatcherTimer _failTimer;
+        private int _pendingFailures;
         private bool _exiting;
         private uint _registeredVk;
         private bool _registeredAlt, _registeredShift, _registeredCtrl;
@@ -33,6 +37,7 @@ namespace UZIP2.Shell
             _tray = App.Services.GetRequiredService<TrayService>();
             _hotkeys = App.Services.GetRequiredService<HotKeyService>();
             _clipboard = App.Services.GetRequiredService<ClipboardService>();
+            _worker = App.Services.GetRequiredService<ArchiveWorker>();
 
             ApplyTheme(_settings.Current);
             RestoreGeometry(_settings.Current);
@@ -48,22 +53,43 @@ namespace UZIP2.Shell
 
             _clipboard.Info += msg => Dispatcher.Invoke(() => _tray.ShowBalloon("UZIP", msg));
 
-            App.Services.GetRequiredService<HomeViewModel>().BatchFinished += batch =>
+            // 失败提醒：一条气泡汇总这一批失败数。900ms 防抖 + 等批次跑完，
+            // 只在窗口看不见时才打扰（窗口开着就直接看列表）。
+            _failTimer = new System.Windows.Threading.DispatcherTimer
             {
-                try
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        if (!_settings.Current.ResultWindow) return;
-                        new ResultWindow(batch) { Owner = this }.Show();
-                    });
-                }
-                catch (Exception ex) { _logger.Error("结果窗口显示失败", ex); }
+                Interval = TimeSpan.FromMilliseconds(900)
             };
+            _failTimer.Tick += OnFailTimerTick;
+            _worker.JobFinished += OnJobFinished;
 
             SourceInitialized += (s, e) => _hotkeys.Attach(this);
             Loaded += OnLoaded;
             Closing += OnClosing;
+        }
+
+        void OnJobFinished(JobEntry job)
+        {
+            if (job == null || job.Status != JobStatus.Failed) return;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                _pendingFailures++;
+                _failTimer.Stop();
+                _failTimer.Start();
+            }));
+        }
+
+        void OnFailTimerTick(object sender, EventArgs e)
+        {
+            _failTimer.Stop();
+            if (_worker.Jobs.Any(j => j.Status == JobStatus.Queued || j.Status == JobStatus.Running))
+            {
+                _failTimer.Start();   // 批次还没跑完，安静下来再报总数
+                return;
+            }
+            int n = _pendingFailures;
+            _pendingFailures = 0;
+            if (n > 0 && (!IsVisible || WindowState == WindowState.Minimized))
+                _tray.ShowBalloon("UZIP", n + " 个任务失败，详情见主页列表与历史页", error: true);
         }
 
         private void OnLoaded(object sender, RoutedEventArgs e)

@@ -68,10 +68,10 @@ if (-not $SkipSelfContained) {
   Publish @('--self-contained', 'true', '-p:IncludeNativeLibrariesForSelfExtract=true') $ScOut
   $ScZip = Join-Path $OutVer "UZIP-$Ver-win-x64-selfcontained.zip"
   if (Test-Path $ScZip) { Remove-Item $ScZip -Force }
-  Compress-Archive -Path (Join-Path $ScOut 'UZIP2.exe'),
-                       (Join-Path $ScOut 'App.config'),
-                       (Join-Path $ScOut 'UZIP2.dll.config') `
-                   -DestinationPath $ScZip -Force
+  # v3.6 起 App.config / *.dll.config 模板残留已从工程清掉，自包含产物目录里只剩 UZIP2.exe；
+  # 显式枚举目录内文件打包（PS5.1 的 Compress-Archive 对通配 -Path 会在解析阶段出错）。
+  $scFiles = @(Get-ChildItem -Path $ScOut -File | Select-Object -ExpandProperty FullName)
+  Compress-Archive -Path $scFiles -DestinationPath $ScZip -Force
   $Artifacts += $ScZip
 }
 

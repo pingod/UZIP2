@@ -97,17 +97,6 @@ namespace UZIP2.Services
             Changed?.Invoke(_current);
         }
 
-        // 迁移器直接落盘一份完整设置
-        public void ReplaceAll(AppSettings settings)
-        {
-            lock (_sync)
-            {
-                _current = settings;
-                Write(settings);
-            }
-            Changed?.Invoke(settings);
-        }
-
         private void Write(AppSettings settings)
         {
             Directory.CreateDirectory(ConfigDirectory);

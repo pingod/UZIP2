@@ -13,7 +13,23 @@ namespace UZIP2.Shell.Pages
         {
             InitializeComponent();
             DataContext = App.Services.GetRequiredService<HomeViewModel>();
-            Loaded += (s, e) => ApplyModeToRadios();
+            Loaded += (s, e) =>
+            {
+                ApplyModeToRadios();
+                ApplySortToBox();
+            };
+        }
+
+        void ApplySortToBox()
+        {
+            if (Vm == null) return;
+            if (SortBox.SelectedIndex != Vm.SortMode) SortBox.SelectedIndex = Vm.SortMode;
+        }
+
+        void OnSortChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (Vm == null || SortBox.SelectedIndex < 0) return;
+            Vm.SortMode = SortBox.SelectedIndex;
         }
 
         void ApplyModeToRadios()

@@ -185,6 +185,54 @@ namespace UZIP2.Services
             return failed.Count;
         }
 
+        // ---------- 移除 / 回收 ----------
+
+        // 从列表移除匹配的终态作业（活动作业免疫），返回移除数量。
+        public int RemoveTerminal(Func<JobEntry, bool> match)
+        {
+            if (_dispatcher == null || _dispatcher.CheckAccess()) return RemoveTerminalCore(match);
+            return _dispatcher.Invoke(() => RemoveTerminalCore(match));
+        }
+
+        int RemoveTerminalCore(Func<JobEntry, bool> match)
+        {
+            List<JobEntry> doomed;
+            lock (_sync)
+            {
+                doomed = _jobs.Where(j => j.IsTerminal && (match == null || match(j))).ToList();
+                foreach (var j in doomed) _jobs.Remove(j);
+            }
+            return doomed.Count;
+        }
+
+        public bool Remove(JobEntry job) =>
+            job != null && RemoveTerminal(j => ReferenceEquals(j, job)) > 0;
+
+        // 列表瘦身：终态卡片超过 maxKeep 个时裁掉最旧的（_jobs 按加入顺序）
+        public int TrimTerminal(int maxKeep)
+        {
+            if (_dispatcher == null || _dispatcher.CheckAccess()) return TrimTerminalCore(maxKeep);
+            return _dispatcher.Invoke(() => TrimTerminalCore(maxKeep));
+        }
+
+        int TrimTerminalCore(int maxKeep)
+        {
+            int removed = 0;
+            lock (_sync)
+            {
+                int terminal = _jobs.Count(j => j.IsTerminal);
+                foreach (var j in _jobs.ToList())
+                {
+                    if (terminal <= maxKeep) break;
+                    if (!j.IsTerminal) continue;
+                    _jobs.Remove(j);
+                    terminal--;
+                    removed++;
+                }
+            }
+            return removed;
+        }
+
         // ---------- 预览 ----------
 
         // 清单读取不读数据，按解压同款密码链试一遍也很便宜
@@ -242,15 +290,32 @@ namespace UZIP2.Services
                     continue;
                 }
                 await AwaitSlotAsync(isExtract).ConfigureAwait(false);
-                var cts = new CancellationTokenSource();
+
+                // 二次检查：读取队列与占用名额之间有空窗，等待名额期间可能刚被"全部取消"标记。
+                // 漏掉这一步，排队中的下一个作业会在取消生效后又跑起来。
+                CancellationTokenSource cts = null;
                 lock (_sync)
                 {
-                    _runners[job.Id] = cts;
-                    _active++;
-                    if (isExtract) _runExtract++; else _runCompress++;
-                    if (_active > PeakActive) PeakActive = _active;
-                    job.Status = JobStatus.Running;
-                    job.StartedUtc = DateTime.UtcNow;
+                    if (job.CancelRequested)
+                    {
+                        _pending--;
+                    }
+                    else
+                    {
+                        cts = new CancellationTokenSource();
+                        _runners[job.Id] = cts;
+                        _active++;
+                        if (isExtract) _runExtract++; else _runCompress++;
+                        if (_active > PeakActive) PeakActive = _active;
+                        job.Status = JobStatus.Running;
+                        job.StartedUtc = DateTime.UtcNow;
+                    }
+                }
+                if (cts == null)
+                {
+                    job.Status = JobStatus.Cancelled;
+                    FireFinished(job);
+                    continue;
                 }
                 _ = Task.Run(async () =>
                 {

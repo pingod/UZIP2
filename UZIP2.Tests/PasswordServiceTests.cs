@@ -106,7 +106,7 @@ namespace UZIP2.Tests
         [Fact]
         public void ImportBook_Transfers_Existing_Cipher_Verbatim()
         {
-            var cipher = Dpapi.Encode("migrated");
+            var cipher = DpapiHelper.Encode("migrated");
             var svc = NewService();
             svc.ImportBook(new[] { new PasswordEntry { Cipher = cipher, SuccessCount = 3 } });
             var reloaded = NewService();
@@ -117,12 +117,12 @@ namespace UZIP2.Tests
         [Fact]
         public void Cached_Text_Follows_Both_Ways()
         {
-            var entry = new PasswordEntry { Cipher = Dpapi.Encode("first") };
+            var entry = new PasswordEntry { Cipher = DpapiHelper.Encode("first") };
             Assert.Equal("first", entry.Text);
             Assert.Equal("first", entry.Text);      // 第二次走缓存
             entry.Text = "second";
             Assert.Equal("second", entry.Text);     // 改完不能还吐旧值
-            entry.Cipher = Dpapi.Encode("third");
+            entry.Cipher = DpapiHelper.Encode("third");
             Assert.Equal("third", entry.Text);      // 直接换密文也要重解
         }
 

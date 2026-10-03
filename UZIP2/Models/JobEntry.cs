@@ -32,5 +32,31 @@ namespace UZIP2.Models
         [ObservableProperty] private string outputDir;
 
         public string DisplayName => Archive == null ? "" : Path.GetFileName(Archive);
+
+        // 终态 = 不会再变化的作业，可以被移除/清除/回收
+        public bool IsTerminal =>
+            Status == JobStatus.Success || Status == JobStatus.Failed || Status == JobStatus.Cancelled;
+
+        // 状态排序权重：运行中 > 排队 > 失败 > 成功 > 已取消
+        public int SortRank
+        {
+            get
+            {
+                switch (Status)
+                {
+                    case JobStatus.Running: return 0;
+                    case JobStatus.Queued: return 1;
+                    case JobStatus.Failed: return 2;
+                    case JobStatus.Success: return 3;
+                    default: return 4;
+                }
+            }
+        }
+
+        partial void OnStatusChanged(JobStatus value)
+        {
+            OnPropertyChanged(nameof(IsTerminal));
+            OnPropertyChanged(nameof(SortRank));
+        }
     }
 }

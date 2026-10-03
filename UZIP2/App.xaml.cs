@@ -56,16 +56,7 @@ namespace UZIP2
             var logger = new FileLogger(baseDir);
             var settings = new SettingsService(configDir, logger);
 
-            // 一次性迁移旧版配置（UZip.config / PasswordNote / PasswordPage -> json）
             var passwords = new PasswordService(configDir, settings);
-            var migration = LegacyConfigMigrator.TryMigrate(configDir, settings, passwords);
-            if (migration.Performed)
-            {
-                logger.Info("配置迁移: " + migration.Reason);
-                if (!migration.Success)
-                    MessageBox.Show("旧配置迁移失败，将以默认配置启动。\n" + migration.Reason,
-                        "UZIP 配置迁移", MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
 
             if (settings.Current.CleanTempOnStartup)
                 TempManager.CleanupOnStartup(baseDir);

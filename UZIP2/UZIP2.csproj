@@ -32,16 +32,5 @@
     <PackageReference Include="WPF-UI" Version="4.0.2" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
-    <PackageReference Include="System.Configuration.ConfigurationManager" Version="8.0.0" />
-  </ItemGroup>
-  <ItemGroup>
-    <!-- 旧版界面/静态全局类整体归档，不参与编译 -->
-    <Compile Remove="Legacy/**/*.cs" />
-    <Page Remove="Legacy/**/*.xaml" />
-    <None Include="Legacy/**" />
-  </ItemGroup>
-  <ItemGroup>
-    <Resource Include="*.png" />
-    <Content Include="App.config" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
