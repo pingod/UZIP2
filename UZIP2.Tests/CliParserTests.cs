@@ -193,5 +193,33 @@ namespace UZIP2.Tests
         [Fact]
         public void IsCli_recognizes_command_after_known_option()
             => Assert.True(CliParser.IsCli(new[] { "--json", "list", "a.zip" }));
+
+        // --cover 的值会原样拼进 7z 的 argv：不锁死取值就等于让用户能把 "-i@清单"
+        // 这类开关塞进命令行，甚至改掉解压目标。只收 7z 的四个覆盖模式。
+        [Theory]
+        [InlineData("-aoa")]
+        [InlineData("-aos")]
+        [InlineData("-aou")]
+        [InlineData("-aot")]
+        public void Cover_accepts_the_four_overwrite_modes(string mode)
+        {
+            var r = CliParser.Parse(new[] { "extract", "a.zip", "--cover", mode });
+            Assert.False(r.HasError);
+            Assert.Equal(mode, r.Cover);
+        }
+
+        [Theory]
+        [InlineData("-aoa -aos")]          // 想夹带第二个开关
+        [InlineData("-i@evil.txt")]        // 直接塞清单文件
+        [InlineData("--delete-source")]    // 伪造成别的选项
+        [InlineData("rm -rf")]
+        [InlineData("")]
+        [InlineData("overwrite")]
+        public void Cover_rejects_anything_but_one_overwrite_mode(string mode)
+        {
+            var r = CliParser.Parse(new[] { "extract", "a.zip", "--cover", mode });
+            Assert.True(r.HasError, "--cover " + mode + " 不该被放行");
+            Assert.Contains("--cover", r.Error);
+        }
     }
 }

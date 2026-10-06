@@ -292,9 +292,25 @@
                                ToolTip="从列表移除失败的卡片（记录仍可在历史页查到）" />
                 </StackPanel>
             </Border>
-            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
-                <ItemsControl ItemsSource="{Binding Jobs}" ItemTemplate="{StaticResource JobCard}" />
-            </ScrollViewer>
+            <!-- 任务卡虚拟化：200 张卡 = 1600 个按钮，全部实建会把 UI 线程压垮 -->
+            <ItemsControl Grid.Row="2" ItemsSource="{Binding Jobs}" ItemTemplate="{StaticResource JobCard}"
+                          VirtualizingStackPanel.IsVirtualizing="True"
+                          VirtualizingStackPanel.VirtualizationMode="Recycling"
+                          ScrollViewer.CanContentScroll="True" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                <ItemsControl.Template>
+                    <ControlTemplate TargetType="ItemsControl">
+                        <ScrollViewer CanContentScroll="True" Padding="{TemplateBinding Padding}"
+                                      VerticalScrollBarVisibility="Auto" Focusable="False">
+                            <ItemsPresenter />
+                        </ScrollViewer>
+                    </ControlTemplate>
+                </ItemsControl.Template>
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <VirtualizingStackPanel />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+            </ItemsControl>
             <TextBlock Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,36,0,0"
                        FontSize="13" Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                        Text="还没有任务：把压缩包 / 文件 / 文件夹拖到上方框中即可开始">

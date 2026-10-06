@@ -153,6 +153,38 @@ namespace UZIP2.Tests
             Assert.Contains("不一致", r.Error);
         }
 
+        // 发布的 tag 是两段（v3.7），二进制的 FileVersion 是四段（3.7.0.0）。
+        // 闸门要是按字符串比，每一次 --apply 都会被自己挡下来说"版本不一致"。
+        [Fact]
+        public void Verify_accepts_the_two_part_release_tag_of_the_real_pe()
+        {
+            var raw = FileVersionInfo.GetVersionInfo(RealPe()).FileVersion;
+            var parts = (raw ?? "").Split('.');
+            if (parts.Length < 3) return;      // 环境给的版本本来就是两段，无从验证
+            var r = SelfUpdater.Verify(RealPe(), parts[0] + "." + parts[1]);
+            Assert.True(r.Ok, r.Error);
+        }
+
+        // ---------- VersionMatches（纯版本比较）----------
+
+        [Theory]
+        [InlineData("3.7.0.0", "3.7", true)]        // 线上事故：两段 tag 对四段文件版本
+        [InlineData("3.7.0", "3.7", true)]
+        [InlineData("3.7", "3.7.0.0", true)]
+        [InlineData("v3.7", "3.7.0.0", true)]
+        [InlineData("3.7.0.0", "3.7.0", true)]
+        [InlineData("3.7.0", "3.7.0", true)]
+        [InlineData("3.7.1", "3.7", false)]         // 补丁号不同仍然是不一致
+        [InlineData("3.8.0.0", "3.7", false)]
+        [InlineData("3.7.0.0", "3.8", false)]
+        [InlineData("3.7.0.0", "", true)]           // 没给期望值就不拦
+        [InlineData("3.7.0.0", null, true)]
+        [InlineData(null, "3.7", false)]
+        [InlineData("", "3.7", false)]
+        [InlineData("garbage", "3.7", false)]
+        public void VersionMatches_compares_segment_wise(string fileVersion, string expected, bool ok)
+            => Assert.Equal(ok, SelfUpdater.VersionMatches(fileVersion, expected));
+
         // ---------- BuildRelayScript（纯字符串）----------
 
         [Fact]

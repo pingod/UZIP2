@@ -160,6 +160,10 @@ namespace UZIP2.Cli
             return r;
         }
 
+        // 7z 的覆盖模式开关：只此四个，大小写按 7z 原样
+        static bool IsOverwriteMode(string value)
+            => value == "-aoa" || value == "-aos" || value == "-aou" || value == "-aot";
+
         static void ApplyValue(CliRequest r, string opt, string val)
         {
             switch (opt.ToLowerInvariant())
@@ -168,7 +172,15 @@ namespace UZIP2.Cli
                 case "--out": r.Output = val; break;
                 case "--name": r.Name = val; break;
                 case "--password": r.Password = val; break;
-                case "--cover": r.Cover = val; break;
+                case "--cover":
+                    // 这个值会原样进 7z 的 argv，只认四个覆盖模式，别把 "-i@清单" 之类塞进来
+                    if (!IsOverwriteMode(val))
+                    {
+                        r.Error = "--cover 只接受 7z 覆盖模式: -aoa（覆盖）/ -aos（跳过）/ -aou（智能更新）/ -aot（重命名）";
+                        return;
+                    }
+                    r.Cover = val;
+                    break;
                 case "--type": r.Type = val; break;
                 case "--solid": r.Solid = val; break;
                 case "--threads": r.Threads = val; break;

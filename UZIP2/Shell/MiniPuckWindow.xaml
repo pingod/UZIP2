@@ -27,8 +27,15 @@
             </ContextMenu>
         </Border.ContextMenu>
         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-            <ui:SymbolIcon x:Name="Glyph" Symbol="Box24" FontSize="28" HorizontalAlignment="Center"
-                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+            <Grid Width="56" Height="56" HorizontalAlignment="Center">
+                <Ellipse Stroke="{DynamicResource ControlStrokeColorDefaultBrush}" StrokeThickness="4"
+                         Opacity="0.7" />
+                <Path x:Name="Ring" Stroke="{DynamicResource AccentFillColorDefaultBrush}" StrokeThickness="4"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="Collapsed" />
+                <ui:SymbolIcon x:Name="Glyph" Symbol="Box24" FontSize="22"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+            </Grid>
             <TextBlock x:Name="Hint" Text="拖到这里" FontSize="11" HorizontalAlignment="Center"
                        Margin="0,4,4,0" MaxWidth="88" TextWrapping="Wrap" TextAlignment="Center"
                        Foreground="{DynamicResource TextFillColorSecondaryBrush}" />

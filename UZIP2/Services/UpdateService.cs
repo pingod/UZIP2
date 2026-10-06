@@ -44,7 +44,7 @@ namespace UZIP2.Services
         {
             try
             {
-                fetch ??= GetAsStringAsync;
+                fetch ??= FetchWithFallbackAsync;
                 return ParseRelease(await fetch(ApiUrl).ConfigureAwait(false));
             }
             catch (Exception)
@@ -53,19 +53,93 @@ namespace UZIP2.Services
             }
         }
 
-        static async Task<string> GetAsStringAsync(string url)
+        /// <summary>测试替身：(url, useProxy) → 响应体；抛出异常代表这一趟没走通。</summary>
+        public static Func<string, bool, Task<string>> Transport;
+
+        /// <summary>
+        /// 这条 URL 该不该套代理。两个逃生口：
+        /// ① 变量值写成 direct（本机的 mihomo 出口会被 GitHub 限流，直连反而是 200）；
+        /// ② NO_PROXY 命中该域名。都不设时沿用 .NET 的系统/环境代理解析。
+        /// </summary>
+        public static bool UsesProxyFor(string url)
         {
-            using var http = NewClient(Timeout);
-            http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
-            return await http.GetStringAsync(url).ConfigureAwait(false);
+            var host = HostOf(url);
+            foreach (var name in SchemeEnvNames(url))
+                if (string.Equals((Environment.GetEnvironmentVariable(name) ?? "").Trim(),
+                        "direct", StringComparison.OrdinalIgnoreCase))
+                    return false;
+            return !MatchesNoProxy(host);
         }
 
-        // .NET 默认只看系统代理；CN 网络下很多人是靠环境变量走本地代理的，这里补上。
-        static IWebProxy ProxyFromEnvironment()
+        static string[] SchemeEnvNames(string url)
         {
-            foreach (var name in new[] { "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy" })
-                if (TryProxy(Environment.GetEnvironmentVariable(name), out var proxy)) return proxy;
-            return null;
+            bool https = (Uri.TryCreate(url, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttps)
+                         || (url ?? "").IndexOf("https://", StringComparison.OrdinalIgnoreCase) == 0;
+            return https
+                ? new[] { "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy" }
+                : new[] { "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy" };
+        }
+
+        static string HostOf(string url)
+        {
+            if (Uri.TryCreate(url, UriKind.Absolute, out var u) && !string.IsNullOrEmpty(u.Host)) return u.Host;
+            // 容忍 "api.github.com:443/path" 这类没有 scheme 的写法
+            var text = (url ?? "").Trim();
+            int slash = text.IndexOf('/');
+            if (slash >= 0) text = text.Substring(0, slash);
+            int colon = text.LastIndexOf(':');
+            if (colon > 0 && char.IsDigit(text[colon + 1])) text = text.Substring(0, colon);
+            return text;
+        }
+
+        // NO_PROXY 支持 * 、.github.com 、github.com 、逗号/空格分隔；按域名边界匹配，不当子串用
+        static bool MatchesNoProxy(string host)
+        {
+            if (string.IsNullOrEmpty(host)) return false;
+            var list = (Environment.GetEnvironmentVariable("NO_PROXY")
+                        ?? Environment.GetEnvironmentVariable("no_proxy") ?? "").Trim();
+            if (list.Length == 0) return false;
+            host = host.TrimEnd('.').ToLowerInvariant();
+            foreach (var raw in list.Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var token = raw.Trim();
+                if (token == "*") return true;
+                var entry = token.TrimStart('*').TrimStart('.').TrimEnd('.').ToLowerInvariant();
+                if (entry.Length == 0) continue;
+                if (host == entry) return true;
+                if (host.Length > entry.Length && host.EndsWith(entry, StringComparison.Ordinal)
+                    && host[host.Length - entry.Length - 1] == '.') return true;
+            }
+            return false;
+        }
+
+        /// <summary>网络类失败才值得换条路重试；代码 bug 抛出来该让它响。</summary>
+        public static bool IsRetryable(Exception ex)
+            => ex is HttpRequestException || ex is TaskCanceledException
+               || ex is System.IO.IOException || ex is System.Net.Sockets.SocketException;
+
+        /// <summary>先按代理策略走一趟；代理里的网络失败就直连重试一次。</summary>
+        public static async Task<string> FetchWithFallbackAsync(string url)
+        {
+            bool useProxy = UsesProxyFor(url);
+            try
+            {
+                return await GetOnceAsync(url, useProxy).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (useProxy && IsRetryable(ex))
+            {
+                return await GetOnceAsync(url, useProxy: false).ConfigureAwait(false);
+            }
+        }
+
+        static Task<string> GetOnceAsync(string url, bool useProxy)
+            => Transport != null ? Transport(url, useProxy) : GetAsStringAsync(url, useProxy);
+
+        static async Task<string> GetAsStringAsync(string url, bool useProxy)
+        {
+            using var http = NewClient(Timeout, useProxy);
+            http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+            return await http.GetStringAsync(url).ConfigureAwait(false);
         }
 
         public static bool TryProxy(string value, out IWebProxy proxy)
@@ -127,12 +201,29 @@ namespace UZIP2.Services
             }
         }
 
-        // 带环境代理 + UA 的 HttpClient，检查更新与自更新下载共用同一套代理策略。
-        public static HttpClient NewClient(TimeSpan timeout)
+        // .NET 默认只看系统代理；CN 网络下很多人是靠环境变量走本地代理的，这里补上。
+        static IWebProxy ProxyFromEnvironment()
         {
-            var handler = new HttpClientHandler { UseProxy = true, AllowAutoRedirect = true };
-            var proxy = ProxyFromEnvironment();
-            if (proxy != null) handler.Proxy = proxy;
+            foreach (var name in new[] { "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy" })
+                if (TryProxy(Environment.GetEnvironmentVariable(name), out var proxy)) return proxy;
+            return null;
+        }
+
+        // 带环境代理 + UA 的 HttpClient，检查更新与自更新下载共用同一套代理策略。
+        public static HttpClient NewClient(TimeSpan timeout) => NewClient(timeout, useProxy: true);
+
+        public static HttpClient NewClient(TimeSpan timeout, bool useProxy)
+        {
+            var handler = new HttpClientHandler { UseProxy = useProxy, AllowAutoRedirect = true };
+            if (useProxy)
+            {
+                var proxy = ProxyFromEnvironment();
+                if (proxy != null) handler.Proxy = proxy;
+            }
+            else
+            {
+                handler.Proxy = null;
+            }
             var http = new HttpClient(handler) { Timeout = timeout };
             http.DefaultRequestHeaders.UserAgent.ParseAdd("UZIP2");
             return http;

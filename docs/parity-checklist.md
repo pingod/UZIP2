@@ -146,7 +146,29 @@
 | F22 | 自更新核对 `<产物>.sha256` 侧车（兼容 sha256sum 与 PowerShell 两种文本风格；无侧车则跳过，不挡更新）；`publish.ps1` 逐产物出侧车 | `SelfUpdaterTests` 30 个、`UpdateServiceTests` 57 个 |
 | F23 | 多级解压深度上限实测：三层链每层都 Success；第 9 层（`Depth == 8`）不再派生作业，截断处的包留在原地 | `ArchiveWorkerTests.MultiLevel_chains_three_levels_to_the_innermost_file` / `MultiLevel_stops_at_the_depth_limit`（替换 ④ 里"产生 2 个作业"的弱断言） |
 | F24 | 单实例命名管道转发可测：互斥体/管道名可注入，测试不与用户正在运行的实例抢名字；空参数=仅唤起窗口仍会触发事件 | `InstanceBusTests` 4 个 |
-
 | F25 | 真机冒烟抓到并修掉：**`CLI convert` 转换成功却毫无输出**（既不报产物路径也不出 JSON，rc=0）。原因是 `DoConvert` 读绑定用的 `Jobs` 集合，而它只往 UI 调度线程里塞，CLI 正阻塞在那个线程等结果 → 读到的永远是空集合。现 `EnqueueConvert` 直接返回作业对象，CLI 不再绕道 UI 集合 | 测试：`ConvertWorkerTests.EnqueueConvert_reports_its_own_jobs_even_when_the_dispatcher_is_blocked`（注入一个"建好但从不泵消息"的 Dispatcher，精确复现该处境并断言 `Jobs` 为空、返回的作业为 Success）；实测：`convert _smoke/A.zip --type 7z -o out --json` 修前 stdout 全空，修后输出 `A.zip -> out\A.7z` + JSON、rc=0 |
 
 **未覆盖项（如实记录）**：`HotKeyService` 的注册/`WM_HOTKEY` 派发、`TrayService` 气泡与菜单、`PreviewWindow` 的对比按钮、`HomeView` 的「转为/转格式」、`App.ShowPreview` 路由都依赖 WPF 消息泵或真实窗口句柄，单元测试盖不住（见 [[unit-tests-are-dispatcher-blind]]），需按 N7/M1 的老办法驱动真实 exe 冒烟。另：设置与历史跨进程仍是后写者覆盖（合并未做），写回节流下硬崩最多丢约 1.2 s 的记录。
+
+## v3.8 审计第二轮：更新链路 / CLI 补漏 / 性能 / 进度环
+
+| # | 能力 / 修复 | 证据 |
+|---|------|------|
+| G1 | **P0：自更新版本闸门按段比较**。`Verify` 原先把四段文件版本（`3.7.0.0`）与 tag 派生的两段期望值（`v3.7`→`3.7`）逐字符比，于是 v3.3 起每次就地更新都被"版本不一致"拒掉。现比前 3 段、忽略尾部 revision，段数不足或非数字按不一致处理 | `SelfUpdaterTests.VersionMatches_compares_segment_wise`（14 组，含线上事故那组 `3.7.0.0`↔`3.7`、`3.7.1`↔`3.7` 仍算不一致）、`Verify_accepts_the_two_part_release_tag_of_the_real_pe`（拿真实发布产物走完整 `Verify`） |
+| G2 | **更新链路的代理健壮性**：`HTTPS_PROXY`/`HTTP_PROXY`/`ALL_PROXY` 按协议分域，值写 `direct` 或主机命中 `NO_PROXY` 即明确不走代理；元数据、`.sha256` 侧车、exe 下载三条路共用一套传输，遇传输类失败（`HttpRequestException`/超时/`IOException`/`SocketException`）自动降级直连重试一次。本机实况：GitHub API 走代理 403（限流）、直连 200 | `UpdateTransportTests` 22 个（注入 `Transport` 记录每次尝试的 `useProxy`，断言"成功只调一次""超时→`[true,false]`""本来就直连则不再直连重试""非传输类失败不重试""`HTTP_PROXY=direct` 不影响 https"） |
+| G3 | **`--cover` 的参数注入洞**：该值原样拼进 7z 命令行，而 `Config\settings.json` 用户可编辑。CLI 解析层与 `SevenZipClient` 收敛点各校验一次，只放行 7z 实际存在的 `-aoa/-aos/-aou/-aot`，非法值退出码 2 并列出四个模式；非法值经任何路径进来都回落 `-aos` | `CliParserTests` 的 cover theory、`SevenZipCoverModeTests` 11 个（`SanitizeCoverMode`） |
+| G4 | **`update --check` 从死参数变为可用**，且与 `--apply` 互斥（只报告 vs 真换身体，同时给退出码 2） | `CliParserTests` 解析用例 + `CliRunnerTests` 2 个（`--check --apply` → rc 2 且不下载） |
+| G5 | **一条候选口令都没有时不再做加密探测**（`ShouldProbeEncryption`）：探测结论没有下游用途，纯浪费。64 KB 包实测探测 11.4–16.7 ms vs 解压 11.7–13.1 ms，小包固定开销砍掉近一半；顺带确认跳过之后加密包诊断更准（原空口令那趟把"需要密码"说成"文件已损坏或不是可识别的压缩包"） | `ExtractPasswordChainTests`（`CountingEngine` 统计 `ProbeCalls`；含 `Encrypted_archive_without_passwords_still_says_password_needed`）、`ParallelQueueTests.Unencrypted_Archive_Extracts_Without_Test_Pass` 断言改为"不起 `l` 探测" |
+| G6 | **探测读到首条 `Encrypted = ` 就收刀**：以前让 7z 把整包列完、把全部 stdout 读进缓冲（2000 条目实测约 328 KB），现在输出回调里认出该行当场结束进程 | `SevenZipProbeEarlyExitTests` 8 个（`stopWhen` 钩子；含"非加密包仍会正常列完"的反向用例） |
+| G7 | **热路径字符串/正则**：7z 进度行解析换成 `[GeneratedRegex]`；`DebugMode` 关闭时不再构造 `Redact(args)` 拼接的命令行字符串 | `SevenZipProgressParsing` 22 个保持全绿；`Redact` 用例仍断言 `-p<口令>` 打码 |
+| G8 | **主页计数合并**：`RefreshSummary` 原先每个作业状态一变就整表扫一遍（200 张卡片连着收尾 = 200 次全表扫描），改为 `Coalescer` 单字标志合并成一次排队 | `CoalescerTests` 4 个（含 64 线程并发恰好放行一次）；`HomeViewModelTests`/`QueueManageTests` 对 `FailedCount/FinishedCount/ActiveCount` 的断言不变 |
+| G9 | **主页与历史列表虚拟化**：外层 `ScrollViewer` + 裸 `ItemsControl` 的组合天生不虚拟化，改为 `VirtualizingStackPanel` + `Recycling` + 控件自带滚动模板（外面再套 ScrollViewer 会把虚拟化整个废掉） | 无单测（纯 XAML 模板，单测进程没有 WPF 消息泵）；编译 0 警告，滚动表现待真机冒烟 |
+| G10 | **悬浮方块进度环**：外圈描边=进度，一圈=100%，12 点起顺时针；多任务画整批平均，收尾补满一圈停 2 秒；纯函数几何 + 200ms 心跳合并重绘 + 只订阅活跃作业 | `PuckProgressTests` 23 个（起点在 12 点、扫掠角、半径、`IsLargeArc`、100% 恰好两段非大弧闭合、0/null 不画、渲染包围盒不出方框；`Overall` 的 null 语义与 Queued 记 0）；真机：隔离实例解 4GB solid 7z，对方块窗口连拍并按像素统计强调色覆盖，读数 `180→180→180→210→246→268→310→350→350→180`（180 = 空闲基线，350 = 满环），中间帧截图可见约 3/4 圈且提示位写 `75%` |
+| G11 | **发布件命名与元数据**：`publish.ps1` 的框架依赖主产物改名 `UZIP2.exe`（+ `UZIP2.exe.sha256`），与 `UpdateService.PickAsset` 认的名字一致，发布不再手工改名；verbosity `-v q`→`-v m` 让警告进发布日志；`AssemblyInfo` 的 `HP Inc. / 2021` 换成实际署名与 2021-2026，描述补实，版本 3.8.0.0 | 构建脚本与元数据，无单测；验证走"实发 Release 的资产名 == `UZIP2.exe`/`UZIP2.exe.sha256`"与发布后的 `update --check` 往返 |
+| G12 | **`release/` 里的 .NET Framework 残留下线**：`App.config`/`UZIP2.dll.config` 写着 `sku=".NETFramework,Version=v4.8"`，而 CI 把整个 `release/` 当产物上传——一份和 .NET 8 单文件无关的运行时声明跟着发布件走。两个文件删除；`scripts/install.ps1` 本来就"缺了就不拷"、`uninstall.ps1` 本来就"有才删"，无需改动 | 发布物清单核对（CI 产物目录不再出现这两个文件）；脚本容错路径已读码确认 |
+
+| G13 | **方块位置记住副屏**：`RestorePosition` 原先按 `SystemParameters.WorkArea`（只有主屏）夹坐标，重启后把副屏位置拽回主屏右下角（本机实况：存下的 `2624,1421` 被夹成 `2456,1288`）。改为按虚拟桌面夹的纯函数 `PuckPlacement.Resolve`，负值仍表示"从没放过"，越界整块拉回可见范围 | `PuckPlacementTests` 6 个（含"保留右侧副屏位置""越界拉回""跨右边缘时整块保持可见""-1 哨兵落主屏右下角"）；真机：`puckLeft=2700` 重启后方块仍在副屏 |
+| G14 | 真机冒烟抓到的一处**观察假象**（记录以免被当成缺陷重复调查）：`EnumWindows` 输出经 grep 时被判定为 binary，中文窗口名整行被吞，看起来像"方块窗口没创建"。实际方块一直在（`GetWindowText` 返回 GBK 字节，grep 需加 `-a`） | 复核：`winrect.ps1 -All` 以文本方式输出后，同一进程列出 `UZIP 拖拽方块\|x=…,y=…,w=104,h=104\|vis=True` |
+| G15 | **闪示结束后提示位回不来**：进度环收起（`ClearRing`）时没管图标下方那行小字，于是"完成"永远挂在空闲方块上，直到下一次拖拽才被覆盖。把提示位的取舍抽成纯函数 `PuckProgress.ResolveHint`（预览 > 完成 > 进度 > 空闲），环与文案由同一次判定决定 | `PuckHintTests` 10 个，其中 `Restores_the_idle_prompt_when_the_flash_ends` 就是这个缺陷的回归用例；真机：满环 + "完成"（t=5s）→ 两秒后环收起且文案回到"拖到这里"（t=7s 截图），强调色读数从 350 回到基线 180 |
+
+**本轮刻意不做**：更新检查的 ETag/条件 GET 与 TTL 缓存；watcher 的 `Changed` 去重与启动时先扫现存文件；跨进程历史/设置写回合并；`InstanceBus` 转发的 ack 与日志；历史搜索防抖；重定向 CLI stdout 的 UTF-8 代码页。

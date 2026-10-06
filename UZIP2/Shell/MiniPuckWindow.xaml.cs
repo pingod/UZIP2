@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Windows;
@@ -12,16 +14,31 @@ using UZIP2.ViewModel;
 namespace UZIP2.Shell
 {
     // 迷你拖拽方块: 桌面上一枚置顶小方块，文件拖上去即走主窗口那套解压/压缩路由。
+    // 图标外圈有一枚进度环：一圈 = 100%，整批跑完后补满一圈停两秒再收起。
     public partial class MiniPuckWindow : Window
     {
+        const double RingSize = 56;
+        const double RingThickness = 4;
+        static readonly TimeSpan FinishFlash = TimeSpan.FromSeconds(2);
+
         private readonly ISettingsService _settings;
         private readonly ArchiveWorker _worker;
         private readonly MainWindow _main;
         private HomeViewModel Vm => (HomeViewModel)DataContext;
         private bool _suppressSave;
         private readonly DispatcherTimer _statusTimer;
+        private readonly DispatcherTimer _ringTimer;
         private readonly Action<JobEntry> _onFinished;
         private readonly Action<AppSettings> _onSettings;
+        private readonly NotifyCollectionChangedEventHandler _onJobsChanged;
+        private readonly PropertyChangedEventHandler _onJobChanged;
+        private readonly Dictionary<JobEntry, PropertyChangedEventHandler> _hooked =
+            new Dictionary<JobEntry, PropertyChangedEventHandler>();
+
+        private volatile bool _ringDirty;
+        private bool _hadActive;
+        private bool _dragIn;
+        private DateTime _flashUntil;
 
         public MiniPuckWindow(MainWindow main)
         {
@@ -34,6 +51,20 @@ namespace UZIP2.Shell
             _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
             _statusTimer.Tick += (_, __) => { _statusTimer.Stop(); Hint.Text = IdleHint(); };
 
+            // 进度来自解压线程，直接刷 UI 会一个包几百次重绘；这里只置脏，由 200ms 心跳统一重画
+            _ringTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+            _ringTimer.Tick += (_, __) => TickRing();
+            _onJobChanged = (_, e) =>
+            {
+                if (e.PropertyName == nameof(JobEntry.Percent) || e.PropertyName == nameof(JobEntry.Status))
+                    _ringDirty = true;
+            };
+            _onJobsChanged = (s, e) =>
+            {
+                TrackJobs(e);
+                RefreshRing();
+            };
+
             _onFinished = _ => Dispatcher.Invoke(UpdateBusy);
             // 主窗口的 Changed 处理器可能已经先一步关掉了我们，这里允许重复关闭
             _onSettings = s => Dispatcher.Invoke(() =>
@@ -45,6 +76,8 @@ namespace UZIP2.Shell
             });
             _worker.JobFinished += _onFinished;
             _settings.Changed += _onSettings;
+            ((INotifyCollectionChanged)_worker.Jobs).CollectionChanged += _onJobsChanged;
+            foreach (var job in _worker.Jobs) HookJob(job);
             Vm.PropertyChanged += OnVmChanged;
 
             RestorePosition();
@@ -52,11 +85,40 @@ namespace UZIP2.Shell
             UpdateBusy();
         }
 
-        string IdleHint()
+        // 只跟踪活跃作业：终态卡片不会再动进度，订阅它们只会白唤醒刷新
+        void HookJob(JobEntry job)
         {
-            int running = CountActive();
-            return running > 0 ? running + " 个任务" : "拖到这里";
+            if (job == null || _hooked.ContainsKey(job)) return;
+            var handler = _onJobChanged;
+            job.PropertyChanged += handler;
+            _hooked[job] = handler;
         }
+
+        void UnhookJob(JobEntry job)
+        {
+            if (job == null) return;
+            if (_hooked.TryGetValue(job, out var handler))
+            {
+                job.PropertyChanged -= handler;
+                _hooked.Remove(job);
+            }
+        }
+
+        void TrackJobs(NotifyCollectionChangedEventArgs e)
+        {
+            if (e.OldItems != null)
+                foreach (JobEntry job in e.OldItems) UnhookJob(job);
+            if (e.NewItems != null)
+                foreach (JobEntry job in e.NewItems) HookJob(job);
+            if (e.Action == NotifyCollectionChangedAction.Reset)
+            {
+                foreach (var job in _hooked.Keys.ToList()) UnhookJob(job);
+                foreach (var job in _worker.Jobs) HookJob(job);
+            }
+        }
+
+        string IdleHint()
+            => PuckProgress.ResolveHint(previewing: false, runningCount: CountActive(), percent: null, finishing: false);
 
         int CountActive()
             => _worker.Jobs.Count(j => j.Status == JobStatus.Queued || j.Status == JobStatus.Running);
@@ -64,24 +126,84 @@ namespace UZIP2.Shell
         void UpdateBusy()
         {
             Pulse.Visibility = CountActive() > 0 ? Visibility.Visible : Visibility.Collapsed;
-            if (!_statusTimer.IsEnabled) Hint.Text = IdleHint();
+            RefreshRing();
+            if (!_statusTimer.IsEnabled && !IsRingBusy()) Hint.Text = IdleHint();
+        }
+
+        bool IsRingBusy() => _hadActive || _flashUntil != default;
+
+        void TickRing()
+        {
+            if (_flashUntil != default || _ringDirty)
+            {
+                _ringDirty = false;
+                RefreshRing();
+            }
+        }
+
+        // 环与提示位共用一次判定：有活跃作业就画进度，刚跑完补满一圈停两秒，
+        // 闪示结束必须连环带文案一起收回空闲态（否则提示永远卡在"完成"）。
+        void RefreshRing()
+        {
+            var overall = PuckProgress.Overall(_worker.Jobs);
+            if (overall.HasValue)
+            {
+                _hadActive = true;
+                Paint(overall, finishing: false);
+                if (!_ringTimer.IsEnabled) _ringTimer.Start();
+                return;
+            }
+            if (_hadActive)
+            {
+                _hadActive = false;
+                _flashUntil = DateTime.Now.Add(FinishFlash);
+                Paint(100, finishing: true);
+                if (!_ringTimer.IsEnabled) _ringTimer.Start();
+                return;
+            }
+            if (_flashUntil != default)
+            {
+                if (DateTime.Now < _flashUntil)
+                {
+                    Paint(100, finishing: true);   // 闪示期间保持满环
+                    return;
+                }
+                _flashUntil = default;
+            }
+            Paint(null, finishing: false);
+            _ringTimer.Stop();
+        }
+
+        void Paint(double? percent, bool finishing)
+        {
+            var geometry = PuckProgress.RingGeometry(percent, RingSize, RingThickness);
+            if (geometry == null) ClearRing();
+            else
+            {
+                Ring.Data = geometry;
+                Ring.Visibility = Visibility.Visible;
+            }
+            // 拖拽悬停时提示位是包内容预览，别用进度盖掉它
+            Hint.Text = PuckProgress.ResolveHint(_dragIn, CountActive(), percent, finishing, Vm.PreviewText);
+        }
+
+        void ClearRing()
+        {
+            Ring.Data = null;
+            Ring.Visibility = Visibility.Collapsed;
         }
 
         void RestorePosition()
         {
-            var wa = SystemParameters.WorkArea;
             var s = _settings.Current;
             _suppressSave = true;
-            if (s.PuckLeft >= 0 && s.PuckTop >= 0)
-            {
-                Left = Math.Min(s.PuckLeft, wa.Right - Width);
-                Top = Math.Min(s.PuckTop, wa.Bottom - Height);
-            }
-            else
-            {
-                Left = wa.Right - Width - 24;
-                Top = wa.Bottom - Height - 96;
-            }
+            // 按整个虚拟桌面夹，不是按主屏工作区——否则拖到副屏的位置一重启就被拽回来。
+            // WorkArea / VirtualScreen* 都是设备无关单位，和 Left/Top 同一坐标系。
+            var p = PuckPlacement.Resolve(s.PuckLeft, s.PuckTop, Width, Height,
+                SystemParameters.WorkArea, new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+                    SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight));
+            Left = p.X;
+            Top = p.Y;
             _suppressSave = false;
         }
 
@@ -107,6 +229,7 @@ namespace UZIP2.Shell
                 return;
             }
             e.Effects = DragDropEffects.Copy;
+            _dragIn = true;
             Vm.ShowPreview(TryGetFiles(e));
             Hint.Text = Vm.PreviewText;
             e.Handled = true;
@@ -114,13 +237,15 @@ namespace UZIP2.Shell
 
         void OnDragLeaveFiles(object sender, DragEventArgs e)
         {
+            _dragIn = false;
             Vm.ClearPreview();
-            Hint.Text = IdleHint();
+            if (_flashUntil == default && !_hadActive) Hint.Text = IdleHint();
         }
 
         void OnDropFiles(object sender, DragEventArgs e)
         {
             var files = TryGetFiles(e);
+            _dragIn = false;
             Vm.ClearPreview();
             if (files.Length == 0)
             {
@@ -180,8 +305,11 @@ namespace UZIP2.Shell
         protected override void OnClosing(CancelEventArgs e)
         {
             _statusTimer.Stop();
+            _ringTimer.Stop();
             _worker.JobFinished -= _onFinished;
             _settings.Changed -= _onSettings;
+            ((INotifyCollectionChanged)_worker.Jobs).CollectionChanged -= _onJobsChanged;
+            foreach (var job in _hooked.Keys.ToList()) UnhookJob(job);
             Vm.PropertyChanged -= OnVmChanged;
             base.OnClosing(e);
         }

@@ -498,6 +498,31 @@ namespace UZIP2.Tests
             Assert.Contains(e, s => s.Contains("版本不一致"));
         }
 
+        // --check 在用法里是明示"只报告"，就必须真的只报告；和 --apply 同时给是自相矛盾的
+        // 请求，以前这个旗标解出来后没人读，等于骗用户。
+        [Fact]
+        public async Task Update_check_alone_stays_report_only()
+        {
+            bool called = false;
+            var (code, o, _) = await RunUpdate(New("99.0.0"), AppLikeExe(),
+                (i, e2, p, c) => { called = true; return Task.FromResult((true, "")); }, "update", "--check");
+            Assert.Equal(0, code);
+            Assert.False(called);
+            Assert.Contains(o, s => s.Contains("update --apply"));
+        }
+
+        [Fact]
+        public async Task Update_rejects_check_together_with_apply()
+        {
+            bool called = false;
+            var (code, _, e) = await RunUpdate(New("99.0.0"), AppLikeExe(),
+                (i, e2, p, c) => { called = true; return Task.FromResult((true, "")); },
+                "update", "--check", "--apply");
+            Assert.Equal(2, code);
+            Assert.False(called);
+            Assert.Contains(e, s => s.Contains("--check"));
+        }
+
         // ---------- history ----------
 
         // 往临时 config 目录里预置若干历史记录，再用 headless CLI 读出来

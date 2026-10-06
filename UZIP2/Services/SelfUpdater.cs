@@ -57,10 +57,28 @@ namespace UZIP2.Services
         // 流式下载到 tempPath，按已下载字节数回调进度。返回落盘总字节数。
         // 用 ResponseHeadersRead，让 HttpClient.Timeout 只约束"拿到响应头"，
         // 大文件下载靠 CancellationToken 取消，不受整体超时限制。
-        public static async Task<long> DownloadToTempAsync(string url, string tempPath,
+        public static Task<long> DownloadToTempAsync(string url, string tempPath,
             IProgress<long> progress, CancellationToken ct)
+            => DownloadToTempAsync(url, tempPath, progress, ct, UpdateService.UsesProxyFor(url));
+
+        // 代理出口被限流/断流时直连重试一次（下载会从头开始，temp 文件重建）。
+        public static async Task<long> DownloadToTempAsync(string url, string tempPath,
+            IProgress<long> progress, CancellationToken ct, bool useProxy)
         {
-            var http = UpdateService.NewClient(TimeSpan.FromSeconds(30));
+            try
+            {
+                return await DownloadOnceAsync(url, tempPath, progress, ct, useProxy).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (useProxy && UpdateService.IsRetryable(ex) && !ct.IsCancellationRequested)
+            {
+                return await DownloadOnceAsync(url, tempPath, progress, ct, useProxy: false).ConfigureAwait(false);
+            }
+        }
+
+        static async Task<long> DownloadOnceAsync(string url, string tempPath,
+            IProgress<long> progress, CancellationToken ct, bool useProxy)
+        {
+            var http = UpdateService.NewClient(TimeSpan.FromSeconds(30), useProxy);
             try
             {
                 using var resp = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
@@ -112,16 +130,15 @@ namespace UZIP2.Services
                 }
                 // FileVersionInfo 能读到版本资源 → 基本确认是合法 PE
                 var pv = FileVersionInfo.GetVersionInfo(tempPath);
-                var fileVer = Normalize(pv.FileVersion);
-                if (string.IsNullOrEmpty(pv.OriginalFilename) && string.IsNullOrEmpty(fileVer))
+                var rawVer = pv.FileVersion;
+                if (string.IsNullOrEmpty(pv.OriginalFilename) && string.IsNullOrEmpty(Normalize(rawVer)))
                     return (false, "无法读取该文件的版本信息");
-                var want = Normalize(expectedVersion);
-                if (!string.IsNullOrEmpty(want))
+                if (!string.IsNullOrWhiteSpace(expectedVersion))
                 {
-                    if (string.IsNullOrEmpty(fileVer))
+                    if (string.IsNullOrEmpty(Normalize(rawVer)))
                         return (false, "下载文件缺少版本信息，无法确认是否为 " + expectedVersion);
-                    if (!string.Equals(fileVer, want, StringComparison.OrdinalIgnoreCase))
-                        return (false, $"下载文件版本 {fileVer} 与期望 {want} 不一致");
+                    if (!VersionMatches(rawVer, expectedVersion))
+                        return (false, $"下载文件版本 {rawVer} 与期望 {expectedVersion} 不一致");
                 }
                 return (true, null);
             }
@@ -163,6 +180,35 @@ namespace UZIP2.Services
             {
                 return (false, "校验失败: " + ex.Message);
             }
+        }
+
+        /// <summary>
+        /// 版本闸门：tag 常写成两段（v3.7），文件版本是四段（3.7.0.0），
+        /// 必须按段补零比较，否则每次 --apply 都会把自己挡在"版本不一致"上。
+        /// 缺段按 0 补齐，最多比三段；任何一侧解析不出来就只有"没给期望值"才放行。
+        /// </summary>
+        public static bool VersionMatches(string fileVersion, string expected)
+        {
+            if (string.IsNullOrWhiteSpace(expected)) return true;
+            var a = VersionParts(fileVersion);
+            var b = VersionParts(expected);
+            if (a == null || b == null) return false;
+            for (int i = 0; i < 3; i++)
+                if (a[i] != b[i]) return false;
+            return true;
+        }
+
+        static int[] VersionParts(string version)
+        {
+            version = (version ?? "").Trim().TrimStart('v', 'V');
+            if (version.Length == 0) return null;
+            var parts = version.Split('.', '-', '+', '_');
+            if (parts.Length == 0 || parts.Length > 4) return null;
+            var nums = new int[3];
+            for (int i = 0; i < parts.Length && i < 3; i++)
+                if (!int.TryParse(parts[i], NumberStyles.Integer, CultureInfo.InvariantCulture, out nums[i]))
+                    return null;
+            return nums;
         }
 
         // "3.3.0.0" / "v3.3.0-beta" → "3.3.0"（最多三段，去掉尾部 0 段之外的修饰）
@@ -287,11 +333,8 @@ namespace UZIP2.Services
             }
         }
 
-        static async Task<string> FetchChecksumTextAsync(string url)
-        {
-            using var http = UpdateService.NewClient(TimeSpan.FromSeconds(15));
-            return await http.GetStringAsync(url).ConfigureAwait(false);
-        }
+        static Task<string> FetchChecksumTextAsync(string url)
+            => UpdateService.FetchWithFallbackAsync(url);
 
         static void TryDelete(string path)
         {

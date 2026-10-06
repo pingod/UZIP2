@@ -177,10 +177,67 @@ namespace UZIP2.Tests
             Assert.True(chain.Single(c => c.Password == "从名").FromName);
         }
 
+        // ---------- 加密探测该不该跑 ----------
+
+        [Theory]
+        [InlineData(null, null, 0, 0, 0, false)]      // 一个候选口令都没有：探测纯属白花一次启动
+        [InlineData("手动", null, 0, 0, 0, true)]
+        [InlineData(null, "从名", 0, 0, 0, true)]
+        [InlineData(null, null, 1, 0, 0, true)]
+        [InlineData(null, null, 0, 2, 0, true)]
+        [InlineData(null, null, 0, 0, 3, true)]
+        [InlineData("", "", 0, 0, 0, false)]          // 空串不算候选
+        public void Probe_only_runs_when_a_real_password_exists(
+            string manual, string namePw, int external, int book, int paper, bool expected)
+            => Assert.Equal(expected, ArchiveWorker.ShouldProbeEncryption(manual, namePw, external, book, paper));
+
+        [Fact]
+        public async Task Plain_archive_without_any_password_needs_no_probe()
+        {
+            var zip = await MakeEncryptedZip(null);
+
+            _worker.EnqueueExtract(new[] { zip });
+            await _worker.WhenIdleAsync();
+
+            var job = Assert.Single(_worker.Jobs);
+            Assert.Equal(JobStatus.Success, job.Status);
+            Assert.Equal(0, _engine.ProbeCalls);      // 省下的是实测 ~13 ms 的一次 7z 启动
+            Assert.Equal(1, _engine.ExtractCalls);
+        }
+
+        // 没口令时加密包也该给出"需要密码"，而不是被探测结果说成"不是压缩包"
+        [Fact]
+        public async Task Encrypted_archive_without_passwords_still_says_password_needed()
+        {
+            var zip = await MakeEncryptedZip("secret");
+
+            _worker.EnqueueExtract(new[] { zip });
+            await _worker.WhenIdleAsync();
+
+            var job = Assert.Single(_worker.Jobs);
+            Assert.Equal(JobStatus.Failed, job.Status);
+            Assert.Contains("密码", job.Diagnosis);
+            Assert.Equal(0, _engine.ProbeCalls);
+        }
+
+        [Fact]
+        public async Task Probe_still_runs_when_the_book_has_candidates()
+        {
+            var zip = await MakeEncryptedZip("bookpw");
+            _passwords.AddBook("常用", "bookpw");
+
+            _worker.EnqueueExtract(new[] { zip });
+            await _worker.WhenIdleAsync();
+
+            Assert.Equal(JobStatus.Success, Assert.Single(_worker.Jobs).Status);
+            Assert.Equal(1, _engine.ProbeCalls);
+            Assert.Equal(1, _engine.ExtractCalls);    // 探测确认已加密 → 不再白试空口令
+        }
+
         class CountingEngine : IArchiveEngine
         {
             readonly SevenZipClient _inner;
-            public int TestCalls, ExtractCalls;
+            public int TestCalls, ExtractCalls, ProbeCalls;
 
             public CountingEngine(SevenZipClient inner) { _inner = inner; }
 
@@ -199,7 +256,10 @@ namespace UZIP2.Tests
             }
 
             public Task<EncryptionState> ProbeEncryptionAsync(string archive, CancellationToken ct)
-                => _inner.ProbeEncryptionAsync(archive, ct);
+            {
+                Interlocked.Increment(ref ProbeCalls);
+                return _inner.ProbeEncryptionAsync(archive, ct);
+            }
 
             public Task<ArchiveListing> ListEntriesAsync(string archive, string password, CancellationToken ct)
                 => _inner.ListEntriesAsync(archive, password, ct);

@@ -301,4 +301,44 @@ Errors: 0
             Assert.Equal(SevenZipError.NotFound, r.Error);
         }
     }
+
+    // 覆盖开关从设置里直读，用户手改 settings.json 也能把别的开关写进 7z 命令行；
+    // CLI 那边已经白名单了，这里在拼参数的收口处再兜一层。
+    public class SevenZipCoverModeTests
+    {
+        [Theory]
+        [InlineData("-aoa")]
+        [InlineData("-aos")]
+        [InlineData("-aou")]
+        [InlineData("-aot")]
+        public void Keeps_the_four_overwrite_modes(string mode)
+            => Assert.Equal(mode, SevenZipClient.SanitizeCoverMode(mode));
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("   ")]
+        [InlineData("-aos -y")]
+        [InlineData("-i@evil.txt")]
+        [InlineData("--delete-source")]
+        [InlineData("overwrite")]
+        public void Anything_else_falls_back_to_skip(string mode)
+            => Assert.Equal("-aos", SevenZipClient.SanitizeCoverMode(mode));
+    }
+
+    // 加密探测只要第一条 "Encrypted = " 就够定性，后面几千条条目清单全是白读的
+    public class SevenZipProbeEarlyExitTests
+    {
+        [Theory]
+        [InlineData("Encrypted = +", true)]
+        [InlineData("Encrypted = -", true)]
+        [InlineData("Encrypted = - | ", true)]
+        [InlineData("Path = big.bin", false)]
+        [InlineData("Method = Copy", false)]
+        [InlineData("Type = Folder", false)]
+        [InlineData("", false)]
+        [InlineData(null, false)]
+        public void Recognizes_only_the_encryption_line(string line, bool expected)
+            => Assert.Equal(expected, SevenZipClient.IsEncryptionProbeLine(line));
+    }
 }

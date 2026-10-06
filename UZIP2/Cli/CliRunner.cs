@@ -782,6 +782,11 @@ namespace UZIP2.Cli
 
         async Task<int> DoUpdate(CliRequest r, CancellationToken ct)
         {
+            if (r.Check && r.Apply)
+            {
+                _err("--check 只报告版本信息，不能与 --apply（真的更新）同时给");
+                return 2;
+            }
             var check = UpdateCheck ?? (c => UpdateService.CheckAsync(null, c));
             var info = await check(ct).ConfigureAwait(false);
             if (info == null) { _err("没问到版本信息：离线、代理不通或已被限流"); return 1; }

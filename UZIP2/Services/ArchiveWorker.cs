@@ -537,14 +537,18 @@ namespace UZIP2.Services
             string fname = Path.GetFileNameWithoutExtension(job.Archive);
 
             // ---- 密码链: 候选口令直接拿去解，解进私有 temp，错了清空再试下一条 ----
-            // 旧流程是"每条口令先 t 一遍全量校验、命中后再 x 一遍"，一个加密包至少读两遍盘；
-            // 命中那条现在只读一遍，清单已确认加密的包连空口令那遍都省了。
-            var enc = await _zip.ProbeEncryptionAsync(f, ct).ConfigureAwait(false);
+            // 命中那条只读一遍；手上连一个候选口令都没有时连探测都省了（实测省一次 ~13ms 的 7z 启动），
+            // 加密包照样由"空口令失败"的输出定性成"需要密码"。
             string namePw = s.NameToPassword && !string.IsNullOrEmpty(s.NameFilter) && !isVolume
                 ? PasswordFromNameService.SplitString(fname, s.NameFilter)
                 : null;
+            var external = _passwords.ExternalPasswords();
+            var enc = ShouldProbeEncryption(job.ManualPassword, namePw, external.Count,
+                    _passwords.Book.Count, _passwords.Paper.Count)
+                ? await _zip.ProbeEncryptionAsync(f, ct).ConfigureAwait(false)
+                : EncryptionState.Unknown;
             var chain = BuildPasswordChain(enc == EncryptionState.Encrypted, job.ManualPassword,
-                _passwords.ExternalPasswords(), namePw,
+                external, namePw,
                 _passwords.Book.OrderByDescending(e => e.SuccessCount).Select(e => e.Text),
                 _passwords.Paper.Select(e => e.Text));
 
@@ -855,12 +859,16 @@ namespace UZIP2.Services
             string temp = TempManager.CreateSessionTemp(outDir, job.Archive, job.Id.ToString(), _settings.ConfigDirectory);
             try
             {
-                var enc = await _zip.ProbeEncryptionAsync(job.Archive, ct).ConfigureAwait(false);
                 string namePw = s.NameToPassword && !string.IsNullOrEmpty(s.NameFilter)
                     ? PasswordFromNameService.SplitString(Path.GetFileNameWithoutExtension(job.Archive), s.NameFilter)
                     : null;
+                var external = _passwords.ExternalPasswords();
+                var enc = ShouldProbeEncryption(job.ManualPassword, namePw, external.Count,
+                        _passwords.Book.Count, _passwords.Paper.Count)
+                    ? await _zip.ProbeEncryptionAsync(job.Archive, ct).ConfigureAwait(false)
+                    : EncryptionState.Unknown;
                 var chain = BuildPasswordChain(enc == EncryptionState.Encrypted, job.ManualPassword,
-                    _passwords.ExternalPasswords(), namePw,
+                    external, namePw,
                     _passwords.Book.OrderByDescending(e => e.SuccessCount).Select(e => e.Text),
                     _passwords.Paper.Select(e => e.Text));
 
@@ -1027,6 +1035,16 @@ namespace UZIP2.Services
         }
 
         // 纯函数：口令尝试的顺序、去重、以及"清单已确认加密就别先试空口令"全部定死在这里。
+        /// <summary>
+        /// 要不要先探一次加密。实测探测本身就是一次 ~13 ms 的 7z 启动（launch-bound，不是 I/O-bound），
+        /// 而它唯一的用处是决定"空口令要不要放在链首"。手上一个真实候选口令都没有时，
+        /// 直接试空口令即可：明文包少起一次 7z，加密包失败后照样能报出"需要密码"。
+        /// </summary>
+        public static bool ShouldProbeEncryption(string manualPassword, string namePassword,
+            int externalCount, int bookCount, int paperCount)
+            => !string.IsNullOrEmpty(manualPassword) || !string.IsNullOrEmpty(namePassword)
+               || externalCount > 0 || bookCount > 0 || paperCount > 0;
+
         public static List<PasswordCandidate> BuildPasswordChain(bool knownEncrypted, string manualPassword,
             IEnumerable<string> externalPasswords, string namePassword, IEnumerable<string> book,
             IEnumerable<string> paper)

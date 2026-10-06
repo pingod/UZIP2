@@ -37,7 +37,7 @@ namespace UZIP2.Services
     using UZIP2.Models;
 
     // 直接进程调用 7z.exe（替代旧 cmd.exe 管道），ArgumentList 防注入，支持进度/取消/诊断。
-    public sealed class SevenZipClient : IArchiveEngine
+    public sealed partial class SevenZipClient : IArchiveEngine
     {
         private readonly ISettingsService _settings;
         private readonly IFileLogger _logger;
@@ -82,7 +82,8 @@ namespace UZIP2.Services
         public async Task<EncryptionState> ProbeEncryptionAsync(string archive, CancellationToken ct)
         {
             var args = new List<string> { "l", archive, "-slt", "-y" };
-            var r = await RunAsync(args, archive, ct, isExtractOp: true).ConfigureAwait(false);
+            var r = await RunAsync(args, archive, ct, isExtractOp: true,
+                stopWhen: IsEncryptionProbeLine).ConfigureAwait(false);
             var o = r.Output ?? "";
             if (o.IndexOf("Encrypted = +", StringComparison.OrdinalIgnoreCase) >= 0)
                 return EncryptionState.Encrypted;
@@ -94,13 +95,20 @@ namespace UZIP2.Services
                 : EncryptionState.Unknown;
         }
 
+        /// <summary>
+        /// 探测提前收工的判据：这一行是否给出了加密结论。判据与 ProbeEncryptionAsync
+        /// 里的全文匹配保持一致，免得两边对"哪行算结论"理解不同。
+        /// </summary>
+        public static bool IsEncryptionProbeLine(string line)
+            => line != null && line.IndexOf("Encrypted = ", StringComparison.OrdinalIgnoreCase) >= 0;
+
         // onlyEntries 非空时走 -i@清单：实测只解出所选条目，含中文与 [ ] 括号路径均可
         public async Task<SevenZipResult> ExtractAsync(string archive, string dest, string password,
             IProgress<SevenZipProgress> progress, CancellationToken ct, string coverMode = "-aos",
             IReadOnlyList<string> onlyEntries = null)
         {
             Directory.CreateDirectory(dest);
-            var args = new List<string> { "x", archive, "-o" + dest, coverMode };
+            var args = new List<string> { "x", archive, "-o" + dest, SanitizeCoverMode(coverMode) };
             if (!string.IsNullOrEmpty(password)) args.Add("-p" + password);
             string list = null;
             if (onlyEntries != null && onlyEntries.Count > 0)
@@ -125,6 +133,24 @@ namespace UZIP2.Services
         static void TryDeleteFile(string path)
         {
             try { File.Delete(path); } catch { }
+        }
+
+        /// <summary>
+        /// 覆盖开关白名单：只放行 7z 的四个 -ao 模式，其余（含空值）一律退回"跳过已存在"。
+        /// 这个值会进 7z 的 argv，来源是用户可手改的 settings.json，不能原样透传。
+        /// </summary>
+        public static string SanitizeCoverMode(string coverMode)
+        {
+            switch (coverMode)
+            {
+                case "-aoa":
+                case "-aos":
+                case "-aou":
+                case "-aot":
+                    return coverMode;
+                default:
+                    return "-aos";
+            }
         }
 
         // 只读清单不读数据，实测 100 MB 包 0.041 s，可安全用于预览
@@ -218,7 +244,8 @@ namespace UZIP2.Services
         private static string TypeName(int compressType) => ArchiveFormat.TypeName(compressType);
 
         private async Task<SevenZipResult> RunAsync(List<string> args, string archive, CancellationToken ct,
-            IProgress<SevenZipProgress> progress = null, bool isExtractOp = true)
+            IProgress<SevenZipProgress> progress = null, bool isExtractOp = true,
+            Func<string, bool> stopWhen = null)
         {
             var exe = SevenZipPath;
             if (exe == null)
@@ -240,7 +267,8 @@ namespace UZIP2.Services
             foreach (var a in args) psi.ArgumentList.Add(a);
             // 7z 重定向输出时默认走本地 ANSI 代码页，中文包名会被我们按 UTF-8 解成乱码
             psi.ArgumentList.Add("-sccUTF-8");
-            DebugLog(exe + " " + Redact(args));
+            // Redact 要复制整条命令行再拼接：非调试模式一行都不该构造
+            if (DebugEnabled) DebugLog(exe + " " + Redact(args));
 
             var sb = new StringBuilder();
             using (var p = new Process { StartInfo = psi })
@@ -260,6 +288,12 @@ namespace UZIP2.Services
                 {
                     if (e.Data == null) return;
                     lock (sb) sb.AppendLine(e.Data);
+                    // 探测只需要第一条结论行：拿到就让 7z 收工，几千条条目清单不必再读再缓冲
+                    if (stopWhen != null && stopWhen(e.Data))
+                    {
+                        try { if (!p.HasExited) p.Kill(true); } catch { }
+                        return;
+                    }
                     if (progress != null)
                     {
                         var pr = ParseProgressLine(e.Data);
@@ -292,16 +326,18 @@ namespace UZIP2.Services
                 lock (sb) output = sb.ToString();
                 if (IsSuccess(p.ExitCode, output)) return SevenZipResult.Ok(output, archive);
 
-                if (_settings?.Current?.DebugMode == true)
+                if (DebugEnabled)
                     DebugLog("exit=" + p.ExitCode + "\n" + output);
                 var err = Classify(output, p.ExitCode, ct.IsCancellationRequested);
                 return SevenZipResult.Fail(output, err, Diagnose(output, err), archive);
             }
         }
 
+        bool DebugEnabled => _settings?.Current?.DebugMode == true;
+
         private void DebugLog(string message)
         {
-            if (_settings?.Current?.DebugMode == true)
+            if (DebugEnabled)
                 _logger?.Info("[7z] " + message);
         }
 
@@ -314,10 +350,14 @@ namespace UZIP2.Services
             return string.Join(" ", copy);
         }
 
+        // 每行 7z 输出都要过一次这里，源生成的正则省掉每次的静态缓存查表
+        [GeneratedRegex(@"^(\d+)%\s+(?:(\d+)\s+)?-\s*(.*)$")]
+        private static partial Regex ProgressLineRegex();
+
         public static SevenZipProgress ParseProgressLine(string line)
         {
             if (line == null) return null;
-            var m = Regex.Match(line.TrimStart(), @"^(\d+)%\s+(?:(\d+)\s+)?-\s*(.*)$");
+            var m = ProgressLineRegex().Match(line.TrimStart());
             if (!m.Success) return null;
             double? pct = int.TryParse(m.Groups[1].Value, out var pc) ? pc : (double?)null;
             int done = m.Groups[2].Success && int.TryParse(m.Groups[2].Value, out var d) ? d : 0;

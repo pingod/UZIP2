@@ -604,8 +604,19 @@ namespace UZIP2.ViewModel
             catch { return dir.TrimEnd('\\', '/'); }
         }
 
-        // 三个计数是按钮可用性与横幅的唯一数据源，全部在 UI 线程刷新
-        void RefreshSummary() => Post(RefreshSummaryCore);
+        // 三个计数是按钮可用性与横幅的唯一数据源，全部在 UI 线程刷新。
+        // 一批 200 个作业连着收尾时，每个状态变化都要刷一次会变成 200 次全表扫描 —— 合并成一次排队。
+        readonly Coalescer _summaryPending = new Coalescer();
+
+        void RefreshSummary()
+        {
+            if (!_summaryPending.TryRequest()) return;
+            Post(() =>
+            {
+                _summaryPending.Complete();
+                RefreshSummaryCore();
+            });
+        }
 
         void RefreshSummaryCore()
         {

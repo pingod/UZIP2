@@ -149,7 +149,8 @@ namespace UZIP2.Tests
             Assert.Null(job.UsedPassword);
             Assert.True(File.Exists(Path.Combine(_out, "plain.bin")));
 
-            Assert.Contains(log.Lines, l => l.Contains(" l " + zip));
+            // 明文包 + 密码本为空：连加密探测(l)都省了，只起一次解压(x)，绝不先跑全量校验(t)
+            Assert.DoesNotContain(log.Lines, l => l.Contains(" l " + zip));
             Assert.DoesNotContain(log.Lines, l => l.Contains(" t " + zip));
             Assert.Contains(log.Lines, l => l.Contains(" x " + zip));
         }

@@ -5,10 +5,14 @@
 
 .DESCRIPTION
   Produces (into .\artifacts\<ver>\):
-    UZIP-<ver>-win-x64.exe                 framework-dependent single-file (primary, ~8 MB, .NET 8 Desktop Runtime required)
-    UZIP-<ver>-win-x64-selfcontained.zip   self-contained single-file   (no runtime needed, larger)
-    <每个产物>.sha256                       sha256sum 风格侧车，应用内自更新会核对它
-    SHA256SUMS.txt                          checksums of both artifacts
+    UZIP2.exe                                framework-dependent single-file (primary, ~8 MB, .NET 8 Desktop Runtime required)
+    UZIP2.exe.sha256                         同名侧车，直接当 Release 附件上传即可
+    UZIP-<ver>-win-x64-selfcontained.zip     self-contained single-file   (no runtime needed, larger)
+    SHA256SUMS.txt                           checksums of both artifacts
+
+  框架依赖产物刻意叫 UZIP2.exe 而不是带版本号的文件名：应用内自更新
+  (UpdateService.PickAsset) 只认这个名字，名字对了发布时就不用手工改名——
+  以前手工改过一次就漏改侧车，校验和直接对不上。
 
   The csproj trims both artifacts (English-only satellites, no .pdb, and deflate
   compression for the self-contained single-file) automatically.
@@ -48,8 +52,10 @@ $ScOut     = Join-Path $OutVer 'sc'
 
 function Publish($extra, $out) {
   if (Test-Path $out) { Remove-Item $out -Recurse -Force }
+  # -v m（minimal）而不是 -v q：发布构建的警告必须在日志里看得见，
+  # 否则"0 警告"只是本地 test 命令的结论，发布产物可能带着新问题出厂。
   $argv = @('publish', $Proj, '-c', 'Release', '-r', 'win-x64',
-            '-p:PublishSingleFile=true', '-o', $out, '--nologo', '-v', 'q') + $extra
+            '-p:PublishSingleFile=true', '-o', $out, '--nologo', '-v', 'm') + $extra
   Write-Host ('>> ' + $Dotnet + ' ' + ($argv -join ' ')) -ForegroundColor DarkGray
   & $Dotnet @argv
   if ($LASTEXITCODE -ne 0) { throw "publish failed (exit $LASTEXITCODE)" }
@@ -59,7 +65,8 @@ Write-Host "Publishing UZIP2 v$Ver  (repo: $RepoRoot)" -ForegroundColor Cyan
 
 # 1) Framework-dependent single-file (primary download, in-place updatable by the app itself).
 Publish @('--self-contained', 'false') $FdOut
-$FdExe = Join-Path $OutVer "UZIP-$Ver-win-x64.exe"
+# 名字必须与 UpdateService.PickAsset 认的完全一致，Release 附件直接传这两个文件。
+$FdExe = Join-Path $OutVer 'UZIP2.exe'
 Copy-Item (Join-Path $FdOut 'UZIP2.exe') $FdExe -Force
 
 $Artifacts = @($FdExe)
