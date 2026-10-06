@@ -286,6 +286,11 @@
                     </Grid>
                     <Grid Style="{StaticResource Row}">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource RowLabel}" Text="压缩完成后校验产物（坏包当场报，校验通过后才删源文件）" />
+                        <ui:ToggleSwitch Grid.Column="1" HorizontalAlignment="Left" Tag="VerifyAfterCompress" Click="OnToggleChanged" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                         <TextBlock Style="{StaticResource RowLabel}" Text="文件名净化标记（提纯用）" />
                         <ui:TextBox Grid.Column="1" Tag="NameFilter" LostFocus="OnTextChanged" MaxWidth="240" HorizontalAlignment="Left" />
                     </Grid>

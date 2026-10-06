@@ -37,7 +37,7 @@ namespace UZIP2.Services
     using UZIP2.Models;
 
     // 直接进程调用 7z.exe（替代旧 cmd.exe 管道），ArgumentList 防注入，支持进度/取消/诊断。
-    public sealed class SevenZipClient
+    public sealed class SevenZipClient : IArchiveEngine
     {
         private readonly ISettingsService _settings;
         private readonly IFileLogger _logger;
@@ -214,20 +214,8 @@ namespace UZIP2.Services
             return r.Output;
         }
 
-        private static string TypeName(int compressType)
-        {
-            switch (compressType)
-            {
-                case 0: return "zip";
-                case 1: return "7z";
-                case 2: return "bzip2";
-                case 3: return "gzip";
-                case 4: return "tar";
-                case 5: return "wim";
-                case 6: return "xz";
-                default: return "zip";
-            }
-        }
+        // -t 开关的取值表收敛到 ArchiveFormat，避免"设置选 7z、产出叫 .zip"这类错位
+        private static string TypeName(int compressType) => ArchiveFormat.TypeName(compressType);
 
         private async Task<SevenZipResult> RunAsync(List<string> args, string archive, CancellationToken ct,
             IProgress<SevenZipProgress> progress = null, bool isExtractOp = true)
@@ -244,6 +232,9 @@ namespace UZIP2.Services
                 RedirectStandardError = true,
                 CreateNoWindow = true,
                 StandardOutputEncoding = Encoding.UTF8,
+                // -sccUTF-8 同时作用于两条流：不设 stderr 编码就按系统 ANSI(GBK) 解，
+                // 中文包名变乱码，Classify 的关键字匹配也一起废掉
+                StandardErrorEncoding = Encoding.UTF8,
                 WorkingDirectory = Path.GetDirectoryName(exe)
             };
             foreach (var a in args) psi.ArgumentList.Add(a);
@@ -288,6 +279,9 @@ namespace UZIP2.Services
                     catch (OperationCanceledException)
                     {
                         try { p.Kill(true); } catch { }
+                        // 等进程真断了再返回：调用方紧接着要删半截档案/temp，
+                        // 7z 还握着句柄的话删除只会静默失败
+                        try { p.WaitForExit(2000); } catch { }
                         return SevenZipResult.Fail("已取消", SevenZipError.Cancelled, "任务已取消", archive);
                     }
                 }
@@ -296,8 +290,7 @@ namespace UZIP2.Services
 
                 string output;
                 lock (sb) output = sb.ToString();
-                var ok = p.ExitCode == 0 && output.Contains("Everything is Ok");
-                if (ok) return SevenZipResult.Ok(output, archive);
+                if (IsSuccess(p.ExitCode, output)) return SevenZipResult.Ok(output, archive);
 
                 if (_settings?.Current?.DebugMode == true)
                     DebugLog("exit=" + p.ExitCode + "\n" + output);
@@ -332,6 +325,9 @@ namespace UZIP2.Services
             return new SevenZipProgress(pct, file.Length == 0 ? null : file, done);
         }
 
+        // 7z 的成功判据就是退出码 0（"Everything is Ok" 只是文案，不足以作为契约）
+        public static bool IsSuccess(int exitCode, string output) => exitCode == 0;
+
         public static SevenZipError Classify(string output, int exitCode, bool cancelled)
         {
             if (cancelled) return SevenZipError.Cancelled;
@@ -350,8 +346,18 @@ namespace UZIP2.Services
             if (o.Contains("being used by another process") || o.Contains("cannot open") || o.Contains("access is denied")
                 || o.Contains("Sharing violation")) return SevenZipError.Occupied;
             if (o.Contains("no files to process")) return SevenZipError.UnsupportedFormat;
-            if (exitCode == 2) return SevenZipError.Corrupt;
-            return SevenZipError.Unknown;
+            // 认不出关键字时按 7z 官方退出码兜底(7z -h):
+            // 0 正常 / 1 非致命 / 2 致命 / 3 方法不支持 / 4 系统错误 / 5 数据错误(含 CRC)
+            // / 6 命令行错误 / 7 不是压缩包 / 8 内存不足 / 255 用户中止
+            switch (exitCode)
+            {
+                case 0: return SevenZipError.None;
+                case 2: // 致命错误在文本匹配里没抓到线索时，绝大多数是包本身读坏了
+                case 5: return SevenZipError.Corrupt;
+                case 3: case 7: return SevenZipError.UnsupportedFormat;
+                case 255: return SevenZipError.Cancelled;
+                default: return SevenZipError.Unknown;
+            }
         }
 
         // 旧 UTool.Diagnose7zError 的枚举化版本

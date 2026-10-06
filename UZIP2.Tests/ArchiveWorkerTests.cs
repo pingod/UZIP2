@@ -73,7 +73,7 @@ namespace UZIP2.Tests
             Assert.Equal(JobStatus.Success, job.Status);
             Assert.Null(job.UsedPassword);
             Assert.True(File.Exists(Path.Combine(_out, "data.bin")));
-            Assert.Equal(0, Directory.GetDirectories(_out, "UZipTemp_*").Length);
+            Assert.Empty(Directory.GetDirectories(_out, "UZipTemp_*"));
         }
 
         [Fact]
@@ -123,7 +123,7 @@ namespace UZIP2.Tests
             var job = Assert.Single(_worker.Jobs);
             Assert.Equal(JobStatus.Failed, job.Status);
             Assert.Contains("未找到正确密码", job.Diagnosis);
-            Assert.Equal(0, Directory.GetDirectories(_out, "UZipTemp_*").Length);
+            Assert.Empty(Directory.GetDirectories(_out, "UZipTemp_*"));
         }
 
         [Fact]
@@ -183,6 +183,50 @@ namespace UZIP2.Tests
         }
 
         [Fact]
+        public async Task MultiLevel_chains_three_levels_to_the_innermost_file()
+        {
+            var leaf = MakeFile(_src, "deep.bin", 2);
+            var l2 = Path.Combine(_root, "l2.7z");
+            Assert.True((await CompressRaw(l2, null, 1, leaf)).Success);
+            var l1 = Path.Combine(_root, "l1.zip");
+            Assert.True((await CompressRaw(l1, null, 0, l2)).Success);
+            var l0 = Path.Combine(_root, "l0.7z");
+            Assert.True((await CompressRaw(l0, null, 1, l1)).Success);
+
+            _worker.EnqueueExtract(new[] { l0 });
+            await _worker.WhenIdleAsync();
+
+            Assert.Equal(3, _worker.Jobs.Count);
+            Assert.All(_worker.Jobs, j => Assert.Equal(JobStatus.Success, j.Status));
+            Assert.True(File.Exists(Path.Combine(_out, "deep.bin")), "第三层内容应被解出");
+            Assert.Empty(Directory.GetDirectories(_out, "UZipTemp_*"));
+        }
+
+        // 递归必须有上界：没有 MultiLevelDepthLimit 时自我包含/超深嵌套会把任务队列无限撑大。
+        // 第 9 层（Depth==8）之后不再派生新作业，最深的包留在原地等用户手动处理。
+        [Fact]
+        public async Task MultiLevel_stops_at_the_depth_limit()
+        {
+            var pending = MakeFile(_src, "core.bin", 1);
+            string current = null;
+            for (int level = 0; level < 10; level++)
+            {
+                var archive = Path.Combine(_root, "chain" + level + ".7z");
+                Assert.True((await CompressRaw(archive, null, 1, pending)).Success);
+                current = archive;
+                pending = archive;
+            }
+
+            _worker.EnqueueExtract(new[] { current });
+            await _worker.WhenIdleAsync();
+
+            Assert.Equal(9, _worker.Jobs.Count);
+            Assert.All(_worker.Jobs, j => Assert.Equal(JobStatus.Success, j.Status));
+            Assert.True(File.Exists(Path.Combine(_out, "chain0.7z")), "截断处的包应保留");
+            Assert.False(File.Exists(Path.Combine(_out, "core.bin")), "超过深度上限后不再解压");
+        }
+
+        [Fact]
         public async Task Volumes_are_redirected_to_main_and_deduped()
         {
             // 随机数据不可压缩, 确保 -v200k 真正分成多卷
@@ -217,6 +261,44 @@ namespace UZIP2.Tests
             // 并发下两卷谁先认领不确定，只断言"恰好有一个被判为随主卷处理"
             Assert.Contains(_worker.Jobs, j => (j.Diagnosis ?? "").Contains("已随分卷主文件处理"));
             Assert.True(File.Exists(Path.Combine(_out, "bigfile.bin")));
+        }
+
+        // 分卷的"影子作业"以前固定报成功：主卷其实是坏包时，队列里显示两个绿勾，
+        // 而用户一个文件都没拿到。影子必须照抄主作业的真实结果。
+        [Fact]
+        public async Task Volume_shadow_job_mirrors_the_winner_failure()
+        {
+            var rnd = new Random(7);
+            var buf = new byte[400 * 1024];
+            rnd.NextBytes(buf);
+            var big = Path.Combine(_src, "sick.bin");
+            File.WriteAllBytes(big, buf);
+
+            var psi = new ProcessStartInfo(_client.SevenZipPath) { UseShellExecute = false, CreateNoWindow = true };
+            psi.ArgumentList.Add("a");
+            psi.ArgumentList.Add(Path.Combine(_root, "sick.7z"));
+            psi.ArgumentList.Add(big);
+            psi.ArgumentList.Add("-v200k");
+            psi.ArgumentList.Add("-y");
+            using (var p = Process.Start(psi))
+            {
+                p.WaitForExit(60000);
+                Assert.Equal(0, p.ExitCode);
+            }
+
+            // 抹掉首卷头部数据，让这一组必然解不动
+            var main = Path.Combine(_root, "sick.7z.001");
+            using (var fs = new FileStream(main, FileMode.Open))
+            {
+                fs.Seek(64, SeekOrigin.Begin);
+                fs.Write(new byte[4096], 0, 4096);
+            }
+
+            _worker.EnqueueExtract(new[] { main, Path.Combine(_root, "sick.7z.002") });
+            await _worker.WhenIdleAsync();
+
+            Assert.Equal(2, _worker.Jobs.Count);
+            Assert.All(_worker.Jobs, j => Assert.NotEqual(JobStatus.Success, j.Status));
         }
 
         [Fact]
@@ -268,7 +350,7 @@ namespace UZIP2.Tests
             Assert.Equal(2, listing.Entries.Count(e => !e.IsFolder));
             // 预览只读清单，不应产生任何解压输出
             Assert.Empty(_worker.Jobs);
-            Assert.Equal(0, Directory.GetFiles(_out, "*.bin").Length);
+            Assert.Empty(Directory.GetFiles(_out, "*.bin"));
         }
 
         [Fact]
@@ -377,6 +459,96 @@ namespace UZIP2.Tests
             await _worker.WhenIdleAsync();
 
             Assert.All(_worker.Jobs, j => Assert.Contains(j.Status.ToString(), new[] { "Success", "Cancelled" }));
+        }
+
+        // ---------- 收尾清理 ----------
+
+        // temp 目录建在输出目录下，任何"已经建好 temp 又中途失败"的分支都必须删掉它，
+        // 否则用户的下载目录会攒下 UZipTemp_* 隐藏垃圾
+        [Fact]
+        public async Task Extract_failure_after_temp_created_leaves_no_temp_dir()
+        {
+            // 包里有一个顶层目录 pack，输出目录预先放一个同名"文件" → 移动尾段必然抛异常
+            var pack = Path.Combine(_src, "pack");
+            MakeFile(pack, "inside.bin", 1);
+            var zip = Path.Combine(_root, "clash.zip");
+            Assert.True((await CompressRaw(zip, null, 0, pack)).Success);
+            File.WriteAllText(Path.Combine(_out, "pack"), "I am a file, not the folder 7z wants to create");
+
+            _worker.EnqueueExtract(new[] { zip });
+            await _worker.WhenIdleAsync();
+
+            var job = Assert.Single(_worker.Jobs);
+            Assert.Equal(JobStatus.Failed, job.Status);
+            Assert.Empty(Directory.GetDirectories(_out, "UZipTemp_*"));
+        }
+
+        // 取消发生在解压进行中时，同样不允许留下 temp。
+        // 用"加密包 + 20 条错密码"把作业拖到秒级：进度行在单文件包上几乎不出现，
+        // 所以判定条件只能是"temp 已建出来"，不能是 Percent。
+        [Fact]
+        public async Task Cancel_during_extract_leaves_no_temp_dir()
+        {
+            var big = MakeRandomFile(Path.Combine(_src, "big.bin"), 24);
+            var store = Path.Combine(_root, "bigstore.7z");
+            Assert.True((await CompressRaw(store, "never-guess-me", 1, big)).Success);
+            for (int i = 0; i < 20; i++) _passwords.AddBook("错密码" + i, "wrong-" + i);
+
+            _worker.EnqueueExtract(new[] { store });
+            await WaitUntil(j => j.Status == JobStatus.Running
+                                 && Directory.GetDirectories(_out, "UZipTemp_*").Length > 0);
+            var job = _worker.Jobs.Single();
+            _worker.Cancel(job);
+            await _worker.WhenIdleAsync();
+
+            Assert.Equal(JobStatus.Cancelled, job.Status);
+            Assert.Empty(Directory.GetDirectories(_out, "UZipTemp_*"));
+        }
+
+        // 压缩被取消/失败时，半截产物必须删掉：留着它既是坏包，又会让重试被改名成 -New1
+        [Fact]
+        public async Task Cancel_during_compress_removes_partial_archive()
+        {
+            var big = MakeRandomFile(Path.Combine(_src, "p.bin"), 200);
+            var s = _settings.Current;
+            s.CompressAlone = true;
+            s.CompressType = 1;                       // 7z + 默认级别，随机数据要压好几秒
+            s.PasswordMode = 0;
+            s.LastCompressPath = _out;
+
+            _worker.EnqueueCompress(new[] { big });
+            await WaitUntil(j => j.Status == JobStatus.Running
+                                 && Directory.GetFiles(_out, "*.7z").Length > 0);
+            var job = _worker.Jobs.Single();
+            _worker.Cancel(job);
+            await _worker.WhenIdleAsync();
+
+            Assert.Equal(JobStatus.Cancelled, job.Status);
+            Assert.Empty(Directory.GetFiles(_out, "*.7z"));
+        }
+
+        async Task WaitUntil(Func<JobEntry, bool> ready)
+        {
+            for (int i = 0; i < 3000; i++)
+            {
+                if (_worker.Jobs.Any(ready)) return;
+                await Task.Delay(1);
+            }
+            throw new TimeoutException("作业没有进入预期的进行中状态，用例的时序假设不成立");
+        }
+
+        static string MakeRandomFile(string path, int mb)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            var rnd = new Random(20261006);
+            var buf = new byte[4 * 1024 * 1024];
+            using (var fs = File.Create(path, 1 << 20))
+                for (int left = mb; left > 0; left -= 4)
+                {
+                    rnd.NextBytes(buf);
+                    fs.Write(buf, 0, Math.Min(4, left) * 1024 * 1024);
+                }
+            return path;
         }
     }
 }

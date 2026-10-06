@@ -22,7 +22,8 @@ namespace UZIP2.Shell
         private readonly ClipboardService _clipboard;
         private readonly ArchiveWorker _worker;
         private readonly System.Windows.Threading.DispatcherTimer _failTimer;
-        private int _pendingFailures;
+        private readonly FailureNotifier _failures =
+            new FailureNotifier(quietMs: 900, maxWaitMs: 5000);
         private bool _exiting;
         private uint _registeredVk;
         private bool _registeredAlt, _registeredShift, _registeredCtrl;
@@ -70,9 +71,9 @@ namespace UZIP2.Shell
         void OnJobFinished(JobEntry job)
         {
             if (job == null || job.Status != JobStatus.Failed) return;
+            _failures.NoteFailure(Environment.TickCount64);
             Dispatcher.BeginInvoke(new Action(() =>
             {
-                _pendingFailures++;
                 _failTimer.Stop();
                 _failTimer.Start();
             }));
@@ -81,14 +82,13 @@ namespace UZIP2.Shell
         void OnFailTimerTick(object sender, EventArgs e)
         {
             _failTimer.Stop();
-            if (_worker.Jobs.Any(j => j.Status == JobStatus.Queued || j.Status == JobStatus.Running))
+            int n = _failures.FlushIfDue(!_worker.IsIdle, Environment.TickCount64);
+            if (n == 0)
             {
-                _failTimer.Start();   // 批次还没跑完，安静下来再报总数
+                if (_failures.Pending > 0) _failTimer.Start();   // 还在攒总数，继续盯
                 return;
             }
-            int n = _pendingFailures;
-            _pendingFailures = 0;
-            if (n > 0 && (!IsVisible || WindowState == WindowState.Minimized))
+            if (!IsVisible || WindowState == WindowState.Minimized)
                 _tray.ShowBalloon("UZIP", n + " 个任务失败，详情见主页列表与历史页", error: true);
         }
 

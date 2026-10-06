@@ -8,7 +8,7 @@
 | ① | 命令行 / 右键"发送到"直接入队解压：`UZIP2.exe a.zip b.zip` | ✅ | 实测：`UZIP2.exe D:\tmp-live15\a.zip` 启动后无人工干预，`one.bin` 解到压缩包所在目录（`extractOutMode=1`）；日志见 `7z t` → `7z x -o...\UZipTemp_a -aos` |
 | ② | 第二实例把参数转发给主实例后退出 | ✅ | 实测：主实例运行中再启 `UZIP2.exe b.zip`，第二进程 2.3s 内 exit 0 且无新窗口；主实例解出 `two.bin`。链路 = `InstanceBus`（Local 互斥体 + 命名管道 `UZIP2_FileArgs_Pipe`） |
 | ③ | 密码试错链：无密码 → 人工指定 → 外部 → 文件名 → 密码本(按成功次数) → 密码纸；全部失败给出诊断 | ✅ | 测试：`WrongPassword_all_sources_tried_then_diagnosis`（诊断文案 `需要密码，但密码本/密码纸中未找到正确密码`，且密码纸未被消耗）、`Paper_password_hit_consumes_entry`（命中即消耗） |
-| ④ | 多级解压（包中包递归，深度上限 8） | ✅ | 测试：`Nested_archives_extracted_recursively`，outer.zip→inner.zip→leaf.bin 产生 2 个作业且全成功 |
+| ④ | 多级解压（包中包递归，深度上限 8） | ✅ | 测试：`Nested_archives_extracted_recursively`（outer.zip→inner.zip→leaf.bin 产生 2 个作业且全成功）；v3.7 又补了三层链与深度上限截断两个用例，见 F23 |
 | ⑤ | 分卷（`.zip.001` / `.part1.rar` / `.z01`）只解一次，副卷静默完成 | ✅ | 测试：`Split_volumes_extract_once_from_main`，4 卷 `7z a -v128k` 产物入队 → 4 作业全成功，副卷诊断为 `已随分卷主文件处理`，`big.bin` 落盘 |
 | ⑥ | 压缩密码写进文件名 + 随机密码（8/16/32 位） | ✅ | 测试：`Random_password_written_into_archive_name`，`passwordMode=6`+`passwordToName` → 文件名以 `" " + 密码 + ".zip"` 结尾，且该密码确实可解 |
 | ⑦ | 解压过滤命中项删除；`HideZipContent` → `-mhe=on` 头加密后包内文件名不可见 | ✅ | 测试：`Extract_filter_removes_ad_files_and_header_encryption_hides_names`（`广告.txt` 被删；无密码 `7z l` 输出不含 `inner-name.dat`） |
@@ -41,7 +41,7 @@
 | N4 | 监听下载目录自动解压（`WatchEnabled` / `WatchFolder`，去抖 + 稳定性判定） | 测试：`WatchFolderServiceTests` |
 | N5 | 压缩日志检索窗口（按包名 / 密码 / 时间过滤 `Compress.log`） | 测试：`CompressLogServiceTests`；实测：设置 → "7-Zip 与日志" → 检索压缩日志 |
 | N6 | 失败条：一键批量重试全部失败项 + 导出失败报告（报告绝不含密码） | 测试：`FailureReportTests`（含"导出件不含密码"用例） |
-| N7 | Windows 右键菜单注册/移除（HKCU，免管理员），设置页显示当前指向；"解压到当前文件夹"动词带 `Flat`，无视 `CreateNewFolder/CreateNameFolder` 建目录设置 | 测试：`ShellMenuTests`（写入/移除/状态判定/指向检测）+ `ArchiveWorkerTests.Flat_extract_overrides_create_name_folder`。实测：从 H: 部署副本跑 `--register-shell` 后，注册表里 5 项（文件解压到当前/解压/压缩 + 目录压缩 + 目录背景压缩）全部指向 `H:\Sync\PublicShare\software\UZip\UZIP2.exe`；资源管理器里的菜单外观未截图核对 |
+| N7 | Windows 右键菜单注册/移除（HKCU，免管理员），设置页显示当前指向；"解压到当前文件夹"动词带 `Flat`，无视 `CreateNewFolder/CreateNameFolder` 建目录设置 | 测试：`ShellMenuTests`（写入/移除/状态判定/指向检测）+ `ArchiveWorkerTests.Flat_extract_overrides_create_name_folder`。实测：从 H: 部署副本跑 `--register-shell` 后，注册表里 5 项（文件解压到当前/解压/压缩 + 目录压缩 + 目录背景压缩）全部指向（v3.7 起为 6 项，见 F20） `H:\Sync\PublicShare\software\UZip\UZIP2.exe`；资源管理器里的菜单外观未截图核对 |
 | N8 | 密码库跨机加密导出/导入（口令派生密钥；导出件不含明文，也不含口令） | 测试：`VaultTransferTests` |
 | N9 | 桌面迷你拖拽方块：只留一个小窗，文件拖上去即处理（`MiniPuck`，默认关；位置记忆） | 测试：`HomeViewModelTests` 的模式路由与预告文案复用；方块窗口本身待人工拖放确认 |
 | N10 | 分卷压缩 `-v`（`700m` / `1g` / 纯字节；非法值在启动 7z 前挡下） | 测试：`VolumeSizeTests` + `ArchiveWorkerTests`；产出 `name.7z.001/002…` |
@@ -105,3 +105,48 @@
 | H5 | CLI `history` 子命令：列表 / `--grep` / `--limit` / `--json` / `--show-passwords` / `--clear`；默认（含 `--json`）口令脱敏为 `***` | `CliRunnerTests` 历史 7 个；真机验证 masked vs `--show-passwords`、`--json` 打码、`--clear` 删文件、`LogPasswords=false` 时落库不含口令字段（grep 明文 0 命中） |
 | H6 | 历史页（导航"历史"）：搜索、只看失败、显示口令、刷新、清空（确认）、状态胶囊、原因+建议、口令打码、每行"重跑" | `HistoryViewModelTests` 7 个；真机截图确认渲染、默认打码、勾选"显示口令"还原明文 `letmein`、失败行无口令 |
 | H7 | 修复 CLI 相对路径缺陷：文件类命令位置参数与 `-o` 执行前 `Path.GetFullPath` 规范化 | 真机：`compress work/in -o work` 由"文件被占用或无法打开"→ rc=0；H4 端到端断言 `Source` 绝对 |
+
+## v3.6 任务列表管理
+
+基线：`dotnet test` 475/475 通过（2026-10-03），主工程 0 警告。
+
+| # | 能力 | 证据 |
+|---|------|------|
+| M1 | 终态卡片逐张移除 / 清除失败项 / 清除已完成 / 全部取消；移除只动主页，历史保留 | `QueueManageTests`；真机 UIA 冒烟（失败到达后按钮即时可用） |
+| M2 | 列表排序 `settings.JobSort`：加入顺序/最新在前/按状态/按文件名，`JobOrder` 全序比较器 + 精准插入 | `QueueManageTests` 排序全序与插入位置用例 |
+| M3 | 窗口不在前台时一次托盘气泡汇总本批失败条数；列表超 200 张自动回收最旧 | `MainWindow` 防抖逻辑（v3.7 抽成 `FailureNotifier` 后单测覆盖） |
+
+## v3.7 全量审计：缺陷清账 + 性能 + 格式互转/包对比
+
+基线：`dotnet test` **642/642** 通过（2026-10-07），**主工程与测试工程均 0 警告、0 错误**。验证方式同上：**测试** = 真实 7z.exe 端到端；**实测** = 驱动 `bin/Release` 的 exe 或部署副本现场观察。
+
+| # | 能力 / 修复 | 证据 |
+|---|------|------|
+| F1 | 密码本 `Changed` 改为锁外派发（旧实现在持 `_sync` 时回调读 `Book`/`Paper` → 必死锁） | `PasswordServiceTests`（订阅回调里读密码本不再卡死）；接口注释写明"调用方必须持有 `_sync`" |
+| F2 | 取消/重试的"状态判定 + cts 查找"原子化，堵住"刚翻成 Running 的一瞬漏掉 `CancelRequested`"；影子作业不再重复入队 | `ParallelQueueTests`、`ArchiveWorkerTests` 取消用例 |
+| F3 | session temp 记账回收：创建时在 `Config\` 落一行，启动按账清理输出盘上的 `UZipTemp_*` 残留，失败/取消/异常路径都在 finally 删 | `TempManagerTests`（账本逐条回收、失效行丢弃） |
+| F4 | 取消或失败的压缩产物当场删除（分卷按 `.001/.002…` 删到第一个缺口）；压缩后自检先于删源 | `ArchiveWorkerTests`、`CompressVerifyTests`（自检不过→源保留 + Failed） |
+| F5 | 解压过滤命中项跟随"删除到回收站"设置 | `FilterServiceTests` |
+| F6 | 分卷影子作业等主卷真实终态，主卷失败影子也失败，不再凭空报绿 | `ArchiveWorkerTests` 分卷用例 + `VolumeCompressTests` |
+| F7 | `CrashGuard`：UI 线程非致命异常记日志+提示后继续跑；后台线程崩前留现场；未 await 的 Task 不再静默吞；致命异常放行 | `CrashGuardTests` 6 个 |
+| F8 | `WatchFolderService.Error` 接住并按当前设置重建 watcher（缓冲溢出/目录被删不再崩进程、不再假"监听中"） | `WatchFolderServiceTests` |
+| F9 | `AtomicFile` 唯一临时名，GUI/CLI 双进程不再互搬对方临时件 | `AtomicFileTests` |
+| F10 | 历史页"重跑"带上记录里当时成功的口令；校验类记录不再按解压语义重跑 | `HistoryViewModelTests` |
+| F11 | 一批解到同一目录只开一个资源管理器（大小写/尾分隔符不同不算两个目录）；`OpenDirectory` 可注入，测试不再弹 explorer | `HomeViewModelTests` |
+| F12 | 加密包解压改为一遍盘：候选口令直接解进私有 temp，错口令的半截产物不落入用户目录；清单已确认加密就不试空口令；硬伤（磁盘满/路径过长）不再被说成"密码不对" | `ExtractPasswordChainTests` 15 个（经 `IArchiveEngine` 数清一个作业起了几遍全盘读） |
+| F13 | `SlotPool` 取代 20 ms 轮询名额：等待者挂 TCS、并行度调大当场唤醒、不再超发并发 | `SlotPoolTests` 5 个 |
+| F14 | 历史写盘节流 + 退出/CLI 收尾 `Flush`；外链密码整批复用（独立锁）；失败气泡 `FailureNotifier` 加最长等待期兜底 | `HistoryServiceTests`、`PasswordServiceTests`、`FailureNotifierTests` |
+| F15 | CLI 正确性：`--json` 默认脱敏（`--show-passwords` 还原）、未知命令词/选项一律退出码 2、`-o ""` 显式空值不被吞、命令词可写在已知选项之后 | `CliParserTests` 50 个、`CliRunnerTests` 41 个 |
+| F16 | 7z 契约修正：以退出码为准并按官方码兜底分类、`-sccUTF-8` 统一两条流（中文包名不再乱码）、等进程真断开再返回（句柄未放就删会静默失败） | `SevenZipClientTests`、`SevenZipProgressParsing`、`SevenZipStreamTests` |
+| F17 | **格式互转** GUI「转格式」+「转为」下拉 / CLI `convert`，原包一律保留，`bz2/gz/xz` 单流限制由程序说清，复合后缀剥净 + 撞名 `-New1` | `ConvertTests` 42 个（`ArchiveFormatTests` 31 + `ConvertWorkerTests` 6 + `ConvertCliTests` 5） |
+| F18 | 格式表收敛到 `ArchiveFormat`：`-t` 开关名与文件后缀是两张表（实测 `-tbz2`/`-tgz` 报错、`-tbzip2`/`-tgzip` 正常）；ISO/UDF 只读，认不出的 `--type`/`--name` 不再静默降级成 zip | `ArchiveFormatTests`；实测 `-tiso` 返回"System ERROR: 未实现" |
+| F19 | **包对比** `ArchiveDiff`（键归一 `\`→`/`、去尾斜杠、跳过目录条目）+ CLI `diff`（GNU 退出码 0/1）+ 预览窗口「对比另一个包」 | `ArchiveDiffTests` 7 个、`CliRunnerTests` diff 4 个；按钮渲染待真机冒烟 |
+| F20 | 右键新增第 6 项「用 UZIP 解压并预览」（旧 5 项注册会被判为过期并提示重注册）；`--preview` 走主页同一 `OpenPreviewWindow`，两套开窗逻辑合并 | `ShellMenuTests`、`ShellArgsTests` |
+| F21 | 压缩后校验 `VerifyAfterCompress`（默认开，设置页开关 + CLI `--test/--no-test`） | `CompressVerifyTests` 5 个 |
+| F22 | 自更新核对 `<产物>.sha256` 侧车（兼容 sha256sum 与 PowerShell 两种文本风格；无侧车则跳过，不挡更新）；`publish.ps1` 逐产物出侧车 | `SelfUpdaterTests` 30 个、`UpdateServiceTests` 57 个 |
+| F23 | 多级解压深度上限实测：三层链每层都 Success；第 9 层（`Depth == 8`）不再派生作业，截断处的包留在原地 | `ArchiveWorkerTests.MultiLevel_chains_three_levels_to_the_innermost_file` / `MultiLevel_stops_at_the_depth_limit`（替换 ④ 里"产生 2 个作业"的弱断言） |
+| F24 | 单实例命名管道转发可测：互斥体/管道名可注入，测试不与用户正在运行的实例抢名字；空参数=仅唤起窗口仍会触发事件 | `InstanceBusTests` 4 个 |
+
+| F25 | 真机冒烟抓到并修掉：**`CLI convert` 转换成功却毫无输出**（既不报产物路径也不出 JSON，rc=0）。原因是 `DoConvert` 读绑定用的 `Jobs` 集合，而它只往 UI 调度线程里塞，CLI 正阻塞在那个线程等结果 → 读到的永远是空集合。现 `EnqueueConvert` 直接返回作业对象，CLI 不再绕道 UI 集合 | 测试：`ConvertWorkerTests.EnqueueConvert_reports_its_own_jobs_even_when_the_dispatcher_is_blocked`（注入一个"建好但从不泵消息"的 Dispatcher，精确复现该处境并断言 `Jobs` 为空、返回的作业为 Success）；实测：`convert _smoke/A.zip --type 7z -o out --json` 修前 stdout 全空，修后输出 `A.zip -> out\A.7z` + JSON、rc=0 |
+
+**未覆盖项（如实记录）**：`HotKeyService` 的注册/`WM_HOTKEY` 派发、`TrayService` 气泡与菜单、`PreviewWindow` 的对比按钮、`HomeView` 的「转为/转格式」、`App.ShowPreview` 路由都依赖 WPF 消息泵或真实窗口句柄，单元测试盖不住（见 [[unit-tests-are-dispatcher-blind]]），需按 N7/M1 的老办法驱动真实 exe 冒烟。另：设置与历史跨进程仍是后写者覆盖（合并未做），写回节流下硬崩最多丢约 1.2 s 的记录。

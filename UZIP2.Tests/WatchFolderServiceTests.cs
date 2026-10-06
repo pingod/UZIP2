@@ -128,5 +128,45 @@ namespace UZIP2.Tests
                 await Task.Delay(100);
             Assert.NotEmpty(_worker.Jobs);
         }
+
+        // 下载目录可能在移动盘/网络盘上：目录暂时不在不代表用户不想监听。
+        // 以前 Apply() 之后就再也不重试，盘符回来后监听仍是死的。
+        [Fact]
+        public async Task Missing_folder_is_rearmed_once_it_appears()
+        {
+            var dir = Path.Combine(_root, "later");
+            _settings.Save(s => { s.WatchEnabled = true; s.WatchFolder = dir; });
+            _service.Apply();
+            Assert.False(_service.IsRunning);
+
+            Directory.CreateDirectory(dir);
+            var sw = Stopwatch.StartNew();
+            while (sw.ElapsedMilliseconds < 8000 && !_service.IsRunning) await Task.Delay(100);
+
+            Assert.True(_service.IsRunning, "目录出现后必须自动重建监听");
+            Assert.Equal(dir, _service.Folder);
+        }
+
+        // watcher 内部缓冲溢出/目录被删时会抛 Error；不接住就是整个进程跟着崩。
+        // 接住以后必须重建出一个"真的在收事件"的新 watcher。
+        [Fact]
+        public async Task Restart_rearms_a_live_watcher()
+        {
+            if (!Has7z) return;
+            var src = Path.Combine(_root, "rearm.txt");
+            File.WriteAllText(src, "x");
+            var zip = Path.Combine(_root, "rearm.zip");
+            Assert.True((await _client.CompressAsync(new[] { src }, zip, null, 0, 0, false, null, CancellationToken.None)).Success);
+
+            _settings.Save(s => { s.WatchEnabled = true; s.WatchFolder = _watch; });
+            _service.Apply();
+            _service.Restart();          // 等价于 Error 事件后的重建
+            Assert.True(_service.IsRunning);
+
+            File.Copy(zip, Path.Combine(_watch, "rearm.zip"));
+            var sw = Stopwatch.StartNew();
+            while (sw.ElapsedMilliseconds < 15000 && _worker.Jobs.Count == 0) await Task.Delay(100);
+            Assert.NotEmpty(_worker.Jobs);
+        }
     }
 }

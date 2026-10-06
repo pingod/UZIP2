@@ -23,10 +23,16 @@ namespace UZIP2.ViewModel
         private readonly SevenZipClient _zip;
         private readonly PasswordService _passwords;
         private readonly ClipboardService _clipboard;
-        private readonly HashSet<long> _autoOpened = new HashSet<long>();
         private readonly ObservableCollection<JobEntry> _jobs = new ObservableCollection<JobEntry>(); // 排序后的显示镜像
         private readonly Dispatcher _ui = System.Windows.Application.Current?.Dispatcher
             ?? Dispatcher.CurrentDispatcher;
+
+        // 本批已弹过窗的输出目录：一批 20 个档案解到同一目录只该开一个资源管理器
+        private readonly HashSet<string> _openedDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private readonly object _openGate = new object();
+
+        /// <summary>打开输出目录的动作，默认为资源管理器；测试或宿主可替换。</summary>
+        public Action<string> OpenDirectory { get; set; } = OpenInExplorer;
 
         // 终态卡片自动回收上限：长会话连跑几百个文件也不让列表无限堆积
         const int TerminalKeepCap = 200;
@@ -44,9 +50,11 @@ namespace UZIP2.ViewModel
             _sortMode = sort >= 0 && sort <= JobOrder.ByName ? sort : JobOrder.AddOrder;
             _sevenZipMissing = zip.SevenZipPath == null;
             _paperCount = passwords.Paper.Count;
-            passwords.Changed += () => _ui.Invoke(() => PaperCount = passwords.Paper.Count);
+            // 异步派发：解压线程会在持有密码本锁的过程中抛 Changed，用 Invoke 就是让 UI 等那把锁
+            passwords.Changed += () => Post(() => PaperCount = passwords.Paper.Count);
             _jobs.CollectionChanged += (s, e) => OnPropertyChanged(nameof(HasJobs));
             ((INotifyCollectionChanged)_worker.Jobs).CollectionChanged += OnJobsChanged;
+            _worker.JobFinished += OnJobFinished;
             foreach (var job in _worker.Jobs) HookJob(job);
             RebuildMirror();
             RefreshSummary();
@@ -58,6 +66,10 @@ namespace UZIP2.ViewModel
 
         public string[] SortOptions { get; } = JobOrder.Names;
 
+        // 「转为」下拉：显示顺序与 ArchiveFormat 下标的对应表（7z 放第一位，它最常用）
+        static readonly int[] FormatIndices = { 1, 0, 4, 2, 3, 5, 6 };
+        public string[] ConvertTypeNames { get; } = { "7z", "zip", "tar", "bz2", "gz", "wim", "xz" };
+
         [ObservableProperty] private int _mode;
         [ObservableProperty] private string _previewText = "";
         [ObservableProperty] private bool _previewIsWarning;
@@ -67,6 +79,7 @@ namespace UZIP2.ViewModel
         [ObservableProperty] private int _finishedCount;
         [ObservableProperty] private int _activeCount;
         [ObservableProperty] private int _sortMode;
+        [ObservableProperty] private int _convertTypeIndex;
 
         public bool HasFailures => FailedCount > 0;
         public bool HasFinished => FinishedCount > 0;
@@ -177,21 +190,22 @@ namespace UZIP2.ViewModel
             switch (Mode)
             {
                 case 1:
-                    if (archives.Count == 1 && _settings.Current.PreviewBeforeExtract) OpenPreview(archives[0]);
+                    if (archives.Count == 1 && _settings.Current.PreviewBeforeExtract) OpenPreviewWindow(archives[0]);
                     else if (archives.Count > 0) _worker.EnqueueExtract(archives);
                     break;
                 case 2:
                     _worker.EnqueueCompress(list);
                     break;
                 default:
-                    if (archives.Count == 1 && _settings.Current.PreviewBeforeExtract) OpenPreview(archives[0]);
+                    if (archives.Count == 1 && _settings.Current.PreviewBeforeExtract) OpenPreviewWindow(archives[0]);
                     else if (archives.Count > 0) _worker.EnqueueExtract(archives);
                     if (others.Count > 0) _worker.EnqueueCompress(others);
                     break;
             }
         }
 
-        void OpenPreview(string archive)
+        /// <summary>打开包内清单窗口（勾选解压）。右键「解压并预览」也走这里，避免两套开窗逻辑漂移。</summary>
+        public void OpenPreviewWindow(string archive, string password = null)
         {
             var mw = System.Windows.Application.Current?.MainWindow;
             var win = new UZIP2.Shell.PreviewWindow(archive, null, _worker)
@@ -351,18 +365,22 @@ namespace UZIP2.ViewModel
         {
             if (job == null || string.IsNullOrEmpty(job.Archive)) return;
             if (!File.Exists(job.Archive)) return;
-            var mw = System.Windows.Application.Current?.MainWindow;
-            var win = new UZIP2.Shell.PreviewWindow(job.Archive, job.UsedPassword, _worker)
-            {
-                Owner = mw != null && mw.IsVisible ? mw : null
-            };
-            win.ShowDialog();
+            OpenPreviewWindow(job.Archive, job.UsedPassword);
         }
 
         [RelayCommand]
         void RetryJob(JobEntry job)
         {
             if (job != null) _worker.Retry(job);
+        }
+
+        // 卡片上的「转格式」：产物就放在原包旁边，原包永远保留
+        [RelayCommand]
+        void ConvertJob(JobEntry job)
+        {
+            if (job == null || string.IsNullOrEmpty(job.Archive) || !File.Exists(job.Archive)) return;
+            if (ConvertTypeIndex < 0 || ConvertTypeIndex >= FormatIndices.Length) return;
+            _worker.EnqueueConvert(new[] { job.Archive }, FormatIndices[ConvertTypeIndex], null, job.UsedPassword);
         }
 
         // 单卡"移除"：只对终态生效（worker 侧对活动项免疫），历史页不受影响
@@ -557,10 +575,33 @@ namespace UZIP2.ViewModel
 
             RefreshSummary();
 
+            TryOpenOutput(job);
+        }
+
+        // 整批跑完才忘掉开过的目录：批内清登记会让同一目录被后面的档案再弹一次
+        void OnJobFinished(JobEntry job)
+        {
+            if (_worker.IsIdle) lock (_openGate) _openedDirs.Clear();
+        }
+
+        void TryOpenOutput(JobEntry job)
+        {
             if (job.Status != JobStatus.Success) return;
             if (!_settings.Current.AutoOpenAfterExtract) return;
-            if (string.IsNullOrEmpty(job.OutputDir) || !_autoOpened.Add(job.Id)) return;
-            OpenInExplorer(job.OutputDir);
+            var dir = job.OutputDir;
+            if (string.IsNullOrEmpty(dir)) return;
+            lock (_openGate)
+            {
+                if (!_openedDirs.Add(NormalizeDir(dir))) return;
+            }
+            OpenDirectory?.Invoke(dir);
+        }
+
+        // 结尾分隔符与大小写不同不等于两个目录
+        static string NormalizeDir(string dir)
+        {
+            try { return Path.GetFullPath(dir).TrimEnd('\\', '/'); }
+            catch { return dir.TrimEnd('\\', '/'); }
         }
 
         // 三个计数是按钮可用性与横幅的唯一数据源，全部在 UI 线程刷新

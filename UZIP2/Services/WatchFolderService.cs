@@ -19,6 +19,10 @@ namespace UZIP2.Services
         private FileSystemWatcher _watcher;
         private readonly HashSet<string> _inFlight = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private CancellationTokenSource _cts;
+        private Timer _retryTimer;
+
+        // 监听目录常在移动盘/下载盘上，暂时不在不等于不想监听
+        const int RetryMs = 2000;
 
         public WatchFolderService(ISettingsService settings, ArchiveWorker worker)
         {
@@ -34,9 +38,15 @@ namespace UZIP2.Services
         {
             var s = _settings.Current;
             var folder = s.WatchFolder;
-            if (!s.WatchEnabled || string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
+            if (!s.WatchEnabled)
             {
                 Stop();
+                return;
+            }
+            if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
+            {
+                Stop();
+                EnsureRetry();
                 return;
             }
             lock (_sync)
@@ -55,7 +65,45 @@ namespace UZIP2.Services
                 };
                 _watcher.Created += (s2, e) => HandlePath(e.FullPath);
                 _watcher.Renamed += (s2, e) => HandlePath(e.FullPath);
+                // 缓冲溢出/目录被删时 .NET 只会抛到线程池：不接住就是整个进程崩，
+                // 接住之后必须重建，否则监听静默停摆而 UI 仍显示"监听中"。
+                _watcher.Error += OnWatcherError;
             }
+            StopRetry();
+        }
+
+        void OnWatcherError(object sender, ErrorEventArgs e) => Restart();
+
+        // Error 事件后的自我修复：丢掉坏 watcher，按当前设置重来一次
+        public void Restart()
+        {
+            Stop();
+            try { Apply(); } catch { }
+            if (!IsRunning) EnsureRetry();
+        }
+
+        void EnsureRetry()
+        {
+            lock (_sync)
+            {
+                if (_retryTimer != null) return;
+                _retryTimer = new Timer(_ =>
+                {
+                    try
+                    {
+                        if (!_settings.Current.WatchEnabled) { StopRetry(); return; }
+                        Apply();
+                    }
+                    catch { }
+                }, null, RetryMs, RetryMs);
+            }
+        }
+
+        void StopRetry()
+        {
+            Timer t;
+            lock (_sync) { t = _retryTimer; _retryTimer = null; }
+            t?.Dispose();
         }
 
         public void Stop()
@@ -67,7 +115,7 @@ namespace UZIP2.Services
                 w = _watcher; cts = _cts;
                 _watcher = null; _cts = null;
             }
-            if (w != null) { w.EnableRaisingEvents = false; w.Dispose(); }
+            if (w != null) { w.Error -= OnWatcherError; w.EnableRaisingEvents = false; w.Dispose(); }
             cts?.Cancel();
             cts?.Dispose();
         }

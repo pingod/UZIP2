@@ -14,6 +14,8 @@ namespace UZIP2.Services
         public string Notes { get; set; }
         // 框架依赖单文件资产的直链（自更新下载用）；没有匹配资产时为 null
         public string DownloadUrl { get; set; }
+        // 同名 UZIP2.exe.sha256 侧车的直链；老版本没发布校验值时为 null（更新时跳过这一步）
+        public string Sha256Url { get; set; }
         public long Size { get; set; }
     }
 
@@ -116,7 +118,11 @@ namespace UZIP2.Services
                     info.DownloadUrl = GetString(a, "browser_download_url");
                     if (a.TryGetProperty("size", out var sz) && sz.ValueKind == JsonValueKind.Number)
                         info.Size = sz.GetInt64();
-                    return;
+                }
+                else if (info.Sha256Url == null
+                         && string.Equals(name, FallbackAssetName + ".sha256", StringComparison.OrdinalIgnoreCase))
+                {
+                    info.Sha256Url = GetString(a, "browser_download_url");
                 }
             }
         }

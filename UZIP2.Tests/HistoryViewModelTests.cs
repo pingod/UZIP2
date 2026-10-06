@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UZIP2.Models;
@@ -106,6 +107,82 @@ namespace UZIP2.Tests
             var vm = new HistoryViewModel(H);   // worker = null
             var ex = Record.Exception(() => vm.RetryCommand.Execute(vm.Rows[0]));
             Assert.Null(ex);
+        }
+
+        // 校验记录不能当解压重跑：否则"test 失败"变成"真的把包解开了"。
+        [Fact]
+        public void Test_row_is_not_retryable()
+        {
+            H.Record(new JobEntry { Kind = "Test", Archive = "pack.zip", Status = JobStatus.Failed, Diagnosis = "数据错误" });
+            var row = Assert.Single(new HistoryViewModel(H).Rows);
+            Assert.Equal("Test", row.Kind);
+            Assert.False(row.CanRetry);
+        }
+
+        [Fact]
+        public void Extract_and_compress_rows_are_retryable()
+        {
+            H.Record(new JobEntry { Kind = "Extract", Archive = "a.zip", Status = JobStatus.Failed });
+            H.Record(new JobEntry { Kind = "Compress", Archive = "b.txt", Status = JobStatus.Failed });
+            var vm = new HistoryViewModel(H);
+            Assert.All(vm.Rows, r => Assert.True(r.CanRetry));
+        }
+
+        // 重跑必须带上历史里那条记录用的口令：口令不在密码本里时，
+        // 裸重跑等于把一次成功的作业变成一个必然失败的作业。
+        [Fact]
+        public void Retry_passes_recorded_password_to_the_worker()
+        {
+            var fake = new RecordingWorker();
+            H.Record(new JobEntry { Kind = "Extract", Archive = @"C:\p\secret.7z", Status = JobStatus.Success, UsedPassword = "pw9" });
+            var vm = new HistoryViewModel(H, fake);
+            vm.RetryCommand.Execute(vm.Rows[0]);
+
+            Assert.True(fake.ExtractCalled);
+            Assert.Equal("pw9", fake.ExtractPassword);
+        }
+
+        [Fact]
+        public void Retry_passes_recorded_password_to_compress()
+        {
+            var fake = new RecordingWorker();
+            H.Record(new JobEntry { Kind = "Compress", Archive = @"C:\p\doc.txt", Status = JobStatus.Success, UsedPassword = "cpw" });
+            var vm = new HistoryViewModel(H, fake);
+            vm.RetryCommand.Execute(vm.Rows[0]);
+
+            Assert.True(fake.CompressCalled);
+            Assert.Equal("cpw", fake.CompressPassword);
+        }
+
+        [Fact]
+        public void Retry_skips_test_rows_even_with_a_worker()
+        {
+            var fake = new RecordingWorker();
+            H.Record(new JobEntry { Kind = "Test", Archive = @"C:\p\pack.zip", Status = JobStatus.Failed });
+            var vm = new HistoryViewModel(H, fake);
+            vm.RetryCommand.Execute(vm.Rows[0]);
+
+            Assert.False(fake.ExtractCalled);
+            Assert.False(fake.CompressCalled);
+        }
+
+        class RecordingWorker : IJobQueue
+        {
+            public bool ExtractCalled, CompressCalled;
+            public string ExtractPassword, CompressPassword;
+
+            public void EnqueueExtract(IReadOnlyList<string> archives, string outputDir = null,
+                List<string> onlyEntries = null, bool flat = false, string manualPassword = null)
+            {
+                ExtractCalled = true;
+                ExtractPassword = manualPassword;
+            }
+
+            public void EnqueueCompress(IReadOnlyList<string> files, string outDir = null, string manualPassword = null)
+            {
+                CompressCalled = true;
+                CompressPassword = manualPassword;
+            }
         }
     }
 }

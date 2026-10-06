@@ -74,7 +74,7 @@ namespace UZIP2.Tests
         [Fact]
         public async Task CheckAsync_uses_the_injected_fetch()
         {
-            string? called = null;
+            string called = null;
             var info = await UpdateService.CheckAsync(url =>
             {
                 called = url;
@@ -230,6 +230,29 @@ namespace UZIP2.Tests
                 "{\"tag_name\":\"v3.3.0\",\"assets\":[{\"name\":\"UZIP2.exe\",\"browser_download_url\":\"https://gh/a.exe\"}]}");
             Assert.Equal("https://gh/a.exe", info.DownloadUrl);
             Assert.Equal(0, info.Size);
+        }
+
+        // ---------- 发布校验值：同名 .sha256 侧车 ----------
+
+        [Fact]
+        public void ParseRelease_picks_the_sha256_sidecar()
+        {
+            var info = UpdateService.ParseRelease(
+                "{\"tag_name\":\"v3.6.0\",\"assets\":["
+                + "{\"name\":\"UZIP2.exe\",\"browser_download_url\":\"https://gh/UZIP2.exe\",\"size\":8400000},"
+                + "{\"name\":\"UZIP2.exe.sha256\",\"browser_download_url\":\"https://gh/UZIP2.exe.sha256\",\"size\":65}"
+                + "]}");
+            Assert.Equal("https://gh/UZIP2.exe", info.DownloadUrl);
+            Assert.Equal("https://gh/UZIP2.exe.sha256", info.Sha256Url);
+        }
+
+        [Fact]
+        public void Release_without_a_sidecar_has_no_checksum_url()
+        {
+            var info = UpdateService.ParseRelease(
+                "{\"tag_name\":\"v3.5.0\",\"assets\":[{\"name\":\"UZIP2.exe\",\"browser_download_url\":\"https://gh/a.exe\",\"size\":1}]}");
+            Assert.Equal("https://gh/a.exe", info.DownloadUrl);
+            Assert.Null(info.Sha256Url);   // 老版本没发布校验值：更新照做，只是跳过这一步
         }
     }
 }

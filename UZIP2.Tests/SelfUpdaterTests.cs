@@ -186,6 +186,58 @@ namespace UZIP2.Tests
         public void Relay_passes_launch_args_through()
             => Assert.Contains("--show-updated", SelfUpdater.BuildRelayScript(1, "a", "b", "--show-updated"));
 
+        // ---------- 发布校验值（.sha256 侧车）----------
+
+        // 64 位十六进制：sha256 摘要的长度就是这道门槛，短一格说明读错了字段
+        const string Hex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        const string Other = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+
+        [Fact]
+        public void ExtractSha256_reads_a_coreutils_sidecar_line()
+            => Assert.Equal(Hex, SelfUpdater.ExtractSha256(Hex + "  UZIP2.exe\r\n"));
+
+        [Fact]
+        public void ExtractSha256_lowercases_a_labelled_hash()
+            => Assert.Equal(Hex, SelfUpdater.ExtractSha256("SHA256(UZIP2.exe)= " + Hex.ToUpperInvariant()));
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("没有哈希")]
+        [InlineData("0123456789abcdef")]              // 太短：像是 md5 或被截断的一行
+        public void ExtractSha256_returns_null_without_a_full_digest(string text)
+            => Assert.Null(SelfUpdater.ExtractSha256(text));
+
+        [Fact]
+        public void VerifySha256_accepts_the_published_digest()
+        {
+            var file = Path.Combine(TempDir(), "payload.bin");
+            File.WriteAllBytes(file, new byte[] { 1, 2, 3 });
+            var expected = System.BitConverter.ToString(
+                System.Security.Cryptography.SHA256.HashData(new byte[] { 1, 2, 3 })).Replace("-", "").ToLowerInvariant();
+
+            var r = SelfUpdater.VerifySha256(file, expected);
+            Assert.True(r.Ok);
+            Assert.Null(r.Error);
+        }
+
+        [Fact]
+        public void VerifySha256_rejects_a_tampered_payload()
+        {
+            var file = Path.Combine(TempDir(), "payload.bin");
+            File.WriteAllBytes(file, new byte[] { 1, 2, 3 });
+
+            var r = SelfUpdater.VerifySha256(file, Other);
+            Assert.False(r.Ok);
+            Assert.Contains("校验", r.Error);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("   ")]
+        public void VerifySha256_skips_a_release_without_a_published_digest(string expected)
+            => Assert.True(SelfUpdater.VerifySha256(Path.Combine(TempDir(), "whatever"), expected).Ok);
+
         static void TryRmDir(string dir)
         {
             try { if (Directory.Exists(dir)) Directory.Delete(dir, true); } catch { }

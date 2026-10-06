@@ -39,6 +39,57 @@ namespace UZIP2.Tests
         {
             Assert.Equal(expected, SevenZipClient.Classify(output, 1, false));
         }
+
+        // 输出行里没有可辨认关键字时，用 7z 官方退出码表兜底
+        // (0 正常 / 1 非致命 / 2 致命 / 3 方法不支持 / 5 数据错误 / 7 不是压缩包 / 255 用户中止)
+        [Theory]
+        [InlineData("", 0, SevenZipError.None)]
+        [InlineData("", 5, SevenZipError.Corrupt)]
+        [InlineData("", 7, SevenZipError.UnsupportedFormat)]
+        [InlineData("", 3, SevenZipError.UnsupportedFormat)]
+        [InlineData("", 255, SevenZipError.Cancelled)]
+        [InlineData("", 2, SevenZipError.Corrupt)]
+        [InlineData("", 1, SevenZipError.Unknown)]
+        [InlineData("", 6, SevenZipError.Unknown)]
+        public void Classifies_by_exit_code_when_output_gives_no_hint(string output, int exit, SevenZipError expected)
+            => Assert.Equal(expected, SevenZipClient.Classify(output, exit, false));
+
+        // 成功与否只看退出码：7z 的 "Everything is Ok" 是文案，
+        // 哪天改一个字就会把真正成功的作业判成失败。
+        [Theory]
+        [InlineData(0, "", true)]
+        [InlineData(0, "Everything is Ok", true)]
+        [InlineData(1, "Everything is Ok", false)]
+        [InlineData(2, "", false)]
+        public void Success_is_decided_by_exit_code(int exit, string output, bool expected)
+            => Assert.Equal(expected, SevenZipClient.IsSuccess(exit, output));
+    }
+
+    public class SevenZipStreamTests : IDisposable
+    {
+        readonly string _dir;
+        readonly SevenZipClient _client;
+
+        public SevenZipStreamTests()
+        {
+            _dir = Path.Combine(Path.GetTempPath(), "UZipStreamTests_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(_dir);
+            _client = new SevenZipClient(new SettingsService(Path.Combine(_dir, "Config"), null));
+            Assert.NotNull(_client.SevenZipPath);
+        }
+
+        public void Dispose() { try { Directory.Delete(_dir, true); } catch { } }
+
+        // 实测 7z 带 -sccUTF-8 时 stderr 同样是 UTF-8；不设 StandardErrorEncoding
+        // 就按系统 ANSI(GBK) 解，中文包名在诊断里变成乱码，关键字匹配也一起失效。
+        [Fact]
+        public async Task Error_stream_is_decoded_as_utf8()
+        {
+            var missing = Path.Combine(_dir, "不存在的中文包.7z");
+            var r = await _client.TestAsync(missing, null, CancellationToken.None);
+            Assert.False(r.Success);
+            Assert.Contains("不存在的中文包", r.Output);
+        }
     }
 
     public class ArchiveListingParsing

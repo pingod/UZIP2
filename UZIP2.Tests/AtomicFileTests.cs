@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
+using System.Threading;
 using UZIP2.Services;
 using Xunit;
 
@@ -47,6 +50,26 @@ namespace UZIP2.Tests
         {
             for (int i = 0; i < 200; i++) AtomicFile.Write(_path, "v" + i);
             Assert.Equal("v199", File.ReadAllText(_path));
+        }
+
+        // GUI 和 CLI 是两个进程，同一份 Config 会被并发写。固定 .tmp 名时，
+        // 甲的 Move 会把乙刚写好的 .tmp 搬走，乙随后 Move 一个不存在的文件直接抛异常。
+        [Fact]
+        public void Concurrent_writers_never_throw_or_leave_temp()
+        {
+            var payloads = new[] { "aaaa", "bbbb", "cccc", "dddd" };
+            var errors = new List<Exception>();
+            var threads = payloads.Select(p => new Thread(() =>
+            {
+                try { for (int i = 0; i < 80; i++) AtomicFile.Write(_path, p); }
+                catch (Exception ex) { lock (errors) errors.Add(ex); }
+            })).ToArray();
+            foreach (var t in threads) t.Start();
+            foreach (var t in threads) t.Join();
+
+            Assert.Empty(errors);
+            Assert.Empty(Directory.GetFiles(_dir, "*.tmp"));
+            Assert.Contains(File.ReadAllText(_path), payloads);
         }
     }
 }

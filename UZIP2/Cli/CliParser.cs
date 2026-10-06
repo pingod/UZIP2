@@ -14,7 +14,9 @@ namespace UZIP2.Cli
                 { "test", CliCommand.Test },
                 { "extract", CliCommand.Extract },
                 { "compress", CliCommand.Compress },
+                { "convert", CliCommand.Convert },
                 { "checksum", CliCommand.Checksum },
+                { "diff", CliCommand.Diff },
                 { "vault", CliCommand.Vault },
                 { "config", CliCommand.Config },
                 { "log", CliCommand.Log },
@@ -41,22 +43,37 @@ namespace UZIP2.Cli
                 "--passphrase", "--length", "--limit", "--tail", "--grep"
             };
 
+        // 不带值的开关选项；与 ValueOptions 一起构成"已知选项全集"，
+        // 不在里面的 --xxx 一律按拼写错误处理，不再静默忽略。
+        static readonly HashSet<string> SwitchOptions =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "--auto", "--here", "--headers", "--delete-source", "--verify", "--json",
+                "--show-passwords", "--apply", "--check", "--clear", "--test", "--no-test"
+            };
+
+        static bool IsKnownOption(string t)
+            => t == "--" || ValueOptions.Contains(t) || SwitchOptions.Contains(t)
+               || HelpFlags.Contains(t) || VersionFlags.Contains(t);
+
         public static bool IsCli(string[] args)
         {
             if (args == null) return false;
-            foreach (var raw in args)
+            for (int i = 0; i < args.Length; i++)
             {
-                var t = Clean(raw);
+                var t = Clean(args[i]);
                 if (t.Length == 0) continue;
-                return IsCliToken(t);
+                if (HelpFlags.Contains(t) || VersionFlags.Contains(t)) return true;
+                if (t.StartsWith("-"))
+                {
+                    // 已知选项可以写在命令词前面，未知的留给 GUI 路径
+                    if (!IsKnownOption(t)) return false;
+                    if (ValueOptions.Contains(t)) i++;   // 取值参数不参与命令词判定
+                    continue;
+                }
+                return Commands.ContainsKey(t);
             }
             return false;
-        }
-
-        static bool IsCliToken(string t)
-        {
-            if (HelpFlags.Contains(t) || VersionFlags.Contains(t)) return true;
-            return Commands.ContainsKey(t);
         }
 
         static string Clean(string s) => (s ?? "").Trim().Trim('"');
@@ -67,50 +84,56 @@ namespace UZIP2.Cli
             if (args == null) { r.Command = CliCommand.Help; return r; }
 
             var tokens = new List<string>();
-            foreach (var a in args) { var c = Clean(a); if (c.Length > 0) tokens.Add(c); }
-            if (tokens.Count == 0) { r.Command = CliCommand.Help; return r; }
+            foreach (var a in args) tokens.Add(Clean(a));
+            // 只丢前导空令牌：中间的空串是显式传值（--out ""），吞掉会把下一个参数顺走
+            int start = 0;
+            while (start < tokens.Count && tokens[start].Length == 0) start++;
+            if (start == tokens.Count) { r.Command = CliCommand.Help; return r; }
 
-            int i = 0;
-            // 允许 --help/--version 出现在最前面（UZIP2.exe --help 等价于 UZIP2.exe help）
-            while (i < tokens.Count && (tokens[i].StartsWith("--") || tokens[i] == "-o" || tokens[i] == "-h" || HelpFlags.Contains(tokens[i])))
+            // 命令词可以出现在已知选项之后（uzip2 --json list a.zip）
+            int cmdAt = -1;
+            CliCommand cmd = CliCommand.None;
+            for (int k = start; k < tokens.Count; k++)
             {
-                if (HelpFlags.Contains(tokens[i])) { r.Command = CliCommand.Help; return r; }
-                if (VersionFlags.Contains(tokens[i])) { r.Command = CliCommand.Version; return r; }
+                var t = tokens[k];
+                if (HelpFlags.Contains(t)) { r.Command = CliCommand.Help; return r; }
+                if (VersionFlags.Contains(t)) { r.Command = CliCommand.Version; return r; }
+                if (t.StartsWith("-"))
+                {
+                    if (!IsKnownOption(t)) { r.Error = "未知选项: " + t; return r; }
+                    if (ValueOptions.Contains(t)) k++;
+                    continue;
+                }
+                if (!Commands.TryGetValue(t, out cmd)) { r.Error = "未知命令: " + t; return r; }
+                cmdAt = k;
                 break;
             }
-
-            if (i < tokens.Count && Commands.TryGetValue(tokens[i], out var cmd))
+            if (cmdAt < 0)
             {
-                r.Command = cmd;
-                i++;
-            }
-            else
-            {
-                r.Command = CliCommand.Help;
+                r.Error = "缺少命令词（list/test/extract/compress/…，完整列表见 help）";
                 return r;
             }
+            r.Command = cmd;
 
             bool onlyPositional = false;
-            for (; i < tokens.Count; i++)
+            for (int k = start; k < tokens.Count; k++)
             {
-                var t = tokens[i];
+                if (k == cmdAt) continue;
+                var t = tokens[k];
                 if (onlyPositional) { r.Args.Add(t); continue; }
 
                 if (t == "--") { onlyPositional = true; continue; }
 
-                if (HelpFlags.Contains(t)) { r.Command = CliCommand.Help; return r; }
-                if (VersionFlags.Contains(t)) { r.Command = CliCommand.Version; return r; }
-
                 if (ValueOptions.Contains(t))
                 {
-                    if (i + 1 >= tokens.Count) { r.Error = "选项 " + t + " 缺少参数值"; return r; }
-                    ApplyValue(r, t, tokens[++i]);
+                    if (k + 1 >= tokens.Count) { r.Error = "选项 " + t + " 缺少参数值"; return r; }
+                    ApplyValue(r, t, tokens[++k]);
+                    if (r.HasError) return r;
                     continue;
                 }
 
-                if (t.StartsWith("--") || (t.StartsWith("-") && t.Length > 1 && !char.IsLetter(t[1])))
+                if (SwitchOptions.Contains(t))
                 {
-                    // 布尔开关；未知开关忽略（容忍旧脚本残留参数）
                     switch (t.ToLowerInvariant())
                     {
                         case "--auto": r.Auto = true; break;
@@ -118,18 +141,20 @@ namespace UZIP2.Cli
                         case "--headers": r.Headers = true; break;
                         case "--delete-source": r.DeleteSource = true; break;
                         case "--verify": r.Verify = true; break;
+                        case "--test": r.TestAfter = true; break;
+                        case "--no-test": r.TestAfter = false; break;
                         case "--json": r.Json = true; break;
                         case "--show-passwords": r.ShowPasswords = true; break;
                         case "--apply": r.Apply = true; break;
                         case "--check": r.Check = true; break;
                         case "--clear": r.Clear = true; break;
-                        default:
-                            if (!ValueOptions.Contains(t)) { /* ignore unknown flag */ }
-                            break;
                     }
                     continue;
                 }
 
+                // 已知选项都处理完了，剩下的 --xxx / -x 只会是拼写错误。
+                // 当成位置参数交给 7z，轻则"文件不存在"，重则被 -i@ 清单吃掉。
+                if (t.StartsWith("-")) { r.Error = "未知选项: " + t; return r; }
                 r.Args.Add(t);
             }
             return r;

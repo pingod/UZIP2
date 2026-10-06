@@ -78,5 +78,32 @@ namespace UZIP2.Tests
         {
             Assert.Equal(0, TempManager.CleanupOnStartup(Path.Combine(_dir, "nope")));
         }
+
+        // temp 目录建在"解压输出目录"下（往往是用户的下载目录），只扫程序目录永远回收不到；
+        // 因此创建时要在 Config 里留一本 journal，启动时按本子回收。
+        [Fact]
+        public void Journal_lets_cleanup_reach_dirs_outside_base_dir()
+        {
+            var config = Path.Combine(_dir, "Config");
+            var downloads = Path.Combine(_dir, "elsewhere", "Downloads");
+            var temp = TempManager.CreateSessionTemp(downloads, "C:\\packs\\movie.zip", "7", config);
+            File.WriteAllText(temp + "partial.mkv", "half");
+
+            int cleaned = TempManager.CleanupOnStartup(_dir, config);
+
+            Assert.Equal(1, cleaned);
+            Assert.False(Directory.Exists(temp.TrimEnd('\\')), "journal 记录的跨目录 temp 应被回收");
+        }
+
+        [Fact]
+        public void Journal_forgets_dirs_that_already_disappeared()
+        {
+            var config = Path.Combine(_dir, "Config2");
+            var gone = TempManager.CreateSessionTemp(Path.Combine(_dir, "gone"), "x.zip", "1", config);
+            Directory.Delete(gone.TrimEnd('\\'), true);
+
+            Assert.Equal(0, TempManager.CleanupOnStartup(_dir, config));
+            Assert.Equal(0, TempManager.CleanupOnStartup(_dir, config));  // 第二次不重复计数
+        }
     }
 }

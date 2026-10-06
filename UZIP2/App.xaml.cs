@@ -54,12 +54,15 @@ namespace UZIP2
             }
 
             var logger = new FileLogger(baseDir);
+            // 兜底要挂在建窗口之前：启动阶段（读设置/密码本/建服务）抛出来的异常同样得留下记录
+            CrashGuard.Attach(logger, Dispatcher,
+                msg => MessageBox.Show(msg, "UZIP 出现异常", MessageBoxButton.OK, MessageBoxImage.Warning));
             var settings = new SettingsService(configDir, logger);
 
             var passwords = new PasswordService(configDir, settings);
 
             if (settings.Current.CleanTempOnStartup)
-                TempManager.CleanupOnStartup(baseDir);
+                TempManager.CleanupOnStartup(baseDir, configDir);
 
             var services = new ServiceCollection();
             services.AddSingleton<IFileLogger>(logger);
@@ -68,6 +71,7 @@ namespace UZIP2
             services.AddSingleton<CompressLogService>(sp => new CompressLogService(configDir, settings));
             services.AddSingleton<IHistoryService>(sp => new HistoryService(configDir, settings));
             services.AddSingleton<SevenZipClient>();
+            services.AddSingleton<IArchiveEngine>(sp => sp.GetRequiredService<SevenZipClient>());
             services.AddSingleton<ArchiveWorker>();
             services.AddSingleton<ClipboardService>();
             services.AddSingleton<HotKeyService>();
@@ -115,7 +119,10 @@ namespace UZIP2
             switch (request.Verb)
             {
                 case ShellVerb.Extract:
-                    worker.EnqueueExtract(paths.Where(File.Exists).ToArray());
+                    var archives = paths.Where(File.Exists).ToArray();
+                    // 右键"解压并预览"：单个包先出包内清单让用户勾选；多选无从预览，照常直接入队
+                    if (request.Preview && archives.Length == 1) { ShowPreview(archives[0]); break; }
+                    worker.EnqueueExtract(archives);
                     break;
                 case ShellVerb.ExtractHere:
                     foreach (var f in paths.Where(File.Exists))
@@ -126,6 +133,9 @@ namespace UZIP2
                     break;
             }
         }
+
+        static void ShowPreview(string archive)
+            => Services.GetRequiredService<HomeViewModel>().OpenPreviewWindow(archive);
 
         private static void ApplyShellRegistration(ShellRequest request)
         {
@@ -146,6 +156,8 @@ namespace UZIP2
 
         private void OnExit(object sender, ExitEventArgs e)
         {
+            // 历史是节流写的，退出前必须把脏数据落地，否则这一批记录凭空消失
+            try { Services?.GetService<IHistoryService>()?.Flush(); } catch { }
             _bus?.Dispose();
             (Services as IDisposable)?.Dispose();
         }

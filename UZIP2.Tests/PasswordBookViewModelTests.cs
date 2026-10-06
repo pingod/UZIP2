@@ -55,7 +55,7 @@ namespace UZIP2.Tests
             _vm.Add("x", "1");
             _vm.Add("y", "2");
             _vm.Remove(_vm.Rows.First(r => r.Name == "x"));
-            Assert.Equal(1, _passwords.Book.Count);
+            Assert.Single(_passwords.Book);
             Assert.DoesNotContain(_vm.Rows, r => r.Name == "x");
         }
 

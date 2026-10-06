@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Reproducible publish for UZIP2: builds BOTH shipping artifacts into .\artifacts\<version>\
   and prints a size + SHA-256 manifest.
@@ -7,6 +7,7 @@
   Produces (into .\artifacts\<ver>\):
     UZIP-<ver>-win-x64.exe                 framework-dependent single-file (primary, ~8 MB, .NET 8 Desktop Runtime required)
     UZIP-<ver>-win-x64-selfcontained.zip   self-contained single-file   (no runtime needed, larger)
+    <每个产物>.sha256                       sha256sum 风格侧车，应用内自更新会核对它
     SHA256SUMS.txt                          checksums of both artifacts
 
   The csproj trims both artifacts (English-only satellites, no .pdb, and deflate
@@ -83,8 +84,13 @@ Write-Host ''
 Write-Host "Artifacts in $OutVer" -ForegroundColor Green
 foreach ($a in $Artifacts) {
   $h = (Get-FileHash $a -Algorithm SHA256).Hash.ToLower()
-  Write-Host ('  {0}  {1}' -f (Mb $a), (Split-Path -Leaf $a))
-  Add-Content -Path $sums -Value ("{0}  {1}`r" -f $h, (Split-Path -Leaf $a)) -Encoding ASCII
+  $leaf = Split-Path -Leaf $a
+  # 应用内自更新会核对同名 .sha256 侧车（sha256sum 格式："hash  文件名"）。
+  # 上传改名时侧车要跟着改：UZIP2.exe 对应 UZIP2.exe.sha256。
+  Set-Content -Path "$a.sha256" -Value "$h  $leaf" -Encoding ASCII
+  Write-Host ('  {0}  {1}' -f (Mb $a), $leaf)
+  Write-Host ('              {0}.sha256' -f $leaf) -ForegroundColor DarkGray
+  Add-Content -Path $sums -Value ("{0}  {1}`r" -f $h, $leaf) -Encoding ASCII
 }
 Add-Content -Path $sums -Value ('# fd single-file exe (uncompressed on disk): {0}' -f (Mb (Join-Path $FdOut 'UZIP2.exe'))) -Encoding ASCII
 Write-Host "  wrote $(Split-Path -Leaf $sums)" -ForegroundColor DarkGray

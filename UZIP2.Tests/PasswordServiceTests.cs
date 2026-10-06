@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using UZIP2.Models;
 using UZIP2.Services;
 using Xunit;
@@ -25,6 +26,33 @@ namespace UZIP2.Tests
         }
 
         private PasswordService NewService() => new PasswordService(_dir, _settings);
+
+        // Changed 必须"松手后再播"：持锁派发会让订阅者的同步 UI 派发与工作线程互相咬死
+        // （主页密码纸计数订阅即为 _ui.Invoke，命中密码本时整进程冻结）
+        [Fact]
+        public void Changed_Is_Raised_Without_Holding_Store_Lock()
+        {
+            var svc = NewService();
+            var reentered = new ManualResetEventSlim(false);
+            Exception readerError = null;
+            svc.Changed += () =>
+            {
+                // 事件派发期间，另一线程必须能立刻读到密码本（锁已放开）
+                var t = new Thread(() =>
+                {
+                    try
+                    {
+                        if (svc.Book.Count + svc.Paper.Count >= 0) reentered.Set();
+                    }
+                    catch (Exception ex) { readerError = ex; }
+                }) { IsBackground = true };
+                t.Start();
+                Assert.True(t.Join(3000), "Changed 派发期间密码本锁仍被占用，订阅者读取会死锁");
+            };
+            svc.AddBook("死锁探针", "pw-deadlock");
+            Assert.Null(readerError);
+            Assert.True(reentered.IsSet);
+        }
 
         [Fact]
         public void Dpapi_Roundtrip_And_Persistence()
@@ -101,6 +129,72 @@ namespace UZIP2.Tests
             _settings.Save(s => { s.ReadPasswordMode = 2; s.PWUrl = file; });
             var svc = NewService();
             Assert.Equal(new[] { "fromfile1", "fromfile2" }, svc.ExternalPasswords().ToArray());
+        }
+
+        // 一批密码链会对每个档案重复取外链密码；每次都联网等于把断网的超时摊到每个档案上
+        [Fact]
+        public void ExternalPasswords_Mode3_Http_is_cached_within_the_window()
+        {
+            int calls = 0;
+            var svc = NewService();
+            svc.HttpProvider = url => { calls++; return new[] { "http1", "http2" }; };
+            _settings.Save(s => { s.ReadPasswordMode = 3; s.PWUrl = "http://example.invalid/pw.txt"; });
+
+            Assert.Equal(new[] { "http1", "http2" }, svc.ExternalPasswords().ToArray());
+            Assert.Equal(new[] { "http1", "http2" }, svc.ExternalPasswords().ToArray());
+            Assert.Equal(1, calls);
+        }
+
+        [Fact]
+        public void Failed_http_is_cached_negative_so_a_batch_is_not_blocked_again_and_again()
+        {
+            int calls = 0;
+            var svc = NewService();
+            svc.HttpProvider = url => { calls++; throw new InvalidOperationException("offline"); };
+            _settings.Save(s => { s.ReadPasswordMode = 3; s.PWUrl = "http://example.invalid/pw.txt"; });
+
+            Assert.Empty(svc.ExternalPasswords());
+            Assert.Empty(svc.ExternalPasswords());
+            Assert.Equal(1, calls);
+        }
+
+        [Fact]
+        public void Cache_refetches_after_the_window_expires()
+        {
+            int calls = 0;
+            var svc = NewService();
+            svc.HttpProvider = url => { calls++; return new[] { "p" + calls }; };
+            svc.ExternalCacheMs = 25;
+            _settings.Save(s => { s.ReadPasswordMode = 3; s.PWUrl = "http://example.invalid/pw.txt"; });
+
+            Assert.Equal("p1", svc.ExternalPasswords().Single());
+            Thread.Sleep(60);
+            Assert.Equal("p2", svc.ExternalPasswords().Single());
+            Assert.Equal(2, calls);
+        }
+
+        [Fact]
+        public void Mode4_uses_the_configured_url_and_never_a_borrowed_one()
+        {
+            string seen = null;
+            var svc = NewService();
+            svc.HttpProvider = url => { seen = url; return new[] { "p" }; };
+            _settings.Save(s => { s.ReadPasswordMode = 4; s.PWUrl = "http://example.invalid/hidden.txt"; });
+
+            Assert.Equal(new[] { "p" }, svc.ExternalPasswords().ToArray());
+            Assert.Equal("http://example.invalid/hidden.txt", seen);
+        }
+
+        [Fact]
+        public void Mode4_without_a_url_fetches_nothing()
+        {
+            bool called = false;
+            var svc = NewService();
+            svc.HttpProvider = url => { called = true; return new[] { "nope" }; };
+            _settings.Save(s => { s.ReadPasswordMode = 4; s.PWUrl = ""; });
+
+            Assert.Empty(svc.ExternalPasswords());
+            Assert.False(called);
         }
 
         [Fact]

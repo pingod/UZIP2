@@ -4,7 +4,9 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <!-- 被测的 UZIP2.csproj 是 Nullable=disable，这里的 enable 只会产出上百条
+         「往未标注的 API 里传 null」的假告警，随主项目一起关闭。 -->
+    <Nullable>disable</Nullable>
 
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>

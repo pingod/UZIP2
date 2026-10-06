@@ -14,9 +14,9 @@ namespace UZIP2.ViewModel
         const string Mask = "••••••";
 
         readonly IHistoryService _history;
-        readonly ArchiveWorker _worker;
+        readonly IJobQueue _worker;
 
-        public HistoryViewModel(IHistoryService history, ArchiveWorker worker = null)
+        public HistoryViewModel(IHistoryService history, IJobQueue worker = null)
         {
             _history = history;
             _worker = worker;
@@ -75,11 +75,14 @@ namespace UZIP2.ViewModel
         [RelayCommand]
         void Retry(HistoryRow row)
         {
-            if (row == null || _worker == null || string.IsNullOrEmpty(row.Source)) return;
+            if (row == null || _worker == null || !row.CanRetry || string.IsNullOrEmpty(row.Source)) return;
+            // 记录里的口令就是当时成功用的那把，重跑必须带上：口令不在密码本里时，
+            // 裸重跑只会把一个本来成功的作业变成必然失败的作业。
+            string pw = string.IsNullOrEmpty(row.Entry.Password) ? null : row.Entry.Password;
             if (string.Equals(row.Kind, "Compress", StringComparison.OrdinalIgnoreCase))
-                _worker.EnqueueCompress(new[] { row.Source });
+                _worker.EnqueueCompress(new[] { row.Source }, manualPassword: pw);
             else
-                _worker.EnqueueExtract(new[] { row.Source });
+                _worker.EnqueueExtract(new[] { row.Source }, manualPassword: pw);
         }
 
         public sealed class HistoryRow : ObservableObject
@@ -102,6 +105,8 @@ namespace UZIP2.ViewModel
             public string Advice => Entry.Advice;
             public int Count => Entry.Count;
             public bool IsFailed => Entry.Status == "Failed";
+            // 校验类记录没有"重跑"语义：按解压重跑等于把"校验失败"变成"真的把包解开了"
+            public bool CanRetry => !string.Equals(Entry.Kind, "Test", StringComparison.OrdinalIgnoreCase);
             public string PasswordText { get; }
             public bool HasPassword => Entry.Password != null;
 

@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -129,6 +131,40 @@ namespace UZIP2.Services
             }
         }
 
+        static readonly Regex Sha256Hex = new Regex("[0-9a-fA-F]{64}", RegexOptions.Compiled);
+
+        /// <summary>
+        /// 从 .sha256 侧车文本里取出摘要，兼容 "hash  文件名"（sha256sum 风格）
+        /// 和 "SHA256(文件名)= hash"（PowerShell 风格）；取不到完整 64 位则返回 null。
+        /// </summary>
+        public static string ExtractSha256(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            var m = Sha256Hex.Match(text);
+            return m.Success ? m.Value.ToLowerInvariant() : null;
+        }
+
+        /// <summary>
+        /// 比对落盘文件的 SHA-256。expected 可以是裸摘要或整份侧车文本；
+        /// 取不到摘要（该版本没发布校验值）则放行——更新不该被缺侧车挡住。
+        /// </summary>
+        public static (bool Ok, string Error) VerifySha256(string path, string expected)
+        {
+            var want = ExtractSha256(expected);
+            if (want == null) return (true, null);
+            try
+            {
+                using var fs = File.OpenRead(path);
+                var actual = Convert.ToHexString(SHA256.HashData(fs)).ToLowerInvariant();
+                if (string.Equals(actual, want, StringComparison.OrdinalIgnoreCase)) return (true, null);
+                return (false, "更新包校验值不匹配（下载物可能被替换），已放弃覆盖");
+            }
+            catch (Exception ex)
+            {
+                return (false, "校验失败: " + ex.Message);
+            }
+        }
+
         // "3.3.0.0" / "v3.3.0-beta" → "3.3.0"（最多三段，去掉尾部 0 段之外的修饰）
         static string Normalize(string version)
         {
@@ -195,10 +231,11 @@ namespace UZIP2.Services
             Process.Start(psi);
         }
 
-        // 编排：下载→校验→写脚本→脱离启动。成功返回 (true,null)，调用方应立即退出。
+        // 编排：下载→校验版本→校验发布摘要→写脚本→脱离启动。成功返回 (true,null)，调用方应立即退出。
         // 失败清理 .new 并返回中文错误。取消也走这条（返回"更新已取消"）。
         public static async Task<(bool Ok, string Error)> StageAndApplyAsync(
-            UpdateInfo info, string exePath, IProgress<long> progress, CancellationToken ct)
+            UpdateInfo info, string exePath, IProgress<long> progress, CancellationToken ct,
+            Func<string, Task<string>> fetchChecksum = null)
         {
             if (info == null || string.IsNullOrEmpty(info.DownloadUrl))
                 return (false, "该版本没有可用的直下链接，请从下载页手动更新");
@@ -211,6 +248,26 @@ namespace UZIP2.Services
                 await DownloadToTempAsync(info.DownloadUrl, temp, progress, ct).ConfigureAwait(false);
                 var v = Verify(temp, info.Version);
                 if (!v.Ok) { TryDelete(temp); return v; }
+
+                // 发布了 .sha256 侧车就必须核对：拿不到摘要时宁可不换，
+                // 因为"侧车存在但读不到"和"侧车被换掉"在客户端看不出区别。
+                if (!string.IsNullOrEmpty(info.Sha256Url))
+                {
+                    string text;
+                    try
+                    {
+                        text = await (fetchChecksum ?? FetchChecksumTextAsync)(info.Sha256Url)
+                            .ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex)
+                    {
+                        TryDelete(temp);
+                        return (false, "取更新包校验值失败: " + ex.Message);
+                    }
+                    var c = VerifySha256(temp, text);
+                    if (!c.Ok) { TryDelete(temp); return c; }
+                }
 
                 string script = BuildRelayScript(Environment.ProcessId, exePath, temp, "");
                 string scriptPath = RelayScriptPath();
@@ -228,6 +285,12 @@ namespace UZIP2.Services
                 TryDelete(temp);
                 return (false, "更新失败: " + ex.Message);
             }
+        }
+
+        static async Task<string> FetchChecksumTextAsync(string url)
+        {
+            using var http = UpdateService.NewClient(TimeSpan.FromSeconds(15));
+            return await http.GetStringAsync(url).ConfigureAwait(false);
         }
 
         static void TryDelete(string path)

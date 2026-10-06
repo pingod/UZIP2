@@ -56,7 +56,9 @@ namespace UZIP2.Cli
                     case CliCommand.Test: return await DoTest(r, ct);
                     case CliCommand.Extract: return await DoExtract(r, ct);
                     case CliCommand.Compress: return await DoCompress(r, ct);
+                    case CliCommand.Convert: return await DoConvert(r, ct);
                     case CliCommand.Checksum: return await DoChecksum(r, ct);
+                    case CliCommand.Diff: return await DoDiff(r, ct);
                     case CliCommand.Vault: return DoVault(r);
                     case CliCommand.Config: return DoConfig(r);
                     case CliCommand.Log: return DoLog(r);
@@ -69,15 +71,21 @@ namespace UZIP2.Cli
             }
             catch (VaultException ex) { _err(ex.Message); return 1; }
             catch (Exception ex) { _err("错误: " + ex.Message); return 1; }
+            finally
+            {
+                // 历史写盘是节流的，CLI 跑完就 Environment.Exit，不 Flush 这批记录就没了
+                try { _history?.Flush(); } catch { }
+            }
         }
 
         static bool Needs7z(CliCommand c)
-            => c == CliCommand.List || c == CliCommand.Test || c == CliCommand.Extract || c == CliCommand.Compress || c == CliCommand.Watch;
+            => c == CliCommand.List || c == CliCommand.Test || c == CliCommand.Extract || c == CliCommand.Compress || c == CliCommand.Watch || c == CliCommand.Diff || c == CliCommand.Convert;
 
         // 只对"位置参数是文件系统路径"的命令做绝对化，避免误伤 vault/config/log 的子命令关键词。
         static bool HasPathArgs(CliCommand c)
             => c == CliCommand.List || c == CliCommand.Test || c == CliCommand.Extract
-            || c == CliCommand.Compress || c == CliCommand.Checksum || c == CliCommand.Watch;
+            || c == CliCommand.Compress || c == CliCommand.Checksum || c == CliCommand.Watch
+            || c == CliCommand.Diff || c == CliCommand.Convert;
 
         static void NormalizePaths(CliRequest r)
         {
@@ -155,22 +163,29 @@ namespace UZIP2.Cli
 
         // ---------- list ----------
 
+        async Task<(ArchiveListing listing, string used)> ReadListingAsync(string archive, CliRequest r, CancellationToken ct)
+        {
+            ArchiveListing list = null; string used = null;
+            foreach (var pw in Candidates(archive, r))
+            {
+                list = await _zip.ListEntriesAsync(archive, pw, ct).ConfigureAwait(false);
+                if (list.Success || list.Error != SevenZipError.WrongPassword) { used = pw; break; }
+            }
+            return (list, used);
+        }
+
         async Task<int> DoList(CliRequest r, CancellationToken ct)
         {
-            if (r.Args.Count == 0) { _err("用法: uzip2 list <压缩包> [--password pw|--auto] [--json]"); return 2; }
+            if (r.Args.Count == 0) { _err("用法: uzip2 list <压缩包> [--password pw|--auto] [--json [--show-passwords]]"); return 2; }
             int code = 0;
             foreach (var f in r.Args)
             {
                 if (!File.Exists(f)) { _err(f + ": 文件不存在"); code = 1; continue; }
-                ArchiveListing list = null; string used = null;
-                foreach (var pw in Candidates(f, r))
-                {
-                    list = await _zip.ListEntriesAsync(f, pw, ct).ConfigureAwait(false);
-                    if (list.Success || list.Error != SevenZipError.WrongPassword) { used = pw; break; }
-                }
+                var (list, used) = await ReadListingAsync(f, r, ct).ConfigureAwait(false);
                 if (!list.Success) { _err(f + ": " + (list.Diagnosis ?? "读取失败")); code = 1; continue; }
                 if (r.Json)
-                    _out(JsonSerializer.Serialize(new { archive = f, password = used, entries = list.Entries.Select(e => new { path = e.Path, size = e.Size, folder = e.IsFolder, method = e.Method }) }, Json));
+                    // 试出来的密码默认脱敏：JSON 会被整份丢进日志/CI，明文等于泄露
+                    _out(JsonSerializer.Serialize(new { archive = f, password = r.ShowPasswords ? used : (used != null ? "***" : null), entries = list.Entries.Select(e => new { path = e.Path, size = e.Size, folder = e.IsFolder, method = e.Method }) }, Json));
                 else
                 {
                     _out(f);
@@ -181,6 +196,52 @@ namespace UZIP2.Cli
             }
             return code;
         }
+
+        // ---------- diff ----------
+
+        // 清单级对比两个包：退出码沿用 GNU diff 的约定，0=一致、1=有差异，脚本里可直接判分支
+        async Task<int> DoDiff(CliRequest r, CancellationToken ct)
+        {
+            if (r.Args.Count != 2)
+            { _err("用法: uzip2 diff <包A> <包B> [--password pw|--auto] [--json]   0=一致 1=有差异"); return 2; }
+            var (left, right) = (r.Args[0], r.Args[1]);
+            foreach (var f in r.Args)
+                if (!File.Exists(f)) { _err(f + ": 文件不存在"); return 1; }
+
+            var (la, lpw) = await ReadListingAsync(left, r, ct).ConfigureAwait(false);
+            if (!la.Success) { _err(left + ": " + (la.Diagnosis ?? "读取包内清单失败")); return 1; }
+            var (rb, rpw) = await ReadListingAsync(right, r, ct).ConfigureAwait(false);
+            if (!rb.Success) { _err(right + ": " + (rb.Diagnosis ?? "读取包内清单失败")); return 1; }
+
+            var d = ArchiveDiff.Compare(la.Entries, rb.Entries);
+            if (r.Json)
+            {
+                // 密码只是"能不能读清单"的副产品，默认脱敏
+                _out(JsonSerializer.Serialize(new
+                {
+                    left,
+                    right,
+                    leftPassword = Mask(r, lpw),
+                    rightPassword = Mask(r, rpw),
+                    identical = d.Identical,
+                    same = d.SameCount,
+                    onlyLeft = d.OnlyInLeft,
+                    onlyRight = d.OnlyInRight,
+                    changed = d.Changed.Select(c => new { path = c.Path, leftSize = c.LeftSize, rightSize = c.RightSize })
+                }, Json));
+            }
+            else
+            {
+                foreach (var p in d.OnlyInLeft) _out("  仅在 A: " + p);
+                foreach (var p in d.OnlyInRight) _out("  仅在 B: " + p);
+                foreach (var c in d.Changed) _out("  大小不同: " + c.Path + " (" + c.LeftSize + " -> " + c.RightSize + ")");
+                _out(d.Summarize());
+            }
+            return d.Identical ? 0 : 1;
+        }
+
+        static string Mask(CliRequest r, string pw)
+            => pw == null ? null : (r.ShowPasswords ? pw : "***");
 
         // ---------- test ----------
 
@@ -247,10 +308,12 @@ namespace UZIP2.Cli
         async Task<int> DoCompress(CliRequest r, CancellationToken ct)
         {
             var sources = r.Args.Where(a => File.Exists(a) || Directory.Exists(a)).ToList();
-            if (sources.Count == 0) { _err("用法: uzip2 compress <文件或目录...> [-o DIR|--name x.7z] [--type 7z|zip] [--level N] [--password pw] [--volume 700m] [--solid on|off] [--threads N|off] [--headers]"); return 2; }
+            if (sources.Count == 0) { _err("用法: uzip2 compress <文件或目录...> [-o DIR|--name x.7z] [--type 7z|zip] [--level N] [--password pw] [--volume 700m] [--solid on|off] [--threads N|off] [--headers] [--test|--no-test]"); return 2; }
             foreach (var miss in r.Args.Where(a => !File.Exists(a) && !Directory.Exists(a))) _err(miss + ": 不存在");
 
             int type = ResolveType(r, sources[0]);
+            string typeErr = CheckType(r);
+            if (typeErr != null) { _err(typeErr); return 2; }
             int level = r.Level ?? 5;
             bool headers = r.Headers || (type == 1 && r.Headers);
             string volume = null;
@@ -271,6 +334,21 @@ namespace UZIP2.Cli
             }
 
             string produced = volume == null ? full : full + ".001";
+
+            // 自检先行：坏包不能先删了源再告诉用户
+            if (r.TestAfter ?? _settings.Current.VerifyAfterCompress)
+            {
+                var check = await _zip.TestAsync(produced, r.Password, ct).ConfigureAwait(false);
+                if (!check.Success)
+                {
+                    string why = "压缩产物校验未通过: " + (check.Diagnosis ?? check.Error.ToString());
+                    _err(why + "（源文件已保留）");
+                    RecordHistory("Compress", sources[0], produced, false, why, null, started, sources.Count);
+                    return 1;
+                }
+                _out("已自检产物: " + produced);
+            }
+
             _compressLog.Log(full, r.Password);
             if (r.DeleteSource)
                 foreach (var s2 in sources)
@@ -280,46 +358,70 @@ namespace UZIP2.Cli
             return 0;
         }
 
+        // ---------- convert ----------
+
+        // 走 GUI 同一套转换流水线（ArchiveWorker），密码链/自检/历史因此与主页行为一致
+        async Task<int> DoConvert(CliRequest r, CancellationToken ct)
+        {
+            var files = r.Args.Where(File.Exists).ToList();
+            if (files.Count == 0)
+            { _err("用法: uzip2 convert <压缩包...> [--type 7z|zip|tar|bz2|gz|xz|wim] [-o DIR] [--password pw|--auto]"); return files.Count > 0 || r.Args.Count > 0 ? 1 : 2; }
+            foreach (var miss in r.Args.Where(a => !File.Exists(a))) _err(miss + ": 文件不存在");
+
+            string typeName = string.IsNullOrWhiteSpace(r.Type) ? "7z" : r.Type;
+            string block = ArchiveFormat.CreateBlockMessage(typeName);
+            if (block != null) { _err(block); return 2; }
+            int type = ArchiveFormat.Index(typeName);
+
+            string outDir = string.IsNullOrWhiteSpace(r.Output) ? null : r.Output;
+            var worker = new ArchiveWorker(_zip, _passwords, _settings, null, _compressLog, _history);
+            // 用入队返回的作业，不能读 worker.Jobs：那份集合要排给 UI 调度线程，
+            // 而 CLI 正堵着那个线程等结果——读它只会拿到空集合，于是转换成功也一声不吭。
+            var jobs = worker.EnqueueConvert(files, type, outDir, r.Password);
+            await worker.WhenIdleAsync(ct).ConfigureAwait(false);
+
+            int code = 0;
+            foreach (var j in jobs)
+            {
+                if (j.Status == JobStatus.Success)
+                {
+                    _out(j.Archive + " -> " + j.OutputDir);
+                    if (r.Json) _out(JsonSerializer.Serialize(new
+                    {
+                        source = j.Archive,
+                        output = j.OutputDir,
+                        type = ArchiveFormat.TypeName(type),
+                        password = Mask(r, j.UsedPassword),
+                    }, Json));
+                }
+                else
+                {
+                    _err(j.Archive + ": " + (j.Diagnosis ?? j.Status.ToString()));
+                    code = 1;
+                }
+            }
+            return code;
+        }
+
         static int ResolveType(CliRequest r, string firstSource)
         {
-            if (!string.IsNullOrWhiteSpace(r.Type)) return TypeIndex(r.Type);
+            if (!string.IsNullOrWhiteSpace(r.Type)) return ArchiveFormat.Index(r.Type);
             // 从 --name 扩展名推断
-            if (!string.IsNullOrWhiteSpace(r.Name))
-            {
-                var t = TypeIndexFromExt(Path.GetExtension(r.Name));
-                if (t >= 0) return t;
-            }
+            if (!string.IsNullOrWhiteSpace(r.Name)) return ArchiveFormat.Index(Path.GetExtension(r.Name));
             return 0; // zip
         }
 
-        static int TypeIndex(string name)
+        // 目标格式必须是 7-Zip 能创建的。旧行为是把认不出的 --type/--name 后缀静默当成 zip，
+        // 于是 --type iso 会产出一个叫 .iso 的 zip 文件——宁可不写，也不要给错的文件。
+        string CheckType(CliRequest r)
         {
-            switch ((name ?? "").ToLowerInvariant())
+            if (!string.IsNullOrWhiteSpace(r.Type)) return ArchiveFormat.CreateBlockMessage(r.Type);
+            if (!string.IsNullOrWhiteSpace(r.Name))
             {
-                case "zip": return 0;
-                case "7z": return 1;
-                case "bz2": case "bzip2": return 2;
-                case "gz": case "gzip": return 3;
-                case "tar": return 4;
-                case "wim": return 5;
-                case "xz": return 6;
-                default: return 0;
+                var ext = Path.GetExtension(r.Name);
+                return ArchiveFormat.Index(ext) >= 0 ? null : ArchiveFormat.CreateBlockMessage(ext);
             }
-        }
-
-        static int TypeIndexFromExt(string ext)
-        {
-            switch ((ext ?? "").TrimStart('.').ToLowerInvariant())
-            {
-                case "zip": return 0;
-                case "7z": return 1;
-                case "bz2": return 2;
-                case "gz": return 3;
-                case "tar": return 4;
-                case "wim": return 5;
-                case "xz": return 6;
-                default: return -1;
-            }
+            return null;
         }
 
         static string ResolveCompressOutDir(CliRequest r, string firstSource)

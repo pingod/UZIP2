@@ -11,11 +11,20 @@ namespace UZIP2.Services
     // 单实例互斥 + 命名管道把第二进程收到的文件参数转发给主实例。
     public sealed class InstanceBus : IDisposable
     {
-        private const string MutexName = @"Local\UZIP2_SingleInstance_Mutex";
-        private const string PipeName = @"UZIP2_FileArgs_Pipe";
+        private const string DefaultMutexName = @"Local\UZIP2_SingleInstance_Mutex";
+        private const string DefaultPipeName = @"UZIP2_FileArgs_Pipe";
 
+        private readonly string _mutexName;
+        private readonly string _pipeName;
         private Mutex _mutex;
         private CancellationTokenSource _cts;
+
+        // 默认用进程级常量名；测试要传独立名字，避免和正在运行的实例抢同一个互斥体
+        public InstanceBus(string mutexName = null, string pipeName = null)
+        {
+            _mutexName = mutexName ?? DefaultMutexName;
+            _pipeName = pipeName ?? DefaultPipeName;
+        }
 
         // 参数到达（可能为空数组，表示"仅唤起窗口"）。在后台线程触发。
         public event Action<string[]> FilesReceived;
@@ -23,7 +32,7 @@ namespace UZIP2.Services
         public bool TryBecomePrimary()
         {
             bool createdNew;
-            _mutex = new Mutex(true, MutexName, out createdNew);
+            _mutex = new Mutex(true, _mutexName, out createdNew);
             if (!createdNew)
             {
                 // 上一实例异常退出时互斥体仍存活：等待接管
@@ -49,7 +58,7 @@ namespace UZIP2.Services
                 try
                 {
                     using var server = new NamedPipeServerStream(
-                        PipeName, PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+                        _pipeName, PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
                     await server.WaitForConnectionAsync(ct);
                     using var reader = new StreamReader(server, Encoding.UTF8);
                     var payload = await reader.ReadToEndAsync();
@@ -68,11 +77,13 @@ namespace UZIP2.Services
         }
 
         // 第二进程调用：把参数发给已运行的主实例。返回 true 表示本进程应立即退出。
-        public static bool ForwardArgsToPrimary(string[] args)
+        public static bool ForwardArgsToPrimary(string[] args) => ForwardArgsToPrimary(DefaultPipeName, args);
+
+        public static bool ForwardArgsToPrimary(string pipeName, string[] args)
         {
             try
             {
-                using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.Out);
+                using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.Out);
                 client.Connect(2000);
                 using var writer = new StreamWriter(client, new UTF8Encoding(false));
                 writer.Write(string.Join("\n", args ?? Array.Empty<string>()));

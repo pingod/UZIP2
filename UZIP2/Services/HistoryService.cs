@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using UZIP2.Models;
@@ -13,19 +14,27 @@ namespace UZIP2.Services
         IReadOnlyList<HistoryEntry> ReadAll();          // 最新在前
         void Record(JobEntry job);                       // 收尾时落一条（只记 Success/Failed）
         void Clear();
+        void Flush();                                    // 把节流窗里的脏数据立刻落盘
     }
 
     // 持久化的统一作业历史，落 Config\history.json。参照 SettingsService 的 JSON 风格，
     // 但额外用 RelaxedJsonEscaping 让中文可读。密码只在 settings.LogPasswords 打开时记录，
     // 关闭则留 null——与 CompressLogService 的脱敏门控保持一致。
+    // 写盘是节流的：批量解压时每个作业收尾都全量重写一次文件毫无意义，合并成一次，
+    // 退出前（或测试里）用 Flush 收尾。
     public sealed class HistoryService : IHistoryService
     {
         public const int MaxEntries = 500;
+        public const int DefaultDebounceMs = 1200;
 
         readonly string _configDir;
         readonly ISettingsService _settings;
         readonly object _sync = new object();
+        readonly int _debounceMs;
+        readonly Action<string, string> _write;
         List<HistoryEntry> _cache;   //  oldest -> newest
+        bool _dirty;
+        Timer _flushTimer;
 
         static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
         {
@@ -36,10 +45,13 @@ namespace UZIP2.Services
             Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         };
 
-        public HistoryService(string configDirectory, ISettingsService settings = null)
+        public HistoryService(string configDirectory, ISettingsService settings = null,
+            int debounceMs = DefaultDebounceMs, Action<string, string> writer = null)
         {
             _configDir = configDirectory;
             _settings = settings;
+            _debounceMs = debounceMs < 0 ? 0 : debounceMs;
+            _write = writer ?? ((path, content) => AtomicFile.Write(path, content));
         }
 
         public string HistoryPath => Path.Combine(_configDir, "history.json");
@@ -68,7 +80,7 @@ namespace UZIP2.Services
                 if (list.Count > MaxEntries)
                     list.RemoveRange(0, list.Count - MaxEntries);   // 丢最旧
                 _cache = list;
-                PersistLocked(list);
+                ScheduleFlushLocked();
             }
         }
 
@@ -77,8 +89,36 @@ namespace UZIP2.Services
             lock (_sync)
             {
                 _cache = new List<HistoryEntry>();
+                _dirty = false;
+                _flushTimer?.Change(Timeout.Infinite, Timeout.Infinite);
                 try { if (File.Exists(HistoryPath)) File.Delete(HistoryPath); } catch { }
             }
+        }
+
+        // 脏了就写一次；不脏不重复落盘
+        public void Flush()
+        {
+            lock (_sync)
+            {
+                if (!_dirty) return;
+                PersistLocked(_cache ?? new List<HistoryEntry>());
+                _dirty = false;
+            }
+        }
+
+        // 调用方需持锁
+        void ScheduleFlushLocked()
+        {
+            _dirty = true;
+            if (_debounceMs == 0) { FlushNowLocked(); return; }
+            _flushTimer ??= new Timer(_ => Flush(), null, Timeout.Infinite, Timeout.Infinite);
+            _flushTimer.Change(_debounceMs, Timeout.Infinite);
+        }
+
+        void FlushNowLocked()
+        {
+            PersistLocked(_cache ?? new List<HistoryEntry>());
+            _dirty = false;
         }
 
         // 纯映射，便于单测：不读文件、不写文件、不依赖实例状态。
@@ -148,7 +188,7 @@ namespace UZIP2.Services
             try
             {
                 Directory.CreateDirectory(_configDir);
-                AtomicFile.Write(HistoryPath, JsonSerializer.Serialize(list, JsonOptions));
+                _write(HistoryPath, JsonSerializer.Serialize(list, JsonOptions));
             }
             catch { }   // 历史写失败不影响解压/压缩本身
         }

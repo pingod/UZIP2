@@ -157,6 +157,11 @@
                                    Command="{Binding DataContext.ChecksumJobCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                    CommandParameter="{Binding}"
                                    Visibility="{Binding Status, Converter={conv:AnyVisibility 'Success,Failed'}}" />
+                        <ui:Button Content="转格式" Appearance="Secondary" FontSize="12" Padding="10,4" Margin="0,0,6,0"
+                                   Command="{Binding DataContext.ConvertJobCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                   CommandParameter="{Binding}"
+                                   ToolTip="解包后按工具条「转为」选定的格式重新打包（原包保留）"
+                                   Visibility="{Binding Status, Converter={conv:AnyVisibility 'Success,Failed'}}" />
                         <ui:Button Content="删除源文件" Appearance="Secondary" FontSize="12" Padding="10,4" Margin="0,0,6,0"
                                    Command="{Binding DataContext.DeleteSourceCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                    CommandParameter="{Binding}"
@@ -258,6 +263,11 @@
                 <ComboBox x:Name="SortBox" Width="104" FontSize="12" Padding="6,2" VerticalAlignment="Center"
                           ItemsSource="{Binding SortOptions}" SelectionChanged="OnSortChanged"
                           ToolTip="任务列表的排列方式（立即生效并记住）" />
+                <TextBlock Text="转为" Margin="16,0,6,0" VerticalAlignment="Center" FontSize="12"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                <ComboBox x:Name="ConvertBox" Width="76" FontSize="12" Padding="6,2" VerticalAlignment="Center"
+                          ItemsSource="{Binding ConvertTypeNames}" SelectedIndex="{Binding ConvertTypeIndex, Mode=TwoWay}"
+                          ToolTip="任务卡片上「转格式」按钮的目标格式（bz2/gz/xz 只能装单个文件）" />
                 <ui:Button Content="清除已完成" Appearance="Secondary" FontSize="12" Padding="10,4"
                            Margin="12,0,0,0" VerticalAlignment="Center"
                            Command="{Binding ClearFinishedCommand}"

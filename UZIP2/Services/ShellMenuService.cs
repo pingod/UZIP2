@@ -25,6 +25,7 @@ namespace UZIP2.Services
         {
             new ShellMenuEntry(@"*\shell\UZIP.ExtractHere", "用 UZIP 解压到当前文件夹", ShellArgs.ExtractHereFlag, "%1"),
             new ShellMenuEntry(@"*\shell\UZIP.Extract", "用 UZIP 解压", ShellArgs.ExtractFlag, "%1"),
+            new ShellMenuEntry(@"*\shell\UZIP.ExtractPreview", "用 UZIP 解压并预览", ShellArgs.ExtractFlag + " " + ShellArgs.PreviewFlag, "%1"),
             new ShellMenuEntry(@"*\shell\UZIP.Compress", "用 UZIP 压缩", ShellArgs.CompressFlag, "%1"),
             new ShellMenuEntry(@"Directory\shell\UZIP.Compress", "用 UZIP 压缩", ShellArgs.CompressFlag, "%1"),
             new ShellMenuEntry(@"Directory\Background\shell\UZIP.Compress", "用 UZIP 压缩当前文件夹", ShellArgs.CompressFlag, "%V"),

@@ -57,7 +57,7 @@ namespace UZIP2.Tests
         public void Changed_Fires_After_Save()
         {
             var svc = NewService();
-            AppSettings? received = null;
+            AppSettings received = null;
             svc.Changed += s => received = s;
             svc.Save(s => s.WindowOnTop = true);
             Assert.NotNull(received);

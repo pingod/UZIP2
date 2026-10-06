@@ -12,6 +12,8 @@ namespace UZIP2.Services
         public List<string> Files { get; } = new List<string>();
         public bool RegisterShell { get; set; }
         public bool UnregisterShell { get; set; }
+        // 右键"解压并预览"：先进包内清单勾选，再决定解哪些
+        public bool Preview { get; set; }
     }
 
     public static class ShellArgs
@@ -21,6 +23,7 @@ namespace UZIP2.Services
         public const string ExtractFlag = "--extract";
         public const string ExtractHereFlag = "--extract-here";
         public const string CompressFlag = "--compress";
+        public const string PreviewFlag = "--preview";
 
         public static ShellRequest Parse(string[] args)
         {
@@ -37,6 +40,7 @@ namespace UZIP2.Services
                     case ExtractFlag: r.Verb = ShellVerb.Extract; break;
                     case ExtractHereFlag: r.Verb = ShellVerb.ExtractHere; break;
                     case CompressFlag: r.Verb = ShellVerb.Compress; break;
+                    case PreviewFlag: r.Preview = true; break;
                     default:
                         // 未知开关直接忽略，别让升级后旧菜单留下的参数把文件路径吃掉
                         if (a.StartsWith("--", StringComparison.Ordinal)) continue;

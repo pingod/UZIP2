@@ -101,6 +101,7 @@ namespace UZIP2.Tests
             svc.Record(Extract(JobStatus.Success, pw: "hunter2"));
 
             Assert.Null(Assert.Single(svc.ReadAll()).Password);
+            svc.Flush();
             Assert.DoesNotContain("hunter2", File.ReadAllText(svc.HistoryPath, Encoding.UTF8));
         }
 
@@ -130,7 +131,9 @@ namespace UZIP2.Tests
         public void Persists_across_instances()
         {
             var sub = Path.Combine(_dir, "cfg");
-            new HistoryService(sub).Record(Extract(JobStatus.Success, pw: "p"));
+            var first = new HistoryService(sub);
+            first.Record(Extract(JobStatus.Success, pw: "p"));
+            first.Flush();                               // 落盘由退出前的 Flush 负责
             var reloaded = new HistoryService(sub).ReadAll();
             Assert.Single(reloaded);
             Assert.Equal("p", reloaded[0].Password);
@@ -165,9 +168,75 @@ namespace UZIP2.Tests
         {
             var svc = new HistoryService(_dir);
             svc.Record(new JobEntry { Kind = "Extract", Archive = @"D:\资料\第一季.zip", Status = JobStatus.Failed, Diagnosis = "分卷不完整" });
+            svc.Flush();
             Assert.Equal(@"D:\资料\第一季.zip", Assert.Single(svc.ReadAll()).Source);
             // RelaxedJsonEscaping: 中文直接可读，不应被转成 \uXXXX
             Assert.Contains("第一季", File.ReadAllText(svc.HistoryPath, Encoding.UTF8));
+        }
+
+        // ---------- 写回节流 ----------
+
+        // 批量解压 50 个包时，每个作业收尾都全量重写一次 history.json（最多 500 条），
+        // 既拖慢收尾又在锁上排队。改成脏标记 + 合并写，退出前 Flush 落盘。
+        [Fact]
+        public void Records_coalesce_into_a_single_write()
+        {
+            var w = new WriteCounter();
+            var svc = NewFlushCountingService(w, 60000);
+            for (int i = 0; i < 5; i++)
+                svc.Record(new JobEntry { Kind = "Extract", Archive = "c" + i + ".zip", Status = JobStatus.Success });
+
+            Assert.Equal(0, w.Count);                    // 记录当下不碰磁盘
+            Assert.Equal(5, svc.ReadAll().Count);        // 内存里已经齐全
+
+            svc.Flush();
+            Assert.Equal(1, w.Count);
+            svc.Flush();
+            Assert.Equal(1, w.Count);                    // 不脏就不要再写一遍
+        }
+
+        [Fact]
+        public void Unflushed_records_are_visible_to_the_next_page_load()
+        {
+            var svc = new HistoryService(_dir, null, 60);
+            svc.Record(Extract(JobStatus.Success, pw: "p"));
+            Assert.Single(svc.ReadAll());                // 读的是内存，不等落盘
+        }
+
+        [Fact]
+        public void Debounce_writes_without_an_explicit_flush()
+        {
+            var svc = new HistoryService(_dir, null, 40);
+            svc.Record(Extract(JobStatus.Success));
+            var deadline = DateTime.UtcNow.AddSeconds(3);
+            while (DateTime.UtcNow < deadline && !File.Exists(svc.HistoryPath))
+                System.Threading.Thread.Sleep(20);
+            Assert.True(File.Exists(svc.HistoryPath), "延迟窗口到了就该自己落盘");
+        }
+
+        [Fact]
+        public void Clear_writes_through_immediately()
+        {
+            var svc = new HistoryService(_dir, null, 60000);   // 很长的节流：清空不能等
+            svc.Record(Extract(JobStatus.Success));
+            svc.Clear();
+            Assert.False(File.Exists(svc.HistoryPath));
+
+            var again = new HistoryService(_dir, null, 60000);
+            Assert.Empty(again.ReadAll());
+        }
+
+        HistoryService NewFlushCountingService(WriteCounter counter, int debounceMs)
+            => new HistoryService(_dir, null, debounceMs, counter.Write);
+
+        sealed class WriteCounter
+        {
+            public int Count;
+            public void Write(string path, string content)
+            {
+                System.Threading.Interlocked.Increment(ref Count);
+                File.WriteAllText(path, content, new UTF8Encoding(false));
+            }
         }
     }
 }

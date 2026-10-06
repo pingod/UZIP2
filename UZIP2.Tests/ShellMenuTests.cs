@@ -18,6 +18,18 @@ namespace UZIP2.Tests
         }
 
         [Fact]
+        public void Preview_flag_marks_extract_and_keeps_the_paths()
+        {
+            var r = ShellArgs.Parse(new[] { "--extract", "--preview", @"D:\a.zip" });
+            Assert.Equal(ShellVerb.Extract, r.Verb);
+            Assert.True(r.Preview);
+            Assert.Equal(new[] { @"D:\a.zip" }, r.Files);
+
+            // 右键菜单不带 --preview 时行为完全不变
+            Assert.False(ShellArgs.Parse(new[] { "--extract", @"D:\a.zip" }).Preview);
+        }
+
+        [Fact]
         public void Verbs_and_flags_are_recognised_in_any_order()
         {
             var r = ShellArgs.Parse(new[] { @"D:\pack", "--COMPRESS" });
@@ -90,6 +102,11 @@ namespace UZIP2.Tests
                 root.OpenSubKey(@"Directory\Background\shell\UZIP.Compress\command").GetValue(""));
             Assert.Equal("用 UZIP 解压", root.OpenSubKey(@"*\shell\UZIP.Extract").GetValue(""));
             Assert.Contains("UZIP2.exe", (string)root.OpenSubKey(@"*\shell\UZIP.Compress").GetValue("Icon"));
+
+            // "解压并预览"：先出包内清单再动手，勾选解压才进队列
+            Assert.Equal("\"D:\\apps\\UZIP\\UZIP2.exe\" --extract --preview \"%1\"",
+                root.OpenSubKey(@"*\shell\UZIP.ExtractPreview\command").GetValue(""));
+            Assert.Equal("用 UZIP 解压并预览", root.OpenSubKey(@"*\shell\UZIP.ExtractPreview").GetValue(""));
         }
 
         [Fact]

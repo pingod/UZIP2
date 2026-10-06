@@ -5,7 +5,7 @@ namespace UZIP2.Cli
     public enum CliCommand
     {
         None, Help, Version, List, Test, Extract, Compress,
-        Checksum, Vault, Config, Log, Shell, Watch, Update, History
+        Checksum, Diff, Convert, Vault, Config, Log, Shell, Watch, Update, History
     }
 
     // 解析后的命令行意图。位置参数原样保留在 Args，由 Runner 按命令再解释
@@ -37,6 +37,7 @@ namespace UZIP2.Cli
         public string Volume;          // --volume    700m|1g|字节
         public List<string> Exclude;   // --exclude   排除规则（可重复）
         public bool DeleteSource;      // --delete-source
+        public bool? TestAfter;        // --test / --no-test  压缩后自检；缺省跟随设置 VerifyAfterCompress
 
         // 校验
         public bool Verify;            // --verify    核对旁挂校验文件

@@ -56,6 +56,8 @@ namespace UZIP2.Models
         // 并行作业数(改完即时生效，缩小只限制新作业)。实测 8×20 MB: 串行 712 ms → 8 路 122 ms。
         public int ParallelExtract { get; set; } = 3;
         public int ParallelCompress { get; set; } = 2;
+        // 压缩完先 7z t 自检，产物坏了当场就报，而不是等下次解压才发现
+        public bool VerifyAfterCompress { get; set; } = true;
         public bool CreateNewFolder { get; set; }
         public bool CreateNameFolder { get; set; }
         public bool NameToPassword { get; set; }

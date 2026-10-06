@@ -80,7 +80,8 @@
                                     <TextBlock Grid.Column="3" Text="{Binding Source}" FontWeight="SemiBold"
                                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="360" />
                                     <ui:Button Grid.Column="4" Content="重跑" Padding="8,3" Margin="10,0,0,0"
-                                               Click="OnRetry" ToolTip="用记录的源重新执行一次" />
+                                               Click="OnRetry" ToolTip="用记录的源和口令重新执行一次"
+                                               Visibility="{Binding CanRetry, Converter={StaticResource BoolToVis}}" />
                                 </Grid>
                                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0"
                                             Visibility="{Binding HasPassword, Converter={StaticResource BoolToVis}}">

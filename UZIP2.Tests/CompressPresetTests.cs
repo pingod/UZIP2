@@ -244,7 +244,7 @@ namespace UZIP2.Tests
         }
 
         [Fact]
-        public async Task Settings_written_by_preset_survive_a_reload()
+        public void Settings_written_by_preset_survive_a_reload()
         {
             _settings.Current.CompressPresets.Add(new CompressPreset
             {

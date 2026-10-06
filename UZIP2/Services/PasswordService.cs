@@ -64,6 +64,21 @@ namespace UZIP2.Services
         public IReadOnlyList<PasswordEntry> Book { get { lock (_sync) return _book.ToList(); } }
         public IReadOnlyList<PasswordEntry> Paper { get { lock (_sync) return _paper.ToList(); } }
 
+        // 外链密码缓存。一批档案会逐个重建密码链，每次都联网等于把断网超时摊进整批。
+        // 独立锁：网络 I/O 绝不攥着密码本的 _sync。
+        private static readonly HttpClient SharedHttp = new HttpClient { Timeout = TimeSpan.FromMilliseconds(3000) };
+        private readonly object _extSync = new object();
+        private string _extUrl;
+        private string[] _extLines;
+        private bool _extFailed;
+        private long _extAtMs;
+
+        /// <summary>外链结果复用窗口（毫秒），<=0 表示每次现取。</summary>
+        public int ExternalCacheMs { get; set; } = 60_000;
+
+        /// <summary>测试/离线接缝：替换掉真实 HTTP 取行。</summary>
+        public Func<string, string[]> HttpProvider { get; set; }
+
         public PasswordService(string configDirectory, ISettingsService settings)
         {
             _storePath = Path.Combine(configDirectory, "passwords.json");
@@ -89,11 +104,12 @@ namespace UZIP2.Services
             }
         }
 
+        // 调用方必须持有 _sync。Changed 不在这里派发：订阅者会在回调里读 Book/Paper，
+        // 而锁还攥在调用方手里，锁内派发等于让回调等自己——必死锁。
         private void Save()
         {
             var all = _book.Concat(_paper).ToList();
             AtomicFile.Write(_storePath, JsonSerializer.Serialize(all, JsonOptions));
-            Changed?.Invoke();
         }
 
         public void ImportBook(IEnumerable<PasswordEntry> entries)
@@ -109,6 +125,7 @@ namespace UZIP2.Services
                 }
                 Save();
             }
+            Changed?.Invoke();
         }
 
         public void ImportPaper(IEnumerable<PasswordEntry> entries)
@@ -124,6 +141,7 @@ namespace UZIP2.Services
                 }
                 Save();
             }
+            Changed?.Invoke();
         }
 
         public IReadOnlyList<PasswordEntry> DumpAll()
@@ -139,6 +157,7 @@ namespace UZIP2.Services
                 _book.Add(new PasswordEntry { Name = name ?? "", Cipher = DpapiHelper.Encode(plain) });
                 Save();
             }
+            Changed?.Invoke();
         }
 
         public void RemoveBook(PasswordEntry entry)
@@ -148,6 +167,7 @@ namespace UZIP2.Services
                 _book.RemoveAll(b => b.Cipher == entry.Cipher);
                 Save();
             }
+            Changed?.Invoke();
         }
 
         public void UpdateBook(PasswordEntry entry, string name, string plain)
@@ -158,6 +178,7 @@ namespace UZIP2.Services
                 entry.Cipher = DpapiHelper.Encode(plain);
                 Save();
             }
+            Changed?.Invoke();
         }
 
         public const int PaperLimit = 200;
@@ -181,6 +202,7 @@ namespace UZIP2.Services
                 // 一次粘贴只落盘一次
                 if (added > 0) Save();
             }
+            if (added > 0) Changed?.Invoke();
             return added;
         }
 
@@ -191,6 +213,7 @@ namespace UZIP2.Services
                 _paper.Clear();
                 Save();
             }
+            Changed?.Invoke();
         }
 
         // 会话级密码纸废纸篓(关闭程序即清空，与旧 PWRecycle 语义一致)
@@ -209,6 +232,7 @@ namespace UZIP2.Services
                 _recycle.Add(plain);
                 Save();
             }
+            Changed?.Invoke();
         }
 
         private bool ShouldTrimSpace()
@@ -248,6 +272,7 @@ namespace UZIP2.Services
                 entry.SuccessCount++;
                 Save();
             }
+            Changed?.Invoke();
         }
 
         // 旧 Mypassword.cs 的四种来源语义（模式2=文件 模式3=http 模式4=隐藏http，逐字保持）
@@ -262,12 +287,40 @@ namespace UZIP2.Services
                 case 1: lines = _settings.Current.InternalPasswords?.ToArray(); break;
                 case 2: if (!string.IsNullOrEmpty(url)) lines = ReadFileLines(url); break;
                 case 3: case 4:
-                    if (mode == 4) url = "http://password.com/pw.txt";
-                    if (!string.IsNullOrEmpty(url)) lines = ReadHttpLines(url);
+                    if (!string.IsNullOrEmpty(url)) lines = ReadHttpCached(url);
                     break;
             }
             if (lines == null) return Array.Empty<string>();
             return lines.Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => l.Trim()).ToArray();
+        }
+
+        private string[] ReadHttpCached(string url)
+        {
+            lock (_extSync)
+            {
+                if (string.Equals(_extUrl, url, StringComparison.Ordinal)
+                    && Environment.TickCount64 - _extAtMs < ExternalCacheMs)
+                    return _extFailed ? null : _extLines;
+            }
+
+            string[] lines = null;
+            try { lines = (HttpProvider ?? FetchHttpLines)(url); }
+            catch { lines = null; }
+
+            lock (_extSync)
+            {
+                _extUrl = url;
+                _extLines = lines;
+                _extFailed = lines == null;   // 失败也要记住，否则每个档案再等一次超时
+                _extAtMs = Environment.TickCount64;
+            }
+            return lines;
+        }
+
+        private static string[] FetchHttpLines(string url)
+        {
+            var body = SharedHttp.GetStringAsync(url).GetAwaiter().GetResult();
+            return body.Replace("\r\n", "\n").Split('\n');
         }
 
         private static string[] ReadFileLines(string path)
@@ -276,19 +329,6 @@ namespace UZIP2.Services
             {
                 if (!File.Exists(path)) return null;
                 return File.ReadAllLines(path, Encoding.UTF8);
-            }
-            catch { return null; }
-        }
-
-        private static string[] ReadHttpLines(string url)
-        {
-            try
-            {
-                using (var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) })
-                {
-                    var body = http.GetStringAsync(url).GetAwaiter().GetResult();
-                    return body.Replace("\r\n", "\n").Split('\n');
-                }
             }
             catch { return null; }
         }

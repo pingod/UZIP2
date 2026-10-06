@@ -48,6 +48,10 @@
                        Padding="12,4" Margin="0,0,6,0" Click="OnExtractSelected" IsEnabled="False" />
             <ui:Button Content="全部解压" FontSize="12" Padding="10,4" Margin="0,0,6,0"
                        Click="OnExtractAll" IsEnabled="False" x:Name="ExtractAllBtn" />
+            <ui:Button x:Name="DiffBtn" Content="对比另一个包" FontSize="12" Padding="10,4" Margin="0,0,6,0"
+                       Click="OnDiff" IsEnabled="False" />
+            <ui:Button x:Name="BackBtn" Content="返回清单" FontSize="12" Padding="10,4" Margin="0,0,6,0"
+                       Click="OnBackToList" Visibility="Collapsed" />
             <ui:Button Content="关闭" FontSize="12" Padding="10,4" Click="OnClose" />
         </StackPanel>
     </Grid>

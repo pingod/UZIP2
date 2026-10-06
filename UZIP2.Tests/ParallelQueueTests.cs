@@ -174,7 +174,7 @@ namespace UZIP2.Tests
                 j.Status == JobStatus.Success || j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled,
                 "空闲时仍有未收尾作业: " + j.Id + "/" + j.Status));
             Assert.Equal(6, worker.Jobs.Count(j => j.Status == JobStatus.Success));
-            Assert.Equal(0, System.IO.Directory.GetDirectories(_out, "UZipTemp_*").Length);
+            Assert.Empty(System.IO.Directory.GetDirectories(_out, "UZipTemp_*"));
         }
 
         class CollectingLogger : IFileLogger

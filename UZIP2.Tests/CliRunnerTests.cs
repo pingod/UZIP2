@@ -97,6 +97,32 @@ namespace UZIP2.Tests
             Assert.True(File.Exists(Path.Combine(dest, "data.bin")));
         }
 
+        // 校验要带着刚写进包的口令：漏了口令，加密包的自检必然报"缺密码"，
+        // 于是"压缩后删除源文件"永远不生效——这条用真 7z 把这个耦合钉住。
+        [Fact]
+        public async Task Compress_test_verifies_encrypted_archive_with_its_password()
+        {
+            var f = MakeFile("sec.bin");
+            var outDir = Path.Combine(_root, "outCv");
+            var (cc, co, ce) = await Run(_base, _config, "compress", f, "-o", outDir,
+                "--type", "7z", "--password", "s3cret", "--test", "--delete-source");
+            Assert.True(cc == 0, string.Join("|", ce));
+            Assert.True(File.Exists(co.Last()), "校验通过后应留下产物");
+            Assert.False(File.Exists(f), "校验通过才允许删源");
+            Assert.Contains(co, s => s.Contains("自检"));
+        }
+
+        [Fact]
+        public async Task Compress_no_test_skips_the_self_check_line()
+        {
+            new SettingsService(_config, null).Save(s => s.VerifyAfterCompress = true);
+            var f = MakeFile("keep.bin");
+            var outDir = Path.Combine(_root, "outCv2");
+            var (cc, co, ce) = await Run(_base, _config, "compress", f, "-o", outDir, "--no-test");
+            Assert.True(cc == 0, string.Join("|", ce));
+            Assert.DoesNotContain(co, s => s.Contains("自检"));   // --no-test 压过持久化设置
+        }
+
         [Fact]
         public async Task Extract_here_lands_next_to_archive()
         {
@@ -138,9 +164,44 @@ namespace UZIP2.Tests
             Assert.True(File.Exists(Path.Combine(dest3, "secret.bin")));
         }
 
+        // list --json 默认不得把试出来的密码写进输出：JSON 会被丢进日志/CI/终端回滚
         [Fact]
-        public async Task Extract_selected_entries_only()
+        public async Task List_json_masks_password_unless_show_passwords()
         {
+            var f = MakeFile("pv-secret.bin");
+            var outDir = Path.Combine(_root, "outPv");
+            var (cc, co, ce) = await Run(_base, _config, "compress", f, "-o", outDir, "--type", "7z", "--password", "s3cr3t");
+            Assert.True(cc == 0, string.Join("|", ce));
+            var archive = co.Last();
+
+            var (_, hidden, _) = await Run(_base, _config, "list", archive, "--password", "s3cr3t", "--json");
+            var text = string.Join("\n", hidden);
+            Assert.DoesNotContain("s3cr3t", text);
+            Assert.Contains("***", text);
+
+            var (_, shown, _) = await Run(_base, _config, "list", archive, "--password", "s3cr3t", "--json", "--show-passwords");
+            Assert.Contains("s3cr3t", string.Join("\n", shown));
+        }
+
+        // 命令词/选项拼错必须是失败退出，不能打印帮助后返回 0
+        [Fact]
+        public async Task Unknown_command_exits_nonzero()
+        {
+            var (code, _, e) = await Run(_base, _config, "lst", "a.zip");
+            Assert.Equal(2, code);
+            Assert.Contains(e, s => s.Contains("lst"));
+        }
+
+        [Fact]
+        public async Task Unknown_option_exits_nonzero()
+        {
+            var (code, _, e) = await Run(_base, _config, "list", "a.zip", "--passwrd", "x");
+            Assert.Equal(2, code);
+            Assert.Contains(e, s => s.Contains("--passwrd"));
+        }
+
+        [Fact]
+        public async Task Extract_selected_entries_only()        {
             var a = MakeFile("a.txt"); var b = MakeFile("b.txt");
             var outDir = Path.Combine(_root, "out4");
             var (_, co, _) = await Run(_base, _config, "compress", a, b, "-o", outDir, "--name", "two.zip");
@@ -268,6 +329,68 @@ namespace UZIP2.Tests
             var (code, o, _) = await Run(_base, _config, "shell", "status");
             Assert.NotEqual(2, code);              // 只会是 0/1，绝不会写注册表
             Assert.Contains(o, s => s.Contains("状态"));
+        }
+
+        // ---------- diff（两个包的清单对比）----------
+
+        async Task<string> Pack(string outDir, params string[] files)
+        {
+            var args = new List<string> { "compress" };
+            args.AddRange(files);
+            args.AddRange(new[] { "-o", outDir, "--type", "zip", "--no-test" });
+            var (code, o, e) = await Run(_base, _config, args.ToArray());
+            Assert.True(code == 0, string.Join("|", e));
+            return o.Last();
+        }
+
+        [Fact]
+        public async Task Diff_reports_entries_that_only_exist_in_one_archive()
+        {
+            var f1 = MakeFile("alpha.txt");
+            var f2 = MakeFile("beta.txt");
+            var za = await Pack(Path.Combine(_root, "dA"), f1, f2);
+            var zb = await Pack(Path.Combine(_root, "dB"), f1);
+
+            var (code, o, _) = await Run(_base, _config, "diff", za, zb);
+            Assert.Equal(1, code);
+            Assert.Contains(o, s => s.Contains("仅在") && s.Contains("beta.txt"));
+        }
+
+        [Fact]
+        public async Task Diff_of_two_archives_with_the_same_content_exits_zero()
+        {
+            var f1 = MakeFile("same.txt");
+            var za = await Pack(Path.Combine(_root, "dC"), f1);
+            var zb = await Pack(Path.Combine(_root, "dD"), f1);
+
+            var (code, o, _) = await Run(_base, _config, "diff", za, zb);
+            Assert.Equal(0, code);
+            Assert.Contains(o, s => s.Contains("一致"));
+        }
+
+        [Fact]
+        public async Task Diff_json_carries_both_sides_and_identical_flag()
+        {
+            var f1 = MakeFile("j1.txt");
+            var f2 = MakeFile("j2.txt");
+            var za = await Pack(Path.Combine(_root, "dE"), f1);
+            var zb = await Pack(Path.Combine(_root, "dF"), f1, f2);
+
+            var (code, o, _) = await Run(_base, _config, "diff", za, zb, "--json");
+            Assert.Equal(1, code);
+            var json = string.Join("\n", o);
+            Assert.Contains("\"identical\": false", json);
+            Assert.Contains("j2.txt", json);
+        }
+
+        [Fact]
+        public async Task Diff_needs_two_archives()
+        {
+            var f1 = MakeFile("u.txt");
+            var za = await Pack(Path.Combine(_root, "dG"), f1);
+            var (code, _, e) = await Run(_base, _config, "diff", za);
+            Assert.Equal(2, code);
+            Assert.Contains(e, s => s.Contains("用法"));
         }
 
         // ---------- update（注入 seam，离线可控）----------

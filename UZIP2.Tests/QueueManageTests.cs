@@ -202,6 +202,77 @@ namespace UZIP2.Tests
             Assert.Equal(JobStatus.Failed, left.Status);
         }
 
+        // ---------- ViewModel：自动打开输出目录 ----------
+
+        [Fact]
+        public async Task Auto_open_opens_each_output_dir_once_per_batch()
+        {
+            if (_client.SevenZipPath == null) return;
+            var outDir = Path.Combine(_root, "openbatch");
+            Directory.CreateDirectory(outDir);
+            _settings.Current.ExtractOutMode = 3;
+            _settings.Current.LastExtractPath = outDir;
+            _settings.Current.CreateNewFolder = false;
+            _settings.Current.CreateNameFolder = false;
+            _settings.Current.AutoOpenAfterExtract = true;
+
+            // 三个档案解到同一个目录：旧实现按"每个作业一窗"弹出三个资源管理器
+            var zips = new List<string>();
+            for (int i = 0; i < 3; i++)
+            {
+                var src = Path.Combine(_root, "src" + i + ".bin");
+                File.WriteAllBytes(src, new byte[2048]);
+                var zip = Path.Combine(_root, "batch" + i + ".zip");
+                Assert.True((await _client.CompressAsync(new[] { src }, zip, null, 0, 0,
+                    false, null, CancellationToken.None)).Success);
+                zips.Add(zip);
+            }
+
+            var opened = new List<string>();
+            var worker = NewWorker();
+            var vm = NewVm(worker);
+            vm.OpenDirectory = dir => { lock (opened) opened.Add(dir); };
+
+            worker.EnqueueExtract(zips);
+            await worker.WhenIdleAsync();
+
+            Assert.All(worker.Jobs, j => Assert.Equal(JobStatus.Success, j.Status));
+            Assert.Single(opened);
+        }
+
+        [Fact]
+        public async Task Auto_open_opens_again_for_the_next_batch()
+        {
+            if (_client.SevenZipPath == null) return;
+            var outDir = Path.Combine(_root, "opennext");
+            Directory.CreateDirectory(outDir);
+            _settings.Current.ExtractOutMode = 3;
+            _settings.Current.LastExtractPath = outDir;
+            _settings.Current.CreateNewFolder = false;
+            _settings.Current.CreateNameFolder = false;
+            _settings.Current.AutoOpenAfterExtract = true;
+
+            var src = Path.Combine(_root, "again.bin");
+            File.WriteAllBytes(src, new byte[2048]);
+            var zip = Path.Combine(_root, "again.zip");
+            Assert.True((await _client.CompressAsync(new[] { src }, zip, null, 0, 0,
+                false, null, CancellationToken.None)).Success);
+
+            var opened = new List<string>();
+            var worker = NewWorker();
+            var vm = NewVm(worker);
+            vm.OpenDirectory = dir => { lock (opened) opened.Add(dir); };
+
+            worker.EnqueueExtract(new[] { zip });
+            await worker.WhenIdleAsync();
+            Assert.Single(opened);
+
+            // 整批结束后窗口登记要清空，否则同一目录永远只开第一次
+            worker.EnqueueExtract(new[] { zip });
+            await worker.WhenIdleAsync();
+            Assert.Equal(2, opened.Count);
+        }
+
         // ---------- ViewModel：命令与镜像 ----------
 
         [Fact]
