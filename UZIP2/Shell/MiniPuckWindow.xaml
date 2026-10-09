@@ -7,9 +7,12 @@
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ResizeMode="NoResize" ShowInTaskbar="False" Topmost="True"
         AllowDrop="True" Focusable="True"
+        Drop="OnDropFiles" DragOver="OnDragOverFiles"
+        DragEnter="OnDragEnterFiles" DragLeave="OnDragLeaveFiles"
         AutomationProperties.Name="UZIP 拖拽方块">
-    <Border x:Name="Body" CornerRadius="18" BorderThickness="1.5" AllowDrop="True"
-            Drop="OnDropFiles" DragOver="OnDragOverFiles" DragLeave="OnDragLeaveFiles"
+    <!-- 拖放目标只放在窗口这一层：整块 104×104 都是命中区，指针在方块内子元素间移动
+         不会产生成串的假 DragLeave/Enter；Border 不再单独 AllowDrop（嵌套目标会抖动）。 -->
+    <Border x:Name="Body" CornerRadius="18" BorderThickness="1.5"
             Background="{DynamicResource ControlFillColorDefaultBrush}"
             BorderBrush="{DynamicResource AccentFillColorDefaultBrush}">
         <Border.ContextMenu>

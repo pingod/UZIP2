@@ -38,6 +38,8 @@ namespace UZIP2.Shell
         private volatile bool _ringDirty;
         private bool _hadActive;
         private bool _dragIn;
+        private string _lastDragSig;
+        private DispatcherTimer _leaveTimer;
         private DateTime _flashUntil;
 
         public MiniPuckWindow(MainWindow main)
@@ -221,31 +223,77 @@ namespace UZIP2.Shell
             SavePosition();
         }
 
+        // 指针在方块内子元素（环、图标、提示位）和窗口透明边界之间移动，
+        // WPF 会连续抛出成串的假 DragLeave → DragEnter/Over。旧实现每帧重算预览、
+        // 每次 leave 立刻把提示从"长(换行)"切回"短(单行)"，居中布局随之反复回流，
+        // 图标就上下抖动。三处一起改：
+        //  1. 预览只在拖拽内容真正变化时重算（同一批次文件集合恒定，避免每帧 File.Exists）；
+        //  2. leave 加宽限 debounce，宽限期内又进入/悬停就取消，真正的离开才收起；
+        //  3. 拖放目标统一放到窗口一层，消除 Border/Window 两层 AllowDrop 的进入/离开抖动。
+        const int LeaveDebounceMs = 60;
+
         void OnDragOverFiles(object sender, DragEventArgs e)
         {
-            if (!e.Data.GetDataPresent(DataFormats.FileDrop))
-            {
-                e.Effects = DragDropEffects.None;
-                return;
-            }
-            e.Effects = DragDropEffects.Copy;
-            _dragIn = true;
-            Vm.ShowPreview(TryGetFiles(e));
-            Hint.Text = Vm.PreviewText;
+            bool hasFiles = e.Data.GetDataPresent(DataFormats.FileDrop);
+            e.Effects = hasFiles ? DragDropEffects.Copy : DragDropEffects.None;
+            if (hasFiles) UpdatePreviewIfChanged(e);
             e.Handled = true;
+        }
+
+        void OnDragEnterFiles(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(DataFormats.FileDrop)) UpdatePreviewIfChanged(e);
         }
 
         void OnDragLeaveFiles(object sender, DragEventArgs e)
         {
-            _dragIn = false;
-            Vm.ClearPreview();
-            if (_flashUntil == default && !_hadActive) Hint.Text = IdleHint();
+            // 宽限计时已在跑（子元素间抖动产生的连续 leave）就不重复排：
+            // 只有宽限期内没有任何新进入/悬停，才真正收起预览。
+            if (_leaveTimer != null) return;
+            _leaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(LeaveDebounceMs) };
+            _leaveTimer.Tick += (_, __) =>
+            {
+                _leaveTimer.Stop();
+                _leaveTimer = null;
+                _dragIn = false;
+                _lastDragSig = null;
+                Vm.ClearPreview();
+                if (_flashUntil == default && !_hadActive) Hint.Text = IdleHint();
+            };
+            _leaveTimer.Start();
+        }
+
+        // 取消在途宽限（新的进入/悬停说明指针还没真正离开）
+        void CancelPendingLeave()
+        {
+            if (_leaveTimer != null)
+            {
+                _leaveTimer.Stop();
+                _leaveTimer = null;
+            }
+        }
+
+        // 只有拖拽的文件集合变化才重算预览；同一批次路径恒定，用签名去重。
+        // 签名用字符串拼接（无 IO），重算才走 ShowPreview（会逐文件 File.Exists）。
+        void UpdatePreviewIfChanged(DragEventArgs e)
+        {
+            CancelPendingLeave();
+            var files = TryGetFiles(e);
+            if (files.Length == 0) return;
+            string sig = string.Join("\u0001", files);
+            if (sig == _lastDragSig) return;
+            _lastDragSig = sig;
+            _dragIn = true;
+            Vm.ShowPreview(files);
+            Hint.Text = Vm.PreviewText;
         }
 
         void OnDropFiles(object sender, DragEventArgs e)
         {
+            CancelPendingLeave();
             var files = TryGetFiles(e);
             _dragIn = false;
+            _lastDragSig = null;
             Vm.ClearPreview();
             if (files.Length == 0)
             {
@@ -306,6 +354,7 @@ namespace UZIP2.Shell
         {
             _statusTimer.Stop();
             _ringTimer.Stop();
+            CancelPendingLeave();
             _worker.JobFinished -= _onFinished;
             _settings.Changed -= _onSettings;
             ((INotifyCollectionChanged)_worker.Jobs).CollectionChanged -= _onJobsChanged;
