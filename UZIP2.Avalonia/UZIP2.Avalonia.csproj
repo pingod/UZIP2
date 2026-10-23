@@ -9,7 +9,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>UZIP2.Avalonia</AssemblyName>
     <RootNamespace>UZIP2.Avalonia</RootNamespace>
-    <Version>3.10.0</Version>
+    <Version>3.11.0</Version>
     <Deterministic>true</Deterministic>
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <!-- DPAPI 只在 Windows 分支实例化（见 AppHost），与 WPF 工程同一处理 -->

@@ -11,6 +11,23 @@
 4. 优化临时缓存文件夹相关代码，每个压缩包有单独的缓存文件夹，并且该文件夹是隐藏的。
 5. 支持多级解压，压缩包内第一层压缩包再次解压，持续符合条件时会循环解压。
 
+## 本次增强（v3.11 — Linux 图形版补全 + X11 全局热键）
+
+v3.10 把 Linux 版做出来了，v3.11 把它补齐到"日常能直接用"：密码页、卡片上的转换/校验/对比、单实例、桌面入口、X11 全局热键。
+
+**新功能**
+
+1. **密码页**：密码本增删、逐行显示/隐藏、复制、成功次数；密码纸整段粘贴、清空、200 条上限提示。口令沿用 AES-256-GCM（Linux）或 DPAPI（Windows）。
+2. **卡片三个入口**：转格式（7 种可创建格式，原包保留）、校验和（SHA-256 + `SHA256SUMS`/`.sfv`/`.md5` 逐条比对）、包对比（选另一个包，列出仅左/仅右/大小不同）。
+3. **包内预览勾选**：清单逐项勾选后只解压选中项，走引擎已有的 `onlyEntries` 路径。
+4. **单实例**：从文件管理器连续双击多个文件不会再开出多个窗口，第二个进程把路径转发给已在跑的实例；启动参数同样入队。
+5. **桌面入口**：`uzip2.desktop` + 48/128 px 图标随 tar.gz 与 Arch 包安装，应用列表里能直接搜到。
+6. **X11 全局热键**：Ctrl+Alt+U 唤起窗口。没有用 `XGrabKey` 抢键，而是 150ms 轮询键位图与修饰键掩码、只在按下沿触发；没有 DISPLAY 或 libX11 时安静降级，设置页可关闭。
+
+**验证**：811 个 WPF 测试 + 11 个 Avalonia 测试（含单实例转发、桌面能力判定、热键边沿逻辑、密码页遮罩、渲染截图），Debug/Release 全绿、0 警告。
+
+**仍未做**：Wayland 的全局热键（需要 `GlobalShortcuts` portal）；Thunar 自定义动作的 `uca.xml` 合并；托盘/方块定位仍未有真实 Wayland/X11 会话的实机验证。
+
 ## 本次增强（v3.8 — 悬浮方块进度环 + 审计第二轮：更新链路 / CLI 补漏 / 性能）
 
 v3.7 交付后又把整条更新链路、CLI 剩余死参数和几处热路径过了一遍，外加一个可见的新功能：桌面迷你方块的**进度环**。仍按"先写会失败的定向测试 → 最小实现"推进，测试从 642 个增加到 **763 个**（新增 121；新测试文件 `PuckProgressTests` 23、`UpdateTransportTests` 22、`PuckHintTests` 10、`PuckPlacementTests` 6、`CoalescerTests` 4，另有 `SevenZipCoverModeTests` 11、`SevenZipProbeEarlyExitTests` 8 补在既有文件里），全绿；主工程与测试工程 Debug/Release 均 **0 警告、0 错误**。
@@ -64,8 +81,8 @@ cd packaging/arch && makepkg -si -p PKGBUILD-bin
 其它发行版直接解包 tar.gz：
 
 ```
-tar -xzf UZIP2-3.10.0-linux-x64.tar.gz
-sudo install -Dm755 UZIP2-3.10.0-linux-x64/UZIP2 /usr/bin/uzip2
+tar -xzf UZIP2-3.11.0-linux-x64.tar.gz
+sudo install -Dm755 UZIP2-3.11.0-linux-x64/UZIP2 /usr/bin/uzip2
 ```
 
 依赖：7-Zip（Arch: `pacman -S 7zip`；Debian/Ubuntu: `apt install 7zip`），图形界面另需 `fontconfig`、`freetype2`、`libice`、`libsm`（Arch 包的 `depends` 已声明；纯命令行用法在无图形库的机器上也能跑，因为单文件是自包含的）。程序会依次找 `7zz/7z/7za`（`/usr/bin`、`/usr/local/bin`、`/usr/lib/p7zip`、`/usr/lib/7zip`，再扫 `PATH`），也可用 `uzip2 config set customize7zPath <路径>` 指定。配置落 `~/.config/uzip2`，日志落 `~/.local/state/uzip2`（遵循 XDG），程序目录只读也能跑。
