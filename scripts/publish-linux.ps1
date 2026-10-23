@@ -23,7 +23,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
-$Proj     = Join-Path $RepoRoot 'UZIP2.Cli/UZIP2.Cli.csproj'
+$Proj     = Join-Path $RepoRoot 'UZIP2.Avalonia/UZIP2.Avalonia.csproj'
 $AiFile   = Join-Path $RepoRoot 'UZIP2/Properties/AssemblyInfo.cs'
 
 if (-not (Get-Command $Dotnet -ErrorAction SilentlyContinue)) {
@@ -59,7 +59,7 @@ $OutVer = Join-Path (Join-Path $RepoRoot 'artifacts') $Ver
 New-Item -ItemType Directory -Path $OutVer -Force | Out-Null
 
 $readme = @"
-UZIP2 $Ver —— Linux 命令行版
+UZIP2 $Ver —— Linux 版（图形界面 + 命令行）
 
 安装：
   tar -xzf UZIP2-$Ver-linux-<rid>.tar.gz
@@ -84,6 +84,7 @@ foreach ($rid in $Rids) {
 
   Write-Host ">> publishing $rid" -ForegroundColor Cyan
   & $Dotnet publish $Proj -c Release -r $rid --self-contained true -p:PublishSingleFile=true `
+      -p:IncludeNativeLibrariesForSelfExtract=true `
       -o $publishDir --nologo -v m
   if ($LASTEXITCODE -ne 0) { throw "publish failed for $rid (exit $LASTEXITCODE)" }
 
@@ -92,7 +93,8 @@ foreach ($rid in $Rids) {
   $stage = Join-Path $OutVer $dirLeaf          # 目录名就是包内顶层目录名
   if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
   New-Item -ItemType Directory -Path $stage -Force | Out-Null
-  Copy-Item (Join-Path $publishDir 'UZIP2') $stage -Force
+  # 发布出来的可执行名是 UZIP2.Avalonia；装到系统里统一叫 uzip2
+  Copy-Item (Join-Path $publishDir 'UZIP2.Avalonia') (Join-Path $stage 'UZIP2') -Force
   Set-Content -Path (Join-Path $stage 'README.md') -Value $readme -Encoding UTF8
 
   $tarName = "UZIP2-$Ver-linux-$arch.tar.gz"

@@ -9,7 +9,7 @@ pkgdesc="UZIP2 — 7-Zip 前端（Linux 命令行版）"
 arch=('x86_64' 'aarch64')
 url="https://github.com/pingod/UZIP2"
 license=('GPL-3.0-or-later')
-depends=('7zip')
+depends=('7zip' 'fontconfig' 'freetype2' 'libice' 'libsm')
 makedepends=('dotnet-sdk')
 provides=('uzip2')
 conflicts=('uzip2-bin')
@@ -26,12 +26,13 @@ build() {
     aarch64) _rid=linux-arm64 ;;
     *)       error "不支持的架构: $CARCH" ;;
   esac
-  dotnet publish UZIP2.Cli/UZIP2.Cli.csproj \
+  dotnet publish UZIP2.Avalonia/UZIP2.Avalonia.csproj \
     -c Release -r "$_rid" --self-contained true \
-    -p:PublishSingleFile=true -o "$srcdir/out"
+    -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
+    -o "$srcdir/out"
 }
 
 package() {
-  install -Dm755 "$srcdir/out/UZIP2" "$pkgdir/usr/bin/uzip2"
+  install -Dm755 "$srcdir/out/UZIP2.Avalonia" "$pkgdir/usr/bin/uzip2"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

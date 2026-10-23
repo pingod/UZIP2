@@ -213,3 +213,11 @@
 | N5 | **设置页集成**：显示能力摘要与右键菜单状态，提供"安装/移除右键菜单" | 构造与文本断言（`Settings_page_reports_the_resolved_7z_path_and_config_dir`） |
 
 **P4 未完成 / 需真机**：全局热键只做了能力判定，没有真正注册（X11 需要 `XGrabKey` 绑定，Wayland 要走 `GlobalShortcuts` portal）；托盘、方块定位、锁屏级置顶都还没在真实的 Wayland/X11 会话里跑过；Thunar 的自定义动作（`uca.xml` 合并）没做。
+
+## v3.10 发版（P5）
+
+| # | 内容 | 证据 |
+|---|------|------|
+| R1 | Linux 发布物切换到 **Avalonia 二进制**（GUI + CLI 同一文件），`publish-linux.ps1` 增加 `IncludeNativeLibrariesForSelfExtract` 并把产物统一命名为 `UZIP2` | tar.gz 37.3 MB / 33.9 MB；Arch 上解包后 `--version` → 3.10.0、`extract` 正常 |
+| R2 | Arch 包依赖补齐 `fontconfig freetype2 libice libsm`（Avalonia 运行时需要），源码包改为构建 `UZIP2.Avalonia` | Arch（WSL）真机 `makepkg` 产出 `.pkg.tar.zst`，payload 86.7 MB、`uzip2 --version` → 3.10.0；缺依赖时 makepkg 会明确报 "Could not resolve all dependencies"（已据此补全） |
+| R3 | 文档：README 的 Linux 章节改写为"图形界面 + 命令行、同一个二进制"，说明 Wayland 能力降级与全局热键尚未注册 | 本节 + README |

@@ -9,7 +9,7 @@ pkgdesc="UZIP2 — 7-Zip 前端（Linux 命令行版，预编译）"
 arch=('x86_64' 'aarch64')
 url="https://github.com/pingod/UZIP2"
 license=('GPL-3.0-or-later')
-depends=('7zip')
+depends=('7zip' 'fontconfig' 'freetype2' 'libice' 'libsm')
 provides=('uzip2')
 conflicts=('uzip2')
 # 单文件 .NET 包在 ELF 末尾追加了 bundle；strip/debug 会把它切坏

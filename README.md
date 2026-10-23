@@ -44,9 +44,13 @@ v3.7 交付后又把整条更新链路、CLI 剩余死参数和几处热路径�
 
 **真机冒烟补做了什么**：单测进程里没有 WPF 消息泵，进度环这类"看得见"的东西只能拿真二进制跑一遍。做法是在 `artifacts\smoke\run` 起一个带独立 `Config` 的隔离实例（不碰部署版的数据），把方块放到副屏（`puckLeft=2700`），再用第二个进程把包通过单实例管道转给它——等价于把文件拖上方块——期间按 1.2 秒连拍方块窗口的真实矩形。为了不把"环有没有长大"交给肉眼，连拍里对每张图统计强调色像素数：空闲基线 180（外框与图标本身是强调色），满环再加约 170。解一个 4GB 的 solid 7z 读到的序列是 `180 → 180 → 180 → 210 → 246 → 268 → 310 → 350 → 350 → 180`，中间帧截图上是约四分之三圈配"75%"，收尾满环配"完成"，两秒后环收起、文案回到"拖到这里"。这轮冒烟同时抓出并修掉了两个单测原理上盖不住的问题：方块记不住副屏（缺陷 5）与闪示后提示位回不来（新功能 1）。**仍未真机验证**：主页/历史列表虚拟化的滚动手感（只有编译与静态检查）。
 
-## Linux 版（v3.10 起，当前为命令行）
+## Linux 版（v3.10 起：图形界面 + 命令行，同一个二进制）
 
-Windows 界面是 WPF，无法在 Linux 上构建或运行，所以 Linux 版从跨平台核心出发：v3.10 先把 `Models + 可移植 Services + CLI` 拆成 `UZIP2.Core`（`net8.0`，不引用任何 UI 框架），再新增无界面宿主 `UZIP2.Cli`。**v3.10 的 Linux 发布产物是命令行版**，功能与 Windows 的 CLI 对齐：`list / extract / compress / test / convert / diff / checksum / vault / history / config / log / watch once / update --check`。图形界面 `UZIP2.Avalonia` 已经可以构建、能渲染主页/预览/设置/历史并复用同一套服务，桌面集成也接了：托盘（D-Bus StatusNotifierItem）、悬浮拖拽方块（含进度环）、Nautilus/Dolphin 右键菜单、能力探测。Linux 发布包还没切到它（P5 随 v3.10 一起发）。
+Windows 界面是 WPF，无法在 Linux 上构建或运行，所以 Linux 版从跨平台核心出发：`Models + 可移植 Services + CLI` 拆进 `UZIP2.Core`（`net8.0`，不引用任何 UI 框架），界面用 Avalonia 重写（`UZIP2.Avalonia`）。**一个二进制同时是 GUI 和 CLI**：带显式命令词（`extract`/`compress`/`diff`…）时在 Avalonia 初始化之前就走无界面路径，所以服务器上没有显示环境也能用。
+
+已对齐：主页队列（拖放、并发、卡片操作）、包内预览、设置、历史、托盘、悬浮拖拽方块（含进度环）、Nautilus/Dolphin 右键菜单；CLI 全部命令与 Windows 一致：`list / extract / compress / test / convert / diff / checksum / vault / history / config / log / watch once / update --check`。
+
+Wayland 兼容性按能力降级，而不是假装对齐：X11 三项全开；KDE Wayland 托盘/热键/方块定位都可用；GNOME Wayland 没有窗口定位接口、托盘需要 AppIndicator 扩展；sway/Hyprland 这类 wlroots 合成器可定位（layer-shell）且有托盘宿主。设置页会直接把当前会话判定结果写出来。**全局热键目前只做了能力判定，尚未真正注册。**
 
 安装（Arch）：
 
@@ -64,13 +68,13 @@ tar -xzf UZIP2-3.10.0-linux-x64.tar.gz
 sudo install -Dm755 UZIP2-3.10.0-linux-x64/UZIP2 /usr/bin/uzip2
 ```
 
-依赖只有 7-Zip（Arch: `pacman -S 7zip`；Debian/Ubuntu: `apt install 7zip`）。程序会依次找 `7zz/7z/7za`（`/usr/bin`、`/usr/local/bin`、`/usr/lib/p7zip`、`/usr/lib/7zip`，再扫 `PATH`），也可用 `uzip2 config set customize7zPath <路径>` 指定。配置落 `~/.config/uzip2`，日志落 `~/.local/state/uzip2`（遵循 XDG），程序目录只读也能跑。
+依赖：7-Zip（Arch: `pacman -S 7zip`；Debian/Ubuntu: `apt install 7zip`），图形界面另需 `fontconfig`、`freetype2`、`libice`、`libsm`（Arch 包的 `depends` 已声明；纯命令行用法在无图形库的机器上也能跑，因为单文件是自包含的）。程序会依次找 `7zz/7z/7za`（`/usr/bin`、`/usr/local/bin`、`/usr/lib/p7zip`、`/usr/lib/7zip`，再扫 `PATH`），也可用 `uzip2 config set customize7zPath <路径>` 指定。配置落 `~/.config/uzip2`，日志落 `~/.local/state/uzip2`（遵循 XDG），程序目录只读也能跑。
 
 密码本的加密在 Linux 上没有 DPAPI，改用 **AES-256-GCM + 本机密钥文件**（`~/.config/uzip2/secret.key`，权限 0600，GUI/CLI 共用）。跨机器或换用户后旧密文解不开，程序按"密码缺失"处理而不是拿垃圾串去试。
 
-自更新（`update --apply`）只在 Windows 可用；Linux 上明确提示用包管理器更新，不做换二进制的动作。右键菜单、托盘、全局热键、悬浮方块属于桌面集成，随 Avalonia 阶段一起做，并会按 X11 / Wayland 能力降级。
+自更新（`update --apply`）只在 Windows 可用；Linux 上明确提示用包管理器更新，不做换二进制的动作。
 
-构建与打包：`scripts/publish-linux.ps1`（Windows 与 Linux 都能跑，交叉发布 x64/arm64 并组装 tar.gz + `.sha256` + `SHA256SUMS-linux.txt`）；CI 见 `.github/workflows/build-linux.yml`，在 `archlinux` 容器里跑真正的 `makepkg` 并安装冒烟。真机验证：Arch（WSL）上跑通 `list/extract/compress/diff`，`.pkg.tar.zst` 解包后 `uzip2 --version` 输出 `3.10.0`。
+构建与打包：`scripts/publish-linux.ps1`（Windows 与 Linux 都能跑，交叉发布 x64/arm64 并组装 tar.gz + `.sha256` + `SHA256SUMS-linux.txt`）；CI 见 `.github/workflows/build-linux.yml`，在 `archlinux` 容器里跑真正的 `makepkg` 并安装冒烟。真机验证：Arch（WSL）上跑通 `list/extract/compress/diff`，`.pkg.tar.zst` 解包后 `uzip2 --version` 输出 `3.10.0`；Avalonia 壳用无头 Skia 真渲染截图验证（`artifacts/ui/avalon-shell.png`、`avalon-puck.png`）。**尚未在真实 Wayland/X11 会话里开过窗口**，托盘宿主、方块定位、置顶这些只能留到有桌面的机器上复验。
 
 一个打包坑记在这里：makepkg 默认会 `strip`，而 .NET 单文件在 ELF 末尾追加了 bundle，strip 之后运行时报 `Arithmetic overflow while reading bundle`。两个 PKGBUILD 都必须带 `options=(!strip !debug)`。
 
