@@ -6,3 +6,4 @@ release/*.pdb
 artifacts/
 _measure/
 _smoke/
+.alma-snapshots
