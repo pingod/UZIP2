@@ -87,5 +87,39 @@ namespace UZIP2.Avalonia.Tests
                 frame.Save(Path.Combine(outDir, "avalon-shell.png"));
             }
         }
+
+        [AvaloniaFact]
+        public void Puck_window_renders_its_ring()
+        {
+            EnsureHost();
+            var window = new PuckWindow();
+            window.Show();
+            var frame = window.CaptureRenderedFrame();
+            Assert.NotNull(frame);
+            var outDir = Environment.GetEnvironmentVariable("UZIP2_SHOT_DIR");
+            if (!string.IsNullOrEmpty(outDir))
+            {
+                Directory.CreateDirectory(outDir);
+                frame.Save(Path.Combine(outDir, "avalon-puck.png"));
+            }
+        }
+
+        [AvaloniaFact]
+        public void Ring_geometry_is_empty_at_zero_and_closes_at_full()
+        {
+            Assert.Null(PuckRingGeometry.Build(null, 56, 4));
+            Assert.Null(PuckRingGeometry.Build(0, 56, 4));
+
+            var half = PuckRingGeometry.Build(50, 56, 4);
+            Assert.NotNull(half);
+            var b = half.Bounds;
+            // 12 点顺时针走到 6 点：只占右半边，但纵向走满
+            Assert.True(b.Width >= 25, $"半圈应占右半幅，实际 {b}");
+            Assert.True(b.Height >= 50, $"半圈应下探到 6 点方向，实际 {b}");
+
+            var full = PuckRingGeometry.Build(100, 56, 4);
+            Assert.NotNull(full);
+            Assert.True(full.Bounds.Width >= 50 && full.Bounds.Height >= 50, $"满圈应闭合，实际 {full.Bounds}");
+        }
     }
 }

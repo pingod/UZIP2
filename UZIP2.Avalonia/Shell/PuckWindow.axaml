@@ -1,0 +1,31 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="UZIP2.Avalonia.Shell.PuckWindow"
+        Title="UZIP 拖拽方块"
+        Width="112" Height="112"
+        SystemDecorations="None"
+        CanResize="False"
+        ShowInTaskbar="False"
+        Topmost="True"
+        TransparencyLevelHint="Transparent"
+        Background="Transparent"
+        WindowStartupLocation="Manual">
+  <Grid>
+    <Border Background="#E61E1E24" CornerRadius="18" BorderBrush="#3A3A44" BorderThickness="1">
+      <Grid>
+        <Viewbox Width="56" Height="56" HorizontalAlignment="Center" VerticalAlignment="Center">
+          <Canvas Width="56" Height="56">
+            <Ellipse Width="52" Height="52" Canvas.Left="2" Canvas.Top="2"
+                     Stroke="#3A3A44" StrokeThickness="4" />
+            <Path x:Name="RingPath" Stroke="#4CC2FF" StrokeThickness="4"
+                  StrokeLineCap="Round" StrokeJoin="Round" />
+          </Canvas>
+        </Viewbox>
+        <TextBlock Text="UZIP" FontSize="13" FontWeight="SemiBold" Foreground="#E8E8EA"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+        <TextBlock x:Name="HintText" Text="拖到这里" FontSize="11" Foreground="#B8B8C0"
+                   HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,12" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

@@ -20,6 +20,7 @@ namespace UZIP2.Avalonia
         public static ArchiveWorker Worker { get; private set; }
         public static IHistoryService History { get; private set; }
         public static WatchFolderService Watcher { get; private set; }
+        public static DesktopCapabilities Capabilities { get; private set; }
 
         public static void Initialize(PlatformLayout? layoutOverride = null)
         {
@@ -34,8 +35,15 @@ namespace UZIP2.Avalonia
             PasswordCipher.Current = OperatingSystem.IsWindows()
                 ? new WindowsDpapiCipher()
                 : new FileSecretCipher(Path.Combine(Layout.ConfigDirectory, "secret.key"));
-            // P4: Linux 右键菜单脚本在这里接管
-            ShellIntegration.Factory = () => new UnsupportedShellIntegration();
+
+            Capabilities = DesktopCapabilities.Detect(
+                Environment.GetEnvironmentVariable("XDG_SESSION_TYPE"),
+                Environment.GetEnvironmentVariable("XDG_CURRENT_DESKTOP"));
+
+            // Windows 的右键菜单由 WPF 版负责（注册表）；Linux 写各文件管理器的入口文件
+            ShellIntegration.Factory = OperatingSystem.IsWindows()
+                ? () => new UnsupportedShellIntegration()
+                : () => new LinuxShellIntegration(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
 
             Logger = new FileLogger(Layout.LogBaseDirectory);
             Settings = new SettingsService(Layout.ConfigDirectory, Logger);

@@ -13,6 +13,9 @@ namespace UZIP2.Avalonia.Shell.Pages
             Load();
         }
 
+        /// <summary>切回设置页时重新读一遍（别处可能改过设置）。</summary>
+        public void Reload() => Load();
+
         private void Load()
         {
             var s = AppHost.Settings.Current;
@@ -28,7 +31,50 @@ namespace UZIP2.Avalonia.Shell.Pages
             WatchEnabledBox.IsChecked = s.WatchEnabled;
             WatchFolderBox.Text = s.WatchFolder;
             VersionText.Text = $"UZIP {UpdateService.CurrentVersion()} · 配置目录 {AppHost.Layout.ConfigDirectory}";
+            CapsText.Text = AppHost.Capabilities.Summary();
+            UpdateMenuState();
             SavedText.Text = "";
+        }
+
+        private void UpdateMenuState()
+        {
+            try
+            {
+                using (var svc = ShellIntegration.Create())
+                {
+                    var state = svc.State(ShellIntegration.CurrentExe);
+                    var text = state == ShellMenuState.Current ? "已安装（指向当前程序）"
+                             : state == ShellMenuState.Stale ? "已安装，但指向别的版本，请重新安装"
+                             : "未安装";
+                    MenuStateText.Text = "右键菜单：" + text;
+                }
+            }
+            catch (Exception ex)
+            {
+                MenuStateText.Text = "右键菜单不可用：" + ex.Message;
+            }
+        }
+
+        private void OnInstallMenu(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                using (var svc = ShellIntegration.Create())
+                    svc.Register(ShellIntegration.CurrentExe);
+            }
+            catch (Exception ex) { MenuStateText.Text = "安装失败：" + ex.Message; return; }
+            UpdateMenuState();
+        }
+
+        private void OnRemoveMenu(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                using (var svc = ShellIntegration.Create())
+                    svc.Unregister();
+            }
+            catch (Exception ex) { MenuStateText.Text = "移除失败：" + ex.Message; return; }
+            UpdateMenuState();
         }
 
         private void OnSave(object sender, RoutedEventArgs e)

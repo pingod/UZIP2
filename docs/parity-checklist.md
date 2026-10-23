@@ -201,3 +201,15 @@
 | M6 | **无头 UI 测试**：`Avalonia.Headless` + Skia（`UseHeadlessDrawing = false`），真实渲染一帧存 PNG，Linux/Windows 都能跑，CI 已接入 | `UZIP2.Avalonia.Tests` 5 个全绿；`Main_window_renders_a_frame` 产出截图 |
 
 **本阶段刻意不做 / 未验证**：托盘、悬浮方块、全局热键、文件管理器右键菜单（P4）；Linux 发布包尚未切换到 Avalonia 二进制（P5）；**没有在真实 Wayland/X11 会话里开过窗口**——渲染验证走的是无头 Skia 截图，真窗口冒烟留到 P4 有桌面集成时一起做。
+
+## v3.10 桌面集成（P4）
+
+| # | 能力 / 修复 | 证据 |
+|---|------|------|
+| N1 | **能力探测 `DesktopCapabilities`**：按会话（X11/Wayland）与桌面（KDE/GNOME/wlroots 系）推托盘、全局热键、方块定位三项能力；未设 `XDG_SESSION_TYPE` 时按桌面名推断。设置页直接把"为什么不可用"讲出来 | `DesktopCapabilitiesTests` 7 个（KDE Wayland、GNOME Wayland、sway、X11、空会话、Hyprland 兜底、Summary 文案） |
+| N2 | **Linux 右键菜单 `LinuxShellIntegration`**：Nautilus 脚本（解压到当前文件夹 / 压缩）+ Dolphin service menu（KDE5 与 KDE6 各一份）；文件带标记行，移除时只删自己写的；`State` 能把"指向别的版本"识别为 Stale | `LinuxShellIntegrationTests` 7 个（临时 HOME：写入内容与引号、状态三态、探针、外来脚本不误删） |
+| N3 | **托盘**：Avalonia `TrayIcon` + 原生菜单（显示 / 桌面只留方块 / 退出）；`TraySupported` 为 false 时静默跳过并记日志，绝不阻塞启动 | 构建通过 + 设置页能力文案；真机托盘宿主未验证 |
+| N4 | **悬浮方块**：无边框置顶窗口、拖放入队、200ms 心跳重画进度环（核心 `PuckProgress` + Avalonia 版 `PuckRingGeometry`）、收尾满环停 2 秒、位置写回设置并用共享 `PuckPlacement` 夹进可见范围 | 无头渲染截图 `artifacts/ui/avalon-puck.png`（轨道环 + 拖到这里）；`Ring_geometry_is_empty_at_zero_and_closes_at_full` 验证半圈/满圈包围盒 |
+| N5 | **设置页集成**：显示能力摘要与右键菜单状态，提供"安装/移除右键菜单" | 构造与文本断言（`Settings_page_reports_the_resolved_7z_path_and_config_dir`） |
+
+**P4 未完成 / 需真机**：全局热键只做了能力判定，没有真正注册（X11 需要 `XGrabKey` 绑定，Wayland 要走 `GlobalShortcuts` portal）；托盘、方块定位、锁屏级置顶都还没在真实的 Wayland/X11 会话里跑过；Thunar 的自定义动作（`uca.xml` 合并）没做。
