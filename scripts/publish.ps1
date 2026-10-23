@@ -54,6 +54,13 @@ function Publish($extra, $out) {
   # 否则"0 警告"只是本地 test 命令的结论，发布产物可能带着新问题出厂。
   $argv = @('publish', $Proj, '-c', 'Release', '-r', 'win-x64',
             '-p:PublishSingleFile=true', '-o', $out, '--nologo', '-v', 'm') + $extra
+  # 非 Windows 上交叉构建 win-x64 需要显式放行（NETSDK1100）：
+  # "若要在此操作系统上生成面向 Windows 的项目，请将 EnableWindowsTargeting 属性设置为 true"。
+  # 在 Windows 上不加这个开关，避免掩盖真正的目标框架问题。
+  # 注意不能用 $IsWindows：它只在 PowerShell 6+ 存在，5.1 里是 $null（会让判断反掉）。
+  $onWindows = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+    [System.Runtime.InteropServices.OSPlatform]::Windows)
+  if (-not $onWindows) { $argv += '-p:EnableWindowsTargeting=true' }
   Write-Host ('>> ' + $Dotnet + ' ' + ($argv -join ' ')) -ForegroundColor DarkGray
   & $Dotnet @argv
   if ($LASTEXITCODE -ne 0) { throw "publish failed (exit $LASTEXITCODE)" }
@@ -62,7 +69,11 @@ function Publish($extra, $out) {
 Write-Host "Publishing UZIP2 v$Ver  (repo: $RepoRoot)" -ForegroundColor Cyan
 
 # 1) Framework-dependent single-file (primary download, in-place updatable by the app itself).
-Publish @('--self-contained', 'false') $FdOut
+# 用 -p:SelfContained=false 而不是 --self-contained false：.NET 10 的 CLI 把
+# --self-contained 改成了纯开关，"--self-contained false"（空格形式）里的 false 不再
+# 被当作取值，实测结果是把整个运行时打进单文件（144 MB，而正确值是 9 MB）。
+# -p: 形式的属性不受 CLI 解析规则影响，SDK 8/10 都得到同样的产物。
+Publish @('-p:SelfContained=false') $FdOut
 # 名字必须与 UpdateService.PickAsset 认的完全一致，Release 附件直接传这两个文件。
 $FdExe = Join-Path $OutVer 'UZIP2.exe'
 Copy-Item (Join-Path $FdOut 'UZIP2.exe') $FdExe -Force
@@ -71,7 +82,7 @@ $Artifacts = @($FdExe)
 
 # 2) Self-contained single-file, zipped (for machines without the .NET 8 Desktop Runtime).
 if (-not $SkipSelfContained) {
-  Publish @('--self-contained', 'true', '-p:IncludeNativeLibrariesForSelfExtract=true') $ScOut
+  Publish @('-p:SelfContained=true', '-p:IncludeNativeLibrariesForSelfExtract=true') $ScOut
   $ScZip = Join-Path $OutVer "UZIP-$Ver-win-x64-selfcontained.zip"
   if (Test-Path $ScZip) { Remove-Item $ScZip -Force }
   # v3.6 起 App.config / *.dll.config 模板残留已从工程清掉，自包含产物目录里只剩 UZIP2.exe；

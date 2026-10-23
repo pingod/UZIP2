@@ -57,9 +57,13 @@ jobs:
         run: dotnet test UZIP2.Avalonia.Tests/UZIP2.Avalonia.Tests.csproj -c Release --nologo
 
       - name: Publish single-file
+        # 必须用 -p:SelfContained=false 而不是 "--self-contained false"：.NET 10 把
+        # --self-contained 改成了纯开关，空格形式的 false 不再当取值，会把整个运行时
+        # 打进单文件（实测 144 MB vs 正确的 9 MB）。release/UZIP2.exe 是应用内自更新
+        # 下载的那个附件，体积错了会让每次更新多下 135 MB。
         run: >
-          dotnet publish UZIP2 -c Release -r win-x64 --self-contained false
-          /p:PublishSingleFile=true -o release
+          dotnet publish UZIP2 -c Release -r win-x64 -p:SelfContained=false
+          -p:PublishSingleFile=true -o release
 
       - name: Assemble publish folder
         shell: pwsh

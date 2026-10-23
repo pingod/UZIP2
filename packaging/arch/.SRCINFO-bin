@@ -16,8 +16,8 @@ pkgbase = uzip2-bin
 	options = !strip
 	options = !debug
 	source_x86_64 = UZIP2-3.13.0-linux-x64.tar.gz::https://github.com/pingod/UZIP2/releases/download/v3.13/UZIP2-3.13.0-linux-x64.tar.gz
-	sha256sums_x86_64 = 2c53b09c4e5852543edb1d9bb39872cdbb7d3143d76fedcf3498d61fc009abd1
+	sha256sums_x86_64 = fcf1f84be017bdcee2aa16e0dbcb6199796802229eb4c959cc5f6c8130a5da1b
 	source_aarch64 = UZIP2-3.13.0-linux-arm64.tar.gz::https://github.com/pingod/UZIP2/releases/download/v3.13/UZIP2-3.13.0-linux-arm64.tar.gz
-	sha256sums_aarch64 = SKIP
+	sha256sums_aarch64 = 71e9706ef9c93a441d3b77a69b89d1605c0c419b688ea8c947e76ebf6a4d33dd
 
 pkgname = uzip2-bin

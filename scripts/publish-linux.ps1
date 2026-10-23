@@ -93,7 +93,11 @@ foreach ($rid in $Rids) {
   if (Test-Path $publishDir) { Remove-Item $publishDir -Recurse -Force }
 
   Write-Host ">> publishing $rid" -ForegroundColor Cyan
-  & $Dotnet publish $Proj -c Release -r $rid --self-contained true -p:PublishSingleFile=true `
+  # 用 -p:SelfContained=true 而不是 --self-contained true：.NET 10 的 CLI 把
+  # --self-contained 改成了纯开关，后面跟的 true/false 都不再被当作取值（实测
+  # "--self-contained false" 会把整个运行时打进单文件），只有属性形式在各 SDK 上
+  # 语义一致。
+  & $Dotnet publish $Proj -c Release -r $rid -p:SelfContained=true -p:PublishSingleFile=true `
       -p:IncludeNativeLibrariesForSelfExtract=true `
       -o $publishDir --nologo -v m
   if ($LASTEXITCODE -ne 0) { throw "publish failed for $rid (exit $LASTEXITCODE)" }

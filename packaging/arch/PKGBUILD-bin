@@ -30,12 +30,12 @@ case "$CARCH" in
   *)       error "不支持的架构: $CARCH（只支持 x86_64 / aarch64）" ;;
 esac
 source_x86_64=("UZIP2-$pkgver-linux-x64.tar.gz::$url/releases/download/$_tag/UZIP2-$pkgver-linux-x64.tar.gz")
-sha256sums_x86_64=('2c53b09c4e5852543edb1d9bb39872cdbb7d3143d76fedcf3498d61fc009abd1')
+sha256sums_x86_64=('fcf1f84be017bdcee2aa16e0dbcb6199796802229eb4c959cc5f6c8130a5da1b')
 source_aarch64=("UZIP2-$pkgver-linux-arm64.tar.gz::$url/releases/download/$_tag/UZIP2-$pkgver-linux-arm64.tar.gz")
-# aarch64：3.13.0 的 arm64 产物由 CI 交叉构建后才会出现在 Release 上。
-# 在那之前这里只能填 SKIP（makepkg 会跳过校验但给出警告）；CI 出包后必须换成
-# Release 页面 .sha256 侧车里的真值，否则 aarch64 用户装到的是未经校验的包。
-sha256sums_aarch64=('SKIP')
+# aarch64 与 x86_64 用各自的侧车真值：两个 tarball 是分别构建的（x86_64 在主机上、
+# arm64 交叉构建），内容不同，不能共用同一个 hash。换版本或重新打包后，用
+# `bash scripts/aur-sums.sh --dir packaging/arch --fill` 从 Release 侧车重新对齐。
+sha256sums_aarch64=('71e9706ef9c93a441d3b77a69b89d1605c0c419b688ea8c947e76ebf6a4d33dd')
 
 package() {
   _src="$srcdir/UZIP2-$pkgver-linux-$_arch"
