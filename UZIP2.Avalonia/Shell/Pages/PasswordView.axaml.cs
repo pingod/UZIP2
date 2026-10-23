@@ -111,7 +111,7 @@ namespace UZIP2.Avalonia.Shell.Pages
                     Hint("当前环境没有剪贴板，无法粘贴");
                     return;
                 }
-                raw = await clipboard.GetTextAsync();
+                raw = await clipboard.TryGetTextAsync();
             }
             catch (Exception ex)
             {

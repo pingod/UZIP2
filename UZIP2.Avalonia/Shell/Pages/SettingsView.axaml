@@ -76,7 +76,7 @@
           </Grid>
           <Grid ColumnDefinitions="190,*">
             <TextBlock Text="广告文件过滤规则" VerticalAlignment="Center" />
-            <TextBox Grid.Column="1" x:Name="ExtractFilterBox" Watermark="分号分隔，* 通配，例如 *.url;*广告*" />
+            <TextBox Grid.Column="1" x:Name="ExtractFilterBox" PlaceholderText="分号分隔，* 通配，例如 *.url;*广告*" />
           </Grid>
 
           <TextBlock Text="自定义输出目录" FontWeight="SemiBold" Margin="0,6,0,0" />
@@ -86,8 +86,8 @@
             <ListBox.ItemTemplate>
               <DataTemplate>
                 <Grid ColumnDefinitions="150,*,Auto" Margin="0,2">
-                  <TextBox Text="{Binding Name}" Watermark="名称" Margin="0,0,8,0" />
-                  <TextBox Grid.Column="1" Text="{Binding FolderPath}" Watermark="/home/me/下载" Margin="0,0,8,0" />
+                  <TextBox Text="{Binding Name}" PlaceholderText="名称" Margin="0,0,8,0" />
+                  <TextBox Grid.Column="1" Text="{Binding FolderPath}" PlaceholderText="/home/me/下载" Margin="0,0,8,0" />
                   <Button Grid.Column="2" Content="删除" Click="OnRemoveFolder" />
                 </Grid>
               </DataTemplate>
@@ -126,7 +126,7 @@
           <Grid ColumnDefinitions="190,*">
             <TextBlock Text="当前组合" VerticalAlignment="Center" />
             <TextBox Grid.Column="1" x:Name="HotkeyBox" IsReadOnly="True" Width="240"
-                     HorizontalAlignment="Left" Watermark="点这里后按下组合键" />
+                     HorizontalAlignment="Left" PlaceholderText="点这里后按下组合键" />
           </Grid>
           <Grid ColumnDefinitions="190,*">
             <TextBlock Text="主键" VerticalAlignment="Center" />
@@ -150,7 +150,7 @@
           <TextBlock x:Name="SevenZipText" TextWrapping="Wrap" Opacity="0.75" />
           <Grid ColumnDefinitions="190,*,Auto">
             <TextBlock Text="自定义 7z 路径" VerticalAlignment="Center" />
-            <TextBox Grid.Column="1" x:Name="Custom7zBox" Watermark="留空则自动检测" />
+            <TextBox Grid.Column="1" x:Name="Custom7zBox" PlaceholderText="留空则自动检测" />
             <Button Grid.Column="2" Content="浏览" Margin="8,0,0,0" Click="OnBrowse7z" />
           </Grid>
           <Grid ColumnDefinitions="190,*">
@@ -167,7 +167,7 @@
           <CheckBox x:Name="WatchEnabledBox" Content="启用监听（新包出现时自动解压）" />
           <Grid ColumnDefinitions="190,*,Auto">
             <TextBlock Text="监听的文件夹" VerticalAlignment="Center" />
-            <TextBox Grid.Column="1" x:Name="WatchFolderBox" Watermark="/home/me/Downloads" />
+            <TextBox Grid.Column="1" x:Name="WatchFolderBox" PlaceholderText="/home/me/Downloads" />
             <Button Grid.Column="2" Content="浏览" Margin="8,0,0,0" Click="OnBrowseWatchFolder" />
           </Grid>
           <TextBlock Text="下载工具把包写进这个文件夹就会自动解压；只监听该层，未写完的文件会等落盘后再处理。"

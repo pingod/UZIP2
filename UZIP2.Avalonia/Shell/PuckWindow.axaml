@@ -3,7 +3,7 @@
         x:Class="UZIP2.Avalonia.Shell.PuckWindow"
         Title="UZIP 拖拽方块"
         Width="112" Height="112"
-        SystemDecorations="None"
+        WindowDecorations="None"
         CanResize="False"
         ShowInTaskbar="False"
         Topmost="True"

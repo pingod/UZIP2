@@ -44,7 +44,7 @@ Windows 界面是 WPF，无法在 Linux 上构建或运行，所以 Linux 版从
 
 已对齐（v3.12 之后 Avalonia 与 WPF 的功能差距已补齐）：主页队列（拖放、并发、卡片九种操作含重试与删除源文件、批量清除失败项）、任务排序（加入顺序/最新在前/按状态/按文件名）、包内预览（可勾选只解压选中项）、密码本/密码纸（含从剪贴板粘贴）、历史（含重跑）、设置（40 余项，覆盖主题、热键组合、解压输出模式与覆盖策略、自定义文件夹、更新检查等）、托盘（含失败气泡）、悬浮拖拽方块（含进度环与位置记忆）、Thunar/Nautilus/Dolphin 右键菜单；CLI 全部命令与 Windows 一致：`list / extract / compress / test / convert / diff / checksum / vault / history / config / log / watch once / update --check`。
 
-Wayland 兼容性按能力降级，而不是假装对齐：X11 三项全开；KDE Wayland 托盘/热键/方块定位都可用；GNOME Wayland 没有窗口定位接口、托盘需要 AppIndicator 扩展；sway/Hyprland 这类 wlroots 合成器可定位（layer-shell）且有托盘宿主。设置页会直接把当前会话判定结果写出来。**全局热键**：X11 用 25ms 轮询键位图（Ctrl+Alt+U 唤起窗口，在 Xvfb 实机上验证过按下即触发）；Wayland 走 XDG 的 `GlobalShortcuts` portal（经 `gdbus` 调用，目前只有 KDE 实现了它），没有 portal 时安静关闭并在日志里说明。
+Wayland 兼容性按能力降级，而不是假装对齐：X11 三项全开；KDE Wayland 托盘/热键/方块定位都可用；GNOME Wayland 没有窗口定位接口、托盘需要 AppIndicator 扩展；sway/Hyprland 这类 wlroots 合成器有托盘宿主，方块定位靠合成器允许客户端置位（本程序没有用 layer-shell）。设置页会直接把当前会话判定结果写出来。**全局热键**：X11 用 25ms 轮询键位图（Ctrl+Alt+U 唤起窗口，在 Xvfb 实机上验证过按下即触发）；Wayland 走 XDG 的 `GlobalShortcuts` portal（经 `gdbus` 调用，目前只有 KDE 实现了它），没有 portal 时安静关闭并在日志里说明。
 
 安装（Arch）：
 
@@ -66,6 +66,8 @@ cd UZIP2-3.11.0-linux-x64 && sudo ./install.sh      # 默认 /usr/local，装桌
 
 依赖：7-Zip（Arch: `pacman -S 7zip`；Debian/Ubuntu: `apt install 7zip`），图形界面另需 `fontconfig`、`freetype2`、`libice`、`libsm`（Arch 包的 `depends` 已声明；纯命令行用法在无图形库的机器上也能跑，因为单文件是自包含的）。程序会依次找 `7zz/7z/7za`（`/usr/bin`、`/usr/local/bin`、`/usr/lib/p7zip`、`/usr/lib/7zip`，再扫 `PATH`），也可用 `uzip2 config set customize7zPath <路径>` 指定。配置落 `~/.config/uzip2`，日志落 `~/.local/state/uzip2`（遵循 XDG），程序目录只读也能跑。
 
+**Wayland**：图形界面默认走原生 Wayland 协议，无需 `XWayland`；在纯 Wayland 会话（`DISPLAY` 未设置的 cage/sway/Hyprland）里实测能正常启动与渲染。只有在 Wayland 客户端连接失败时才退回 X11。
+
 密码本的加密在 Linux 上没有 DPAPI，改用 **AES-256-GCM + 本机密钥文件**（`~/.config/uzip2/secret.key`，权限 0600，GUI/CLI 共用）。跨机器或换用户后旧密文解不开，程序按"密码缺失"处理而不是拿垃圾串去试。
 
 自更新（`update --apply`）只在 Windows 可用；Linux 上明确提示用包管理器更新，不做换二进制的动作。
@@ -74,7 +76,9 @@ cd UZIP2-3.11.0-linux-x64 && sudo ./install.sh      # 默认 /usr/local，装桌
 
 真机验证（v3.12 之后）：在 **Hyprland 0.56.2**（Wayland + XWayland，双显示器）真会话里跑通了托盘（`busctl` 见到 `org.kde.StatusNotifierItem`，图标像素解出来就是 UZIP 的线条画，菜单结构正确）、悬浮方块（4 组坐标重启后精确恢复）、失败气泡（隐藏时 3 个坏包 → 1 条通知，前台 → 0 条）；CLI 解普通包/加密包（含无口令时的正确报错）都正常。
 
-**已知限制**（都是环境或上游限制，不是没做完）：本项目只引了 `Avalonia`/`Avalonia.Desktop`/`Avalonia.Themes.Fluent`，**没有 Avalonia.Wayland 包**，所以窗口都跑在 XWayland 上 —— 原生 Wayland 下客户端设坐标本就无效（由合成器决定），要做真定位得引入 Wayland 后端或改用 layer-shell。Hyprland **不实现 EWMH**，置顶属性设得上但合成器不体现「重启后仍在最上层」；KDE/X11 正常。Avalonia 11.3.2 自己把 `Id` 写进了托盘规范里只允许 `Passive`/`Active`/`NeedsAttention` 的 `Status` 槽位（quickshell 宽容接受，不影响使用，属上游 bug）。AppImage 依赖 FUSE，Ubuntu 22.04+ 需自行装 `libfuse2`。`rpm` 与 `AppImage` 因本机无 `rpmbuild`/`appimagetool` 未在本地真构建，由 CI 验证；AUR 包已就绪（含 `.SRCINFO` 与填好的 `sha256sums`）但尚未提交（需要 AUR 账号与 SSH key）；arm64 仍只有交叉构建。
+**图形后端（v3.13 起）**：升级到 **Avalonia 12.1.4** 并引入 `Avalonia.Wayland`，Linux 上走**原生 Wayland**（实测协议流里有 `wl_compositor` / `xdg_wm_base` / `wl_shm` / `wl_seat`），X11 只是兜底 —— `UseWaylandWithFallback()` 仅在 Wayland 客户端连不上时才退回 XWayland。`Avalonia.Wayland` 从 12.1.0 才开始发布，Avalonia 11.x **完全没有** Wayland 后端，这是之前所有窗口都跑在 XWayland 上的根因。
+
+**已知限制**（都是环境或上游限制，不是没做完）：原生 Wayland 下客户端设窗口坐标本就无效（由合成器决定），悬浮方块的绝对定位因此依赖合成器配合；实测 Hyprland 下能精确恢复保存的位置。Hyprland **不实现 EWMH**，置顶属性设得上但合成器不体现「重启后仍在最上层」；KDE/X11 正常。AppImage 依赖 FUSE，Ubuntu 22.04+ 需自行装 `libfuse2`。`rpm` 与 `AppImage` 因本机无 `rpmbuild`/`appimagetool` 未在本地真构建，由 CI 验证；AUR 包已就绪（含 `.SRCINFO`）但尚未提交（需要 AUR 账号与 SSH key）；arm64 仍只有交叉构建。
 
 一个打包坑记在这里：makepkg 默认会 `strip`，而 .NET 单文件在 ELF 末尾追加了 bundle，strip 之后运行时报 `Arithmetic overflow while reading bundle`。两个 PKGBUILD 都必须带 `options=(!strip !debug)`。
 

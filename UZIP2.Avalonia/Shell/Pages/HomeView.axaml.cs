@@ -184,13 +184,13 @@ namespace UZIP2.Avalonia.Shell.Pages
 
         private void OnDragOver(object sender, DragEventArgs e)
         {
-            e.DragEffects = e.Data.Contains(DataFormats.Files) ? DragDropEffects.Copy : DragDropEffects.None;
+            e.DragEffects = e.DataTransfer.Contains(DataFormat.File) ? DragDropEffects.Copy : DragDropEffects.None;
             e.Handled = true;
         }
 
         private void OnDrop(object sender, DragEventArgs e)
         {
-            var paths = e.Data.GetFiles()?
+            var paths = e.DataTransfer.TryGetFiles()?
                 .Select(f => f.TryGetLocalPath())
                 .Where(p => !string.IsNullOrEmpty(p))
                 .ToArray() ?? Array.Empty<string>();

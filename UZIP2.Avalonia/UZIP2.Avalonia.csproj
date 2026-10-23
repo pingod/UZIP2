@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Linux 图形界面（Avalonia 11）。只引用跨平台核心；Windows 仍以 WPF 版为正式产物。 -->
+  <!-- Linux 图形界面（Avalonia 12）。只引用跨平台核心；Windows 仍以 WPF 版为正式产物。
+       Avalonia.Wayland 自 12.1.0 起才有：它让 Linux 上走原生 Wayland 协议，而不是退回 XWayland。 -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
@@ -9,7 +10,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>UZIP2.Avalonia</AssemblyName>
     <RootNamespace>UZIP2.Avalonia</RootNamespace>
-    <Version>3.12.0</Version>
+    <Version>3.13.0</Version>
     <Deterministic>true</Deterministic>
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <!-- DPAPI 只在 Windows 分支实例化（见 AppHost），与 WPF 工程同一处理 -->
@@ -22,9 +23,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="11.3.2" />
-    <PackageReference Include="Avalonia.Desktop" Version="11.3.2" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.2" />
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Wayland" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.HarfBuzz" Version="12.1.4" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
   </ItemGroup>
 

@@ -129,7 +129,7 @@ namespace UZIP2.Avalonia.Shell
 
         private void OnDragOver(object sender, DragEventArgs e)
         {
-            _dragIn = e.Data.Contains(DataFormats.Files);
+            _dragIn = e.DataTransfer.Contains(DataFormat.File);
             e.DragEffects = _dragIn ? DragDropEffects.Copy : DragDropEffects.None;
             if (_dragIn) HintText.Text = "松手解压 / 压缩";
             e.Handled = true;
@@ -138,7 +138,7 @@ namespace UZIP2.Avalonia.Shell
         private void OnDrop(object sender, DragEventArgs e)
         {
             _dragIn = false;
-            var paths = e.Data.GetFiles()?
+            var paths = e.DataTransfer.TryGetFiles()?
                 .Select(f => f.TryGetLocalPath())
                 .Where(p => !string.IsNullOrEmpty(p))
                 .ToArray() ?? Array.Empty<string>();

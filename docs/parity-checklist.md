@@ -291,3 +291,33 @@ GUI 部分刻意不在用户真实会话里开窗（AGENTS.md 铁律），改用
 | P4 | **Windows CI 跑 Avalonia 测试**：`build-windows.yml` 加 `Test the Avalonia shell (headless, Windows)`，用项目级 `.csproj`（不是 .sln）所以不会把 WPF 拉进 restore 图，也不需要 `EnableWindowsTargeting` | 本地等价命令通过 |
 | P5 | **版本号单一来源**：新增 `scripts/version.ps1`（四行来源声明 + `Get-UzipVersion` 以 Avalonia csproj 为权威、归一化到三段比对、漂移即 throw 并列出四行）；两个 publish 脚本都改成 `. version.ps1; Get-UzipVersion` | `_tools/pwsh/pwsh -NoProfile -Command '. ./scripts/version.ps1; Get-UzipVersion'` → `VERSION=3.12.0`，四行全读出；真跑 `publish-linux.ps1 -Rids linux-x64` 产出 35.6 MB tar.gz，解包 `--version` → `UZIP 3.12.0` |
 | P6 | **README 精简** | `README.md` 339→138 行；v3.8 及更早整段移到新增 `docs/history.md`（212 行） |
+
+## v3.13.0（原生 Wayland 后端 + Arch 分发）
+
+基线：**Avalonia 12.1.4** / **.NET 10.0.100 SDK**；无头测试 21 条（xunit v3，`dotnet <tests>.dll`）；
+Wayland 验证走 `cage` + `WLR_BACKENDS=headless WLR_RENDERER=pixman` 沙箱，**不开用户真实会话窗口**。
+
+### 图形后端
+
+| # | 内容 | 证据 |
+|---|------|------|
+| W1 | **根因确认**：`Avalonia.Wayland` NuGet 包只从 **12.1.0** 起发布；`Avalonia.Desktop` 11.3.2/12.1.4 的 `UsePlatformDetect()` 都完全不探测 Wayland（`strings Avalonia.Desktop.dll` 里 grep wayland 零命中，只有 `LoadX11` / `LoadAvaloniaNative`） | `_tools/nuget` 下对两个版本的 nupkg 逐版本 `ls` + `strings` |
+| W2 | **接入实现**：`Program.BuildAvaloniaApp()` 在 `OperatingSystem.IsLinux()` 时叠 `UseWaylandWithFallback()`，必须排在 `UsePlatformDetect()` 之后（否则抛 `A fallback windowing backend must be configured before calling UseWaylandWithFallback`）；csproj 增引 `Avalonia.Wayland` / `Avalonia.Skia` / `Avalonia.HarfBuzz` 全 12.1.4 | 纯 Wayland 沙箱（`env -u DISPLAY`）启动无异常 |
+| W3 | **协议层实证**：`WAYLAND_DEBUG=1` 统计往返 —— `wl_shm` 80、`wl_compositor` 29、`wl_seat` 9、`xdg_wm_base` 7 | 无任何 X11 协议往返 |
+| W4 | **进程层实证**：`ls /proc/<pid>/fd` 无 X11 socket；`/proc/net/unix` 里只有 `/tmp/CoreFxPipe_UZIP2_FileArgs_Pipe`（单实例管道）与 dotnet 诊断 socket | 排除隐式 XWayland |
+| W5 | **渲染实证**：headless 沙箱里截图 1280×720，左侧导航/拖放区/模式三选/空队列提示完整渲染；dev build、tar.gz、Arch 包解包产物三份截图 md5 全等 = `0fa4ad02621a3772e9d9c2d27f4ac762` | `grim` 截图 + `md5sum` |
+| W6 | **Avalonia 12 API 迁移**：拖放 `e.DataTransfer.TryGetFiles()` + `DataFormat.File`（旧 `e.Data.GetFiles()` / `DataFormats.Files` 已移除）；剪贴板 `ClipboardExtensions.TryGetTextAsync` / `SetTextAsync`（需 `using Avalonia.Input.Platform`）；`RadioButton.Checked` → `IsCheckedChanged`；`NativeMenuItemToggleType` → `MenuItemToggleType`；`TextBox.Watermark` → `PlaceholderText`（9 处）；`Window.SystemDecorations` → `WindowDecorations`；`Bitmap.Save(path,int?)` → `Save(path, PngBitmapEncoderOptions.Default)` | `-t:Rebuild` 0 警告 0 错误（**增量构建会缓存「0 错误」假象，必须 Rebuild**） |
+| W7 | **测试框架迁 xunit v3**：`Avalonia.Headless.XUnit` 12.x 只给 v3 适配器，与 xunit 2.5.3 并存报 `CS0433 FactAttribute 同时存在于 xunit.core 与 xunit.v3.core`；项目改 `OutputType=Exe` + `xunit.v3 3.2.2` + `xunit.runner.visualstudio 3.1.5` | `dotnet UZIP2.Avalonia.Tests/bin/Release/net8.0/UZIP2.Avalonia.Tests.dll` → `Total: 21, Errors: 0, Failed: 0` |
+| W8 | **工具链上 .NET 10**：Avalonia 12 的 XAML 源生成器引用 Roslyn 4.14，SDK 8 只带 4.11 → `CS0103: 不存在名称 InitializeComponent`（5 个 XAML 文件全中）。装 10.0.100 SDK，CI 的 `dotnet-version` 与 PKGBUILD 的 `makedepends=('dotnet-sdk>=10.0')` 同步 | 全解决方案编译通过；WPF 侧 `-p:EnableWindowsTargeting=true` 在 SDK 10 下仍 0 警告 |
+| W9 | **SNI 上游 bug 已由 Avalonia 12 修好**：3.12 时 `Status` 返回 `"UZIP2"`（把 `Id` 写进只允许 `Passive`/`Active`/`NeedsAttention` 的槽位）；升级后在真实 Hyprland 会话里按 PID 定位本进程的 SNI，`Id='UZIP2'`、`Status='Active'` | `gdbus … Properties.Get org.kde.StatusNotifierItem Status` → `(<'Active'>,)` |
+| W10 | **无 SNI 宿主时降级正常**：cage 沙箱里没有 `StatusNotifierWatcher`，程序照常启动、窗口正常渲染、日志仅一条桌面能力，不崩不卡 | 沙箱运行 12 秒 `pid alive: YES`，日志无 `Unhandled`/`Exception` |
+
+### Arch 分发
+
+| # | 内容 | 证据 |
+|---|------|------|
+| P7 | **本机真构建 Arch 包**：`makepkg -f -p PKGBUILD-bin` 走完整 fakeroot 流程 → `uzip2-bin-3.13.0-1-x86_64.pkg.tar.zst`（35,670,578 B） | `bsdtar tf` 列出 `.PKGINFO`/`.MTREE`/`usr/bin/uzip2`/desktop/48-128 图标；解包 `./usr/bin/uzip2 --version` → `UZIP 3.13.0` |
+| P8 | **架构专属校验**：`PKGBUILD-bin` 用 `source_x86_64` / `sha256sums_x86_64` / `source_aarch64` / `sha256sums_aarch64`，两架构各校验各自的包（此前是共用 `sha256sums=('SKIP')`） | `CARCH=x86_64 makepkg --printsrcinfo` 与 `CARCH=aarch64 makepkg --printsrcinfo` 各跑一次，两边数组都正确输出 |
+| P9 | **版本与 SRCINFO**：两 PKGBUILD `pkgver=3.13.0` / `_tag=v3.13`；`.SRCINFO`（584 B）与 `.SRCINFO-bin`（791 B）重新生成 | `makepkg --printsrcinfo > .SRCINFO` |
+| P10 | **待补的 sha256**：`sha256sums_aarch64` 现为 `SKIP`（arm64 产物待 CI 交叉构建上 Release）；源码包 `sha256sums` 也为 `SKIP`（v3.13 tag 尚未推送）。推 tag 后 `bash scripts/aur-sums.sh --dir packaging/arch --fill` → `--srcinfo --write` 可补齐 | `CARCH=aarch64 makepkg --printsrcinfo` 显示 `sha256sums_aarch64 = SKIP` |
+| P11 | **Arch 包实跑**：解包产物在纯 Wayland 沙箱里启动并截图 | 截图 md5 与 dev build / tar.gz 完全一致 |

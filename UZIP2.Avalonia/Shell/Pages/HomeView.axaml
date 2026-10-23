@@ -30,9 +30,9 @@
 
     <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="10" Margin="2,14,0,4">
       <TextBlock Text="模式" VerticalAlignment="Center" Opacity="0.75" />
-      <RadioButton x:Name="ModeAuto" Content="自动" IsChecked="True" GroupName="mode" Checked="OnModeChanged" />
-      <RadioButton x:Name="ModeExtract" Content="仅解压" GroupName="mode" Checked="OnModeChanged" />
-      <RadioButton x:Name="ModeCompress" Content="仅压缩" GroupName="mode" Checked="OnModeChanged" />
+      <RadioButton x:Name="ModeAuto" Content="自动" IsChecked="True" GroupName="mode" IsCheckedChanged="OnModeChanged" />
+      <RadioButton x:Name="ModeExtract" Content="仅解压" GroupName="mode" IsCheckedChanged="OnModeChanged" />
+      <RadioButton x:Name="ModeCompress" Content="仅压缩" GroupName="mode" IsCheckedChanged="OnModeChanged" />
       <Button Content="清除已完成" Click="OnClearDone" Margin="18,0,0,0"
               ToolTip.Tip="移除所有已完成 / 已取消的卡片（记录仍可在历史页查到）" />
       <Button Content="清除失败项" Click="OnClearFailed"

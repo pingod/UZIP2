@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using Avalonia.Input.Platform;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using UZIP2.Models;

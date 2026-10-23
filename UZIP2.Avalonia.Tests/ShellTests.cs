@@ -6,6 +6,7 @@ using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Media.Imaging;
 using UZIP2.Avalonia.Shell;
 using UZIP2.Avalonia.Shell.Pages;
 using UZIP2.Models;
@@ -124,7 +125,7 @@ namespace UZIP2.Avalonia.Tests
             if (!string.IsNullOrEmpty(outDir))
             {
                 Directory.CreateDirectory(outDir);
-                frame.Save(Path.Combine(outDir, "avalon-shell.png"));
+                frame.Save(Path.Combine(outDir, "avalon-shell.png"), PngBitmapEncoderOptions.Default);
             }
         }
 
@@ -140,7 +141,7 @@ namespace UZIP2.Avalonia.Tests
             if (!string.IsNullOrEmpty(outDir))
             {
                 Directory.CreateDirectory(outDir);
-                frame.Save(Path.Combine(outDir, "avalon-puck.png"));
+                frame.Save(Path.Combine(outDir, "avalon-puck.png"), PngBitmapEncoderOptions.Default);
             }
         }
 
@@ -183,7 +184,7 @@ namespace UZIP2.Avalonia.Tests
                 Directory.CreateDirectory(outDir);
                 var win = new Window { Content = page, Width = 1000, Height = 700 };
                 win.Show();
-                win.CaptureRenderedFrame()?.Save(Path.Combine(outDir, "avalon-password.png"));
+                win.CaptureRenderedFrame()?.Save(Path.Combine(outDir, "avalon-password.png"), PngBitmapEncoderOptions.Default);
             }
         }
 
@@ -265,7 +266,7 @@ namespace UZIP2.Avalonia.Tests
             // 所以第二实例直接走转发路径模拟——这里要证明的是管道在 Unix 上也能通。
             Assert.True(InstanceBus.ForwardArgsToPrimary(pipe, new[] { "/tmp/a.zip", "/tmp/b.7z" }));
 
-            var files = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var files = await received.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
             Assert.Equal(new[] { "/tmp/a.zip", "/tmp/b.7z" }, files);
         }
 

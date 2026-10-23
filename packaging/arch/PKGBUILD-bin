@@ -11,9 +11,9 @@
 #    tar.gz 去算：gzip 头部带 mtime，同一份代码两次打包的字节流不同。
 #    核对命令：curl -L <Release 上的 xxx.tar.gz.sha256>
 pkgname=uzip2-bin
-pkgver=3.12.0
+pkgver=3.13.0
 # 仓库的发布 tag 是两段（v3.10），包版本是三段（3.10.0）
-_tag=v3.12
+_tag=v3.13
 pkgrel=1
 pkgdesc="UZIP2 — 7-Zip 前端（Linux 命令行版，预编译）"
 arch=('x86_64' 'aarch64')
@@ -30,9 +30,12 @@ case "$CARCH" in
   *)       error "不支持的架构: $CARCH（只支持 x86_64 / aarch64）" ;;
 esac
 source_x86_64=("UZIP2-$pkgver-linux-x64.tar.gz::$url/releases/download/$_tag/UZIP2-$pkgver-linux-x64.tar.gz")
-sha256sums_x86_64=('8adbee1257ab7886e5746c01a1f0b58207e0a5f6ee006188db2666683755049e')
+sha256sums_x86_64=('2c53b09c4e5852543edb1d9bb39872cdbb7d3143d76fedcf3498d61fc009abd1')
 source_aarch64=("UZIP2-$pkgver-linux-arm64.tar.gz::$url/releases/download/$_tag/UZIP2-$pkgver-linux-arm64.tar.gz")
-sha256sums_aarch64=('d870252ac4e158b4ef7abbce14d69aee7345818333e4635dce827f03d28cf2da')
+# aarch64：3.13.0 的 arm64 产物由 CI 交叉构建后才会出现在 Release 上。
+# 在那之前这里只能填 SKIP（makepkg 会跳过校验但给出警告）；CI 出包后必须换成
+# Release 页面 .sha256 侧车里的真值，否则 aarch64 用户装到的是未经校验的包。
+sha256sums_aarch64=('SKIP')
 
 package() {
   _src="$srcdir/UZIP2-$pkgver-linux-$_arch"

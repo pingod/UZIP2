@@ -3,7 +3,48 @@
 本项目按 tag 发布（两段版本号，如 `v3.12`），安装包里的程序版本是三段（`3.12.0`）。
 条目按"用户能感知的变化"写，不逐条列重构。
 
-## [未发布] — Linux 桌面收尾与 Avalonia 功能对齐（2026-10-23）
+## [3.13.0] — 2026-10-24
+
+Linux 图形界面从 **XWayland** 切到**原生 Wayland**，并补齐了缺位的 Arch 分发产物。
+
+### 图形后端（重要）
+
+- **升级到 Avalonia 12.1.4 + `Avalonia.Wayland`**：Avalonia 11.x 根本没有 Wayland 后端
+  （`Avalonia.Wayland` 包从 12.1.0 才发布），所以此前所有窗口都跑在 XWayland 上。
+  现在 `Program.BuildAvaloniaApp()` 在 Linux 上叠一层 `UseWaylandWithFallback()`，
+  直接用 `wl_compositor` / `xdg_wm_base` / `wl_shm` / `wl_seat` 与合成器通信，
+  只有 Wayland 连不上时才退回 X11。
+- **实测证据**：在 `DISPLAY` 未设置的纯 Wayland 会话（cage + headless wlroots 后端）里
+  启动打包好的单文件二进制，`WAYLAND_DEBUG=1` 抓到 80 次 `wl_shm`、29 次 `wl_compositor`、
+  9 次 `wl_seat`、7 次 `xdg_wm_base` 往返，截图渲染完整；进程 fd 里没有任何 X11 socket。
+- **toolchain 随之上到 .NET 10 SDK**：Avalonia 12 的 XAML 源生成器引用 Roslyn 4.14，
+  SDK 8 自带的 4.11 跑不了（表现为 `error CS0103: 不存在名称 InitializeComponent`）。
+  CI 的 `dotnet-version` 与 PKGBUILD 的 `makedepends` 同步改成 10.x。
+
+### 新增（Arch 分发）
+
+- **`uzip2-bin-3.13.0-1-x86_64.pkg.tar.zst`（34 MB）本机真构建并验证**：`makepkg -f -p PKGBUILD-bin`
+  走完整 fakeroot 流程，`bsdtar tf` 确认包含 `usr/bin/uzip2`、桌面入口、48/128 两档图标；
+  解包后 `--version` 输出 `UZIP 3.13.0`，在纯 Wayland 会话里能正常开窗。
+- **`PKGBUILD-bin` 改用架构专属数组**（`source_x86_64` / `sha256sums_x86_64` 等），
+  x86_64 与 aarch64 各校验各自的包，不再是共用一个 `('SKIP')`。
+- 两个 PKGBUILD 的 `pkgver` 提到 3.13.0、`_tag` 提到 v3.13，`.SRCINFO` 重新生成。
+
+### 修复（Avalonia 12 迁移）
+
+- 拖放数据改用新的 `IDataTransfer` API（`e.DataTransfer.TryGetFiles()` / `DataFormat.File`），
+  旧的 `e.Data` + `DataFormats.Files` 在 12 里已移除。
+- 剪贴板改用 `ClipboardExtensions` 的 `TryGetTextAsync` / `SetTextAsync`（`IClipboard` 接口本身只剩
+  `TryGetDataAsync` 一类通用方法）。
+- `RadioButton` 的选中事件从 `Checked` 改为 `IsCheckedChanged`；`NativeMenuItemToggleType` 改名
+  `MenuItemToggleType`；`TextBox.Watermark` → `PlaceholderText`；`Window.SystemDecorations` →
+  `WindowDecorations`。
+- 测试项目迁到 **xunit v3**（`Avalonia.Headless.XUnit` 12.x 只提供 v3 适配器），
+  以 Exe 形态通过 `dotnet <tests>.dll` 运行。
+
+**测试**：21/21 通过，构建 0 警告 0 错误。
+
+## [3.12.0 的 Linux 收尾] — Linux 桌面收尾与 Avalonia 功能对齐（2026-10-23）
 
 在真实 Hyprland 会话（Wayland + XWayland，双显示器）上跑通了托盘与悬浮方块，
 把 Avalonia 版落后 WPF 的 7 处功能差距全部补上，并给发行版打包补了 deb/rpm/AppImage。
@@ -72,9 +113,9 @@
 
 ### 已知限制
 
-- **Avalonia 只跑 XWayland**：项目只引了 `Avalonia`/`Avalonia.Desktop`/`Avalonia.Themes.Fluent`，
-  没有 Avalonia.Wayland 包，所有窗口都走 XWayland。原生 Wayland 下客户端设窗口坐标本就无效
-  （由合成器决定），要做真定位得引入 Wayland 后端或改用 layer-shell。
+- **Avalonia 只跑 XWayland**（3.13 已解决）：当时项目只引了 `Avalonia`/`Avalonia.Desktop`/`Avalonia.Themes.Fluent`，
+  没有 Avalonia.Wayland 包 —— 该包从 12.1.0 才发布，11.x 完全不存在 Wayland 后端。3.13.0 升级到
+  Avalonia 12.1.4 并接入原生 Wayland 后端，此限制不再成立。
 - **Hyprland 不实现 EWMH 置顶**：`_NET_WM_STATE_ABOVE` 不在 `_NET_SUPPORTED` 里，置顶属性设得上
   但合成器不体现"重启后仍在最上层"。KDE/X11 下正常。
 - **Avalonia 11.3.2 的托盘 `Status` 属性写错**：它把 `Id`（"UZIP2"）写进了只允许

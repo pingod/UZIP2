@@ -77,7 +77,7 @@ namespace UZIP2.Avalonia
 
                 var puck = new NativeMenuItem("桌面只留方块")
                 {
-                    ToggleType = NativeMenuItemToggleType.CheckBox,
+                    ToggleType = MenuItemToggleType.CheckBox,
                     IsChecked = AppHost.Settings.Current.MiniPuck
                 };
                 puck.Click += (_, __) => { window.TogglePuck(); puck.IsChecked = AppHost.Settings.Current.MiniPuck; };

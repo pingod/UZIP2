@@ -1,5 +1,6 @@
 using System;
 using Avalonia;
+using Avalonia.Wayland;
 using UZIP2.Cli;
 using UZIP2.Services;
 
@@ -44,8 +45,18 @@ namespace UZIP2.Avalonia
         }
 
         public static AppBuilder BuildAvaloniaApp()
-            => AppBuilder.Configure<App>()
+        {
+            var builder = AppBuilder.Configure<App>()
                 .UsePlatformDetect()
                 .LogToTrace();
+
+            // Wayland 优先：Avalonia 12 的 UsePlatformDetect 不认识 Wayland（只探测 Win32/X11/macOS），
+            // 不叠这一层，Linux 上就永远退回 XWayland。UseWaylandWithFallback 要求前面已经配好兜底后端，
+            // 所以必须排在 UsePlatformDetect 之后；它只在 Linux 上有意义。
+            if (OperatingSystem.IsLinux())
+                builder = builder.UseWaylandWithFallback();
+
+            return builder;
+        }
     }
 }
