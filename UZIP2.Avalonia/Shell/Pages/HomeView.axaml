@@ -1,6 +1,19 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:pages="using:UZIP2.Avalonia.Shell.Pages"
              x:Class="UZIP2.Avalonia.Shell.Pages.HomeView">
+  <UserControl.Resources>
+    <!-- 可见性逐条对齐 WPF UZIP2/Shell/Pages/HomeView.xaml 的卡片按钮 -->
+    <!-- 「重试」  WPF :148 AnyVisibility 'Failed,Cancelled' -->
+    <pages:JobStatusVisibilityConverter x:Key="RetryVisible" Statuses="Failed,Cancelled" />
+    <!-- 「校验」「转格式」 WPF :156 / :160 AnyVisibility 'Success,Failed' -->
+    <pages:JobStatusVisibilityConverter x:Key="ChecksumVisible" Statuses="Success,Failed" />
+    <!-- 「预览」  WPF :144 EqualVisibility Extract（按作业类型，不按状态） -->
+    <pages:JobKindVisibilityConverter x:Key="PreviewVisible" Kinds="Extract" />
+    <!-- 「打开目录」 WPF :152 EqualVisibility Success（取消的作业没有输出目录，不给按钮） -->
+    <pages:JobStatusVisibilityConverter x:Key="OpenOutputVisible" Statuses="Success" />
+  </UserControl.Resources>
+
   <Grid RowDefinitions="Auto,Auto,Auto,*">
     <Border Grid.Row="0" x:Name="DropZone" Height="150" CornerRadius="10"
             BorderThickness="1" BorderBrush="#3A3A44" Background="#1E1E24"
@@ -20,11 +33,18 @@
       <RadioButton x:Name="ModeAuto" Content="自动" IsChecked="True" GroupName="mode" Checked="OnModeChanged" />
       <RadioButton x:Name="ModeExtract" Content="仅解压" GroupName="mode" Checked="OnModeChanged" />
       <RadioButton x:Name="ModeCompress" Content="仅压缩" GroupName="mode" Checked="OnModeChanged" />
-      <Button Content="清除已完成" Click="OnClearDone" Margin="18,0,0,0" />
-      <Button Content="全部取消" Click="OnCancelAll" />
+      <Button Content="清除已完成" Click="OnClearDone" Margin="18,0,0,0"
+              ToolTip.Tip="移除所有已完成 / 已取消的卡片（记录仍可在历史页查到）" />
+      <Button Content="清除失败项" Click="OnClearFailed"
+              ToolTip.Tip="从列表移除失败的卡片（记录仍可在历史页查到）" />
+      <Button Content="全部取消" Click="OnCancelAll" ToolTip.Tip="取消排队中和正在运行的全部任务" />
     </StackPanel>
 
-    <TextBlock Grid.Row="2" x:Name="SummaryText" Margin="2,6,0,8" Opacity="0.75" />
+    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="14" Margin="2,6,0,8">
+      <TextBlock x:Name="SummaryText" Opacity="0.75" VerticalAlignment="Center" />
+      <TextBlock x:Name="HintText" Foreground="#8AB4F8" Opacity="0.9" VerticalAlignment="Center"
+                 MaxWidth="620" TextTrimming="CharacterEllipsis" />
+    </StackPanel>
 
     <ListBox Grid.Row="3" x:Name="JobsList" Background="Transparent" BorderThickness="0"
              SelectionMode="Single">
@@ -40,11 +60,23 @@
               </StackPanel>
               <WrapPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="取消" Margin="6,0,0,0" Click="OnCancelJob" IsVisible="{Binding !IsTerminal}" />
-                <Button Content="预览" Margin="6,0,0,0" Click="OnPreviewJob" IsVisible="{Binding IsTerminal}" />
-                <Button Content="转格式" Margin="6,0,0,0" Click="OnConvertJob" IsVisible="{Binding IsTerminal}" />
-                <Button Content="校验" Margin="6,0,0,0" Click="OnChecksumJob" IsVisible="{Binding IsTerminal}" />
+                <Button Content="重试" Margin="6,0,0,0" Click="OnRetry"
+                        IsVisible="{Binding Status, Converter={StaticResource RetryVisible}}"
+                        ToolTip.Tip="把这张卡片重新排进队列，口令链会重新走一遍" />
+                <Button Content="预览" Margin="6,0,0,0" Click="OnPreviewJob"
+                        IsVisible="{Binding Kind, Converter={StaticResource PreviewVisible}}"
+                        ToolTip.Tip="查看包内清单（压缩作业没有包内清单可看）" />
+                <Button Content="转格式" Margin="6,0,0,0" Click="OnConvertJob"
+                        IsVisible="{Binding Status, Converter={StaticResource ChecksumVisible}}"
+                        ToolTip.Tip="解包后按工具条「转为」选定的格式重新打包（原包保留）" />
+                <Button Content="校验" Margin="6,0,0,0" Click="OnChecksumJob"
+                        IsVisible="{Binding Status, Converter={StaticResource ChecksumVisible}}" />
                 <Button Content="对比" Margin="6,0,0,0" Click="OnDiffJob" IsVisible="{Binding IsTerminal}" />
-                <Button Content="打开目录" Margin="6,0,0,0" Click="OnOpenOutput" IsVisible="{Binding IsTerminal}" />
+                <Button Content="打开目录" Margin="6,0,0,0" Click="OnOpenOutput"
+                        IsVisible="{Binding Status, Converter={StaticResource OpenOutputVisible}}" />
+                <Button Content="删除源文件" Margin="6,0,0,0" Click="OnDeleteSource"
+                        IsVisible="{Binding IsTerminal}"
+                        ToolTip.Tip="删掉这个包本身（卡片留在列表里，记录仍可在历史页查到）" />
                 <Button Content="移除" Margin="6,0,0,0" Click="OnRemoveJob" IsVisible="{Binding IsTerminal}" />
               </WrapPanel>
               <ProgressBar Grid.Row="1" Grid.ColumnSpan="2" Margin="0,10,0,0" Minimum="0" Maximum="100"

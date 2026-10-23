@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppStream 元数据（AppImage 用）。
+
+  为什么必须有这个文件：appimagetool 从 2025 年的版本起把 AppStream 元数据当成
+  硬性要求，缺了直接失败退出：
+      ERROR: Could not find appstream metadata file
+  以前可以靠「跳过 appstream 校验」的开关绕过，但老版本 appimagetool 不认这个
+  选项（当成未知参数报错），所以「带一个合法的 metainfo」比「传开关」在两端都成立。
+
+  文件名规则（AppStream 规范）：<component-id>.appdata.xml，component-id 与
+  .desktop 的 Name/文件一致，这里就是 uzip2。装到 AppDir 的
+  usr/share/metainfo/ 下，appimagetool 会自己找到。
+
+  id 用反域名；如果以后要上 Flathub/AppStream 仓库，需要与 .desktop 的
+  X-AppImage 或桌面文件 ID 严格对应。
+-->
+<component type="desktop-application">
+  <id>uzip2.desktop</id>
+  <name>UZIP2</name>
+  <summary>7-Zip 前端：解压 / 压缩 / 格式转换</summary>
+  <summary xml:lang="en">7-Zip front-end: extract, compress, convert</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>
+      UZIP2 是 7-Zip 的图形外壳：主页队列（拖放、并发、卡片操作）、包内预览
+      （可勾选只解压选中项）、密码本、历史记录、托盘与悬浮进度方块。
+    </p>
+    <p>
+      命令行用法（list / extract / compress / diff / vault / watch / update）与
+      图形界面共用同一个二进制，服务器上没有显示环境也能跑。
+    </p>
+    <p xml:lang="en">
+      UZIP2 is a 7-Zip front-end for the Linux desktop: a drag-and-drop job queue,
+      in-archive preview with per-entry extraction, a password book, history,
+      tray integration and a floating progress puck. The same binary also works
+      as a command-line tool on machines without a display.
+    </p>
+  </description>
+  <launchable type="desktop-id">uzip2.desktop</launchable>
+  <url type="homepage">https://github.com/pingod/UZIP2</url>
+  <url type="bugtracker">https://github.com/pingod/UZIP2/issues</url>
+  <developer id="github.com.pingod">
+    <name>无常 (pingod)</name>
+  </developer>
+  <categories>
+    <category>Utility</category>
+    <category>Archiving</category>
+  </categories>
+  <keywords>
+    <keyword>archive</keyword>
+    <keyword>7z</keyword>
+    <keyword>zip</keyword>
+    <keyword>rar</keyword>
+    <keyword>解压</keyword>
+    <keyword>压缩</keyword>
+  </keywords>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <!-- 版本号与日期由 scripts/package-linux.sh 用 sed 从 csproj 的 <Version> 填进来：
+         这里故意不写死，否则发新版时一定漏改（AppStream 的 release 版本与实际产物
+         不符，appstreamcli 校验会警告）。 -->
+    <release version="@VERSION@" date="@DATE@"/>
+  </releases>
+</component>

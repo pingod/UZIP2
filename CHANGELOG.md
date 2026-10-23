@@ -3,6 +3,90 @@
 本项目按 tag 发布（两段版本号，如 `v3.12`），安装包里的程序版本是三段（`3.12.0`）。
 条目按"用户能感知的变化"写，不逐条列重构。
 
+## [未发布] — Linux 桌面收尾与 Avalonia 功能对齐（2026-10-23）
+
+在真实 Hyprland 会话（Wayland + XWayland，双显示器）上跑通了托盘与悬浮方块，
+把 Avalonia 版落后 WPF 的 7 处功能差距全部补上，并给发行版打包补了 deb/rpm/AppImage。
+
+### 新增（Linux 图形界面）
+
+- **设置页从 9 项扩到 40 余项**：主题（浅色/深色/跟随系统）、热键组合自由选择、解压输出模式、
+  覆盖策略、自定义解压文件夹、启动清理临时目录、窗口置顶、任务排序、记录口令、文件名转密码；
+  另补了引擎早已在消费但界面上没暴露的 7 项（新建文件夹、按名建目录、压完删源、解压过滤、
+  口令去首尾空格、调试模式、迷你方块）。
+- **主题真的跟随设置**：以前 `App.axaml` 里写死了深色，选「浅色」不会有任何变化。现在启动时
+  按 `settings.Theme` 应用，切换即时生效。
+- **热键改完不用重启**：以前热键只在窗口打开时注册一次，改完必须重开程序。现在保存设置后
+  立即重新注册（X11 重抓键位轮询，Wayland 重走一遍 GlobalShortcuts portal）。
+- **热键支持字母数字之外的键**：以前 `HotKeyKey` 只映射 A-Z 和 0-9，选 F5 会被悄悄当成 `u`。
+  现在支持 F1–F12、方向键、空格、Home/End/PageUp/PageDown、Insert/Delete、小键盘等。
+- **主页卡片补「重试」与「删除源文件」**：重试会带上这张卡上次真正解开时用的口令，省掉重走
+  整条密码链。删除源文件在 Linux 上是直接删除（回收站走的是 Windows 专有的
+  `Microsoft.VisualBasic.FileIO`，Linux 上必抛 `PlatformNotSupportedException`），已在按钮提示里写明。
+- **卡片 9 个按钮的可见性逐个对齐 WPF**：以前「预览/转格式/校验/对比/打开目录」统一按"已结束"
+  显示，导致解压失败的包也能点「预览」、压缩作业也能点。现在按作业类型与状态精确控制。
+- **批量操作补「清除失败项」**。
+- **历史页补「重跑」**：可带原口令重跑，校验类记录不给重跑按钮（与 WPF 一致）。
+- **密码页补「从剪贴板粘贴」**：多行口令一次贴进密码纸，清洗规则与 WPF 逐字符一致。
+- **托盘失败气泡**：任务失败时会弹桌面通知（`notify-send` 优先，其次 D-Bus `Notify`，都没有就只写日志），
+  900ms 静默期攒成一条、最长等 5 秒；窗口在前台时不打扰；完整报告另存一份
+  `failure-report-*.txt`（刻意不含密码）。
+- **设置页补「检查更新」**：手动查 GitHub Releases，Linux 上会提示"请用包管理器升级"而不是假装能自动更新。
+
+### 新增（打包与发布）
+
+- **`.deb` / `.rpm` / `AppImage` 打包**：新增 `scripts/package-linux.sh`，一条命令从 tar.gz 生成三种包。
+  三种格式共用同一份"已装好布局"的暂存树，保证内容逐字节一致；全程不 strip —— 这正是
+  `Arithmetic overflow while reading bundle` 那条坑的防线，CI 里还会用 `cmp` 逐字节比对兜底。
+- **`scripts/aur-sums.sh`**：把 AUR 发布前「下载 → 算 sha256 → 比对 → 回填两个 PKGBUILD → 生成
+  `.SRCINFO`」做成一条命令。会用 Release 的 `.sha256` 侧车交叉验证下载完整性。
+- **`scripts/version.ps1`**：版本号原本散落在四个文件里、两个发布脚本各抄一遍读取逻辑。现在
+  只有一个读取点，四处不一致会直接报错并列出全部来源。
+- **Windows CI 也跑 Avalonia 测试**：以前只有 Linux CI 跑，Windows 侧的 UI 回归挡不住。
+- **arm64 的 Arch 包**：两个 PKGBUILD 都支持 `aarch64`。
+
+### 修复
+
+- **拖动悬浮方块会把设置文件刷爆**：合成器重新摆放窗口时会反复抛"位置变了"，每次都写一遍
+  `settings.json` 并广播一次设置变更，实机 7 秒写了几百次、日志刷了 430 行。现在坐标没变就不写。
+- **悬浮方块重启后位置不对**：窗口还没映射时设坐标会被合成器丢弃（设 800,600 实际落在 2240,600）。
+  改成按 50ms 间隔最多追 20 次，实机 4 组坐标全部精确恢复。
+- **置顶日志刷屏**：只在置顶值真的变化时才记一行。
+- **`aur-sums.sh` 误报 checksum 不一致**：GitHub 对大文件偶尔中途断流，`curl` 仍以 0 退出，
+  脚本对残缺文件算 sha256 就得出"PKGBUILD 填错了"的错误结论。现在先用侧车核对，能区分
+  "缓存坏了"和"hash 填错了"。
+
+### 验证
+
+- **实机（Hyprland 0.56.2，Wayland + XWayland，双显示器）**：
+  - 托盘图标与菜单：`busctl` 里出现 `org.kde.StatusNotifierItem`，`IconPixmap` 解出来就是 UZIP 图标，
+    dbusmenu 结构为「显示 UZIP / 桌面只留方块 / 分隔符 / 退出」。
+  - 悬浮方块：4 组坐标重启后精确恢复。
+  - 失败气泡：隐藏窗口 + 3 个坏包 → 1 条通知；前台 → 0 条；连发 3 次仍 1 条。
+  - CLI：普通包解出 2 个文件；加密包无口令时正确报错不挂起，带 `--password` 正常解开。
+- **无头测试**：Avalonia 测试从 12 条增至 21 条，全绿、0 警告 0 错误。新增的 9 条覆盖
+  任务排序、清除失败项、重试/删除源文件、历史重跑、剪贴板清洗、扩展热键名、方块位置恢复、
+  设置不被重复写盘。其中「设置不被重复写盘」做了变异验证（把去重条件改成永不去重后测试立刻变红）。
+- **发布脚本真跑**：`publish-linux.ps1` 产出 35.6 MB tar.gz，解包后 `--version` → `UZIP 3.12.0`。
+- **AUR 包校验**：`makepkg --printsrcinfo` 对两个 PKGBUILD 都通过，`sha256sums` 全部填真值。
+
+### 已知限制
+
+- **Avalonia 只跑 XWayland**：项目只引了 `Avalonia`/`Avalonia.Desktop`/`Avalonia.Themes.Fluent`，
+  没有 Avalonia.Wayland 包，所有窗口都走 XWayland。原生 Wayland 下客户端设窗口坐标本就无效
+  （由合成器决定），要做真定位得引入 Wayland 后端或改用 layer-shell。
+- **Hyprland 不实现 EWMH 置顶**：`_NET_WM_STATE_ABOVE` 不在 `_NET_SUPPORTED` 里，置顶属性设得上
+  但合成器不体现"重启后仍在最上层"。KDE/X11 下正常。
+- **Avalonia 11.3.2 的托盘 `Status` 属性写错**：它把 `Id`（"UZIP2"）写进了只允许
+  `Passive`/`Active`/`NeedsAttention` 的 `Status` 槽位。quickshell 宿主宽容接受，图标与菜单都正常；
+  这是上游 bug，本项目改不到。
+- **AppImage 依赖 FUSE**：Ubuntu 22.04+ 默认没 `libfuse2`，用户直接双击会报错。
+- **rpm / AppImage 未在本地真构建**：本机无 `rpmbuild`、无 `appimagetool`，也没 sudo 装。脚本已就位，
+  由 CI 的 `linux-packages` job 验证。
+- **AUR 未真提交**：本机无 SSH 私钥，`git ls-remote ssh://…` 直接 `Host key verification failed`。
+  包本身已就绪（含 `.SRCINFO` 与填好的 `sha256sums`）。
+- **arm64 仍无设备验证**：只有交叉构建与打包。
+
 ## [3.12.0] — 2026-10-23
 
 补齐 Linux 侧最后三块桌面集成，并在真实 X 服务器上验证了热键。

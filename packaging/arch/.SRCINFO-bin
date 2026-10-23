@@ -1,0 +1,23 @@
+pkgbase = uzip2-bin
+	pkgdesc = UZIP2 — 7-Zip 前端（Linux 命令行版，预编译）
+	pkgver = 3.12.0
+	pkgrel = 1
+	url = https://github.com/pingod/UZIP2
+	arch = x86_64
+	arch = aarch64
+	license = GPL-3.0-or-later
+	depends = 7zip
+	depends = fontconfig
+	depends = freetype2
+	depends = libice
+	depends = libsm
+	provides = uzip2
+	conflicts = uzip2
+	options = !strip
+	options = !debug
+	source_x86_64 = UZIP2-3.12.0-linux-x64.tar.gz::https://github.com/pingod/UZIP2/releases/download/v3.12/UZIP2-3.12.0-linux-x64.tar.gz
+	sha256sums_x86_64 = 8adbee1257ab7886e5746c01a1f0b58207e0a5f6ee006188db2666683755049e
+	source_aarch64 = UZIP2-3.12.0-linux-arm64.tar.gz::https://github.com/pingod/UZIP2/releases/download/v3.12/UZIP2-3.12.0-linux-arm64.tar.gz
+	sha256sums_aarch64 = d870252ac4e158b4ef7abbce14d69aee7345818333e4635dce827f03d28cf2da
+
+pkgname = uzip2-bin

@@ -25,9 +25,29 @@ Failure processing application bundle; possible file corruption.
 Arithmetic overflow while reading bundle.
 ```
 
-两个 PKGBUILD 都已关掉 strip 与 debug 分包（实测验证：关掉后 36 MB 二进制正常输出 `UZIP 3.10.0`）。
+两个 PKGBUILD 都已关掉 strip 与 debug 分包（实测验证：关掉后 82 MB 二进制正常输出 `UZIP 3.12.0`）。
 
 ## aarch64
 
 `arch=('x86_64' 'aarch64')`，构建时按 `$CARCH` 选 `linux-x64` / `linux-arm64` RID。
 在 x86_64 上给 aarch64 打包需要 Arch Linux ARM 环境（CI 用 `archlinux` 容器只构建本机架构）。
+
+`PKGBUILD-bin` 用 makepkg 的**架构专属数组**（`source_x86_64` / `sha256sums_x86_64` /
+`source_aarch64` / `sha256sums_aarch64`），两种架构各校验各自的包。两个 hash 都必须来自
+Release 页面附带的 `.sha256` 侧车 —— 不能拿本地构建的 tar.gz 去算，gzip 头带 mtime，
+同一份代码两次打包字节流不同。回填/核对用 `scripts/aur-sums.sh`（`--print` 只打印、
+`--fill` 回填、`--srcinfo` 生成 AUR 需要的 `.SRCINFO`）。
+
+## 其它发行版
+
+`.deb` / `.rpm` / AppImage 由 `scripts/package-linux.sh` 统一产出（不需要 root，
+缺工具的格式会打印提示并跳过）。同一个「绝不 strip」约束在那边同样成立，细节见
+脚本头部的注释。
+
+```bash
+# 本机最小验证（用已有 tar.gz，不重新 publish）
+bash scripts/package-linux.sh --formats deb \
+    --from-tarball artifacts/3.12.0/UZIP2-3.12.0-linux-x64.tar.gz
+# 全格式、双架构（CI 里的用法）
+bash scripts/package-linux.sh --arch both --formats all --tarball-dir artifacts/3.12.0
+```

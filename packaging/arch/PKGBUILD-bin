@@ -1,7 +1,15 @@
 # Maintainer: 无常 (pingod) <https://github.com/pingod>
 
 # 二进制包：直接用 GitHub Release 里的自包含 tar.gz，不编译、不需要 dotnet-sdk。
-# pkgver 与 tag 对应；发布新版本时同步改这里与 sha256。
+# pkgver 与 tag 对应；发布新版本时同步改 pkgver / _tag 与下面的 sha256。
+#
+# 架构：x86_64 -> UZIP2-<ver>-linux-x64.tar.gz，aarch64 -> UZIP2-<ver>-linux-arm64.tar.gz。
+# 用 makepkg 的架构专属数组（source_$CARCH / sha256sums_$CARCH），
+# 这样两种架构各校验各自的包，而不是共用一个 SKIP。
+#
+# ⚠️ sha256 必须来自 **Release 页面附带的 .sha256 侧车**，不能拿本地构建的
+#    tar.gz 去算：gzip 头部带 mtime，同一份代码两次打包的字节流不同。
+#    核对命令：curl -L <Release 上的 xxx.tar.gz.sha256>
 pkgname=uzip2-bin
 pkgver=3.12.0
 # 仓库的发布 tag 是两段（v3.10），包版本是三段（3.10.0）
@@ -19,11 +27,12 @@ options=(!strip !debug)
 case "$CARCH" in
   x86_64)  _arch=x64 ;;
   aarch64) _arch=arm64 ;;
-  *)       _arch=x64 ;;
+  *)       error "不支持的架构: $CARCH（只支持 x86_64 / aarch64）" ;;
 esac
-source=("$pkgname-$pkgver-$_arch.tar.gz::$url/releases/download/$_tag/UZIP2-$pkgver-linux-$_arch.tar.gz")
-# 首次发布后把 tar.gz 的 sha256 填进来（可以用 Release 附带的 .sha256 侧车核对）
-sha256sums=('SKIP')
+source_x86_64=("UZIP2-$pkgver-linux-x64.tar.gz::$url/releases/download/$_tag/UZIP2-$pkgver-linux-x64.tar.gz")
+sha256sums_x86_64=('8adbee1257ab7886e5746c01a1f0b58207e0a5f6ee006188db2666683755049e')
+source_aarch64=("UZIP2-$pkgver-linux-arm64.tar.gz::$url/releases/download/$_tag/UZIP2-$pkgver-linux-arm64.tar.gz")
+sha256sums_aarch64=('d870252ac4e158b4ef7abbce14d69aee7345818333e4635dce827f03d28cf2da')
 
 package() {
   _src="$srcdir/UZIP2-$pkgver-linux-$_arch"
@@ -33,5 +42,10 @@ package() {
     install -Dm644 "$_src/uzip2.desktop" "$pkgdir/usr/share/applications/uzip2.desktop"
     install -Dm644 "$_src/uzip2.png" "$pkgdir/usr/share/icons/hicolor/128x128/apps/uzip2.png"
     install -Dm644 "$_src/uzip2-48.png" "$pkgdir/usr/share/icons/hicolor/48x48/apps/uzip2.png"
+  fi
+  # Release 的 tar.gz 目前不带 LICENSE（只有二进制 + 桌面入口 + README + 安装脚本），
+  # 所以这里做存在性判断：带就装，不带不报错。
+  if [[ -f "$_src/LICENSE" ]]; then
+    install -Dm644 "$_src/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   fi
 }

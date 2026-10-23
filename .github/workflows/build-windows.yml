@@ -23,8 +23,38 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Test
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          # 与 scripts/version.ps1、build-linux.yml 同一规则：Avalonia 的 csproj 是权威，
+          # WPF 的 AssemblyInfo 必须与它一致，漂移就让发布中止。
+          v=$(sed -n 's:.*<Version>[[:space:]]*\([0-9][0-9.]*\)[[:space:]]*</Version>.*:\1:p' \
+                UZIP2.Avalonia/UZIP2.Avalonia.csproj | head -1 | cut -d. -f1-3)
+          test -n "$v" || { echo 'UZIP2.Avalonia.csproj 里没有 <Version>x.y.z</Version>'; exit 1; }
+          a=$(sed -n 's/.*AssemblyVersion("\([0-9.]*\)").*/\1/p' \
+                UZIP2/Properties/AssemblyInfo.cs | head -1 | cut -d. -f1-3)
+          test "$v" = "$a" || { echo "版本号不一致：csproj=$v AssemblyInfo=$a"; exit 1; }
+          echo "value=$v" >> "$GITHUB_OUTPUT"
+          echo "版本：$v"
+        # 注意：这条用 bash（windows-latest 自带 Git Bash）。脚本内容与
+        # build-linux.yml 的完全相同，因为 sed/cut 在两种 runner 上都有。
+
+      - name: Test the WPF shell
         run: dotnet test UZIP2.Tests/UZIP2.Tests.csproj -c Release --nologo
+
+      # Avalonia 壳的无头测试在 Linux CI 里已经跑了；这里补上 Windows 侧，
+      # 因为 Avalonia 的渲染后端在 Windows 上走的是另一条路径（Win32 + Skia，
+      # 不经过 X11），XAML 或平台分支写错时只有 Windows 会炸。
+      #
+      # 两个坑：
+      #   1. 不需要 EnableWindowsTargeting：UZIP2.Avalonia 的 TFM 是 net8.0（不是
+      #      net8.0-windows），在 windows-latest 上是原生支持的构建目标。
+      #   2. 不需要 apt 那一步装 libfontconfig1：Windows runner 上没有 fontconfig，
+      #      Avalonia 在 Windows 上也不 dlopen 它。测试里已经用
+      #      UseHeadless(UseHeadlessDrawing = false) + Skia，不依赖真实桌面。
+      - name: Test the Avalonia shell (headless, Windows)
+        run: dotnet test UZIP2.Avalonia.Tests/UZIP2.Avalonia.Tests.csproj -c Release --nologo
 
       - name: Publish single-file
         run: >

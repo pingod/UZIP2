@@ -1,0 +1,22 @@
+pkgbase = uzip2
+	pkgdesc = UZIP2 — 7-Zip 前端（Linux 命令行版）
+	pkgver = 3.12.0
+	pkgrel = 1
+	url = https://github.com/pingod/UZIP2
+	arch = x86_64
+	arch = aarch64
+	license = GPL-3.0-or-later
+	makedepends = dotnet-sdk
+	depends = 7zip
+	depends = fontconfig
+	depends = freetype2
+	depends = libice
+	depends = libsm
+	provides = uzip2
+	conflicts = uzip2-bin
+	options = !strip
+	options = !debug
+	source = uzip2-3.12.0.tar.gz::https://github.com/pingod/UZIP2/archive/v3.12.tar.gz
+	sha256sums = 53b4203d663bc9a54e3897c2c4a4f5e6b3b260d01c279d64e9bc646e6e621ce5
+
+pkgname = uzip2

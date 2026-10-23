@@ -2,61 +2,204 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="UZIP2.Avalonia.Shell.Pages.SettingsView">
   <ScrollViewer>
-    <StackPanel Spacing="14" MaxWidth="720" HorizontalAlignment="Left">
+    <StackPanel Spacing="14" MaxWidth="760" HorizontalAlignment="Left">
       <TextBlock Text="设置" FontSize="22" FontWeight="SemiBold" />
+      <TextBlock Text="改动会写进配置目录下的 settings.json。标了「立即生效」的项改完就应用，其余点最下面的「保存」。"
+                 Opacity="0.5" FontSize="12" TextWrapping="Wrap" />
 
+      <!-- 外观 -->
       <Border Background="#1E1E24" CornerRadius="8" Padding="16">
         <StackPanel Spacing="10">
-          <TextBlock Text="7-Zip" FontWeight="SemiBold" />
-          <TextBlock x:Name="SevenZipText" TextWrapping="Wrap" Opacity="0.75" />
+          <TextBlock Text="外观" FontWeight="SemiBold" />
+          <Grid ColumnDefinitions="190,*">
+            <TextBlock Text="主题（立即生效）" VerticalAlignment="Center" />
+            <ComboBox Grid.Column="1" x:Name="ThemeBox" Width="200" HorizontalAlignment="Left"
+                      SelectionChanged="OnThemeChanged" />
+          </Grid>
+          <Grid ColumnDefinitions="190,*">
+            <TextBlock Text="窗口置顶（立即生效）" VerticalAlignment="Center" />
+            <CheckBox Grid.Column="1" x:Name="WindowOnTopBox" Content="总在最前面"
+                      IsCheckedChanged="OnWindowOnTopChanged" />
+          </Grid>
+          <Grid ColumnDefinitions="190,*">
+            <TextBlock Text="启动时清理临时目录" VerticalAlignment="Center" />
+            <CheckBox Grid.Column="1" x:Name="CleanTempBox" Content="清掉上次中断留下的临时文件" />
+          </Grid>
+          <Grid ColumnDefinitions="190,*">
+            <TextBlock Text="任务列表排序" VerticalAlignment="Center" />
+            <ComboBox Grid.Column="1" x:Name="JobSortBox" Width="200" HorizontalAlignment="Left" />
+          </Grid>
+          <Grid ColumnDefinitions="190,*">
+            <TextBlock Text="迷你拖拽方块" VerticalAlignment="Center" />
+            <CheckBox Grid.Column="1" x:Name="MiniPuckBox" Content="桌面只留一枚小方块接收拖放（重启生效）" />
+          </Grid>
+          <Grid ColumnDefinitions="190,*">
+            <TextBlock Text="调试模式" VerticalAlignment="Center" />
+            <CheckBox Grid.Column="1" x:Name="DebugModeBox" Content="把 7z 命令行等细节写进日志（口令仍脱敏）" />
+          </Grid>
+          <TextBlock Text="排序方式由主页任务列表使用；改完保存即生效。"
+                     Opacity="0.5" FontSize="12" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <!-- 解压 -->
+      <Border Background="#1E1E24" CornerRadius="8" Padding="16">
+        <StackPanel Spacing="10">
+          <TextBlock Text="解压" FontWeight="SemiBold" />
+          <Grid ColumnDefinitions="190,*">
+            <TextBlock Text="默认输出位置" VerticalAlignment="Center" />
+            <ComboBox Grid.Column="1" x:Name="ExtractModeBox" Width="200" HorizontalAlignment="Left" />
+          </Grid>
+          <Grid ColumnDefinitions="190,*">
+            <TextBlock Text="同名文件覆盖策略" VerticalAlignment="Center" />
+            <ComboBox Grid.Column="1" x:Name="CoverBox" Width="200" HorizontalAlignment="Left" />
+          </Grid>
+          <Grid ColumnDefinitions="190,*">
+            <TextBlock Text="尝试未知扩展名的压缩包" VerticalAlignment="Center" />
+            <CheckBox Grid.Column="1" x:Name="ExtractUnknowBox" Content="靠文件头猜格式，猜错就当普通文件跳过" />
+          </Grid>
+          <Grid ColumnDefinitions="190,*">
+            <TextBlock Text="从文件名提取密码" VerticalAlignment="Center" />
+            <CheckBox Grid.Column="1" x:Name="NameToPasswordBox" Content="把文件名里的可疑片段当候选口令" />
+          </Grid>
+          <Grid ColumnDefinitions="190,*">
+            <TextBlock Text="解压到新文件夹" VerticalAlignment="Center" />
+            <CheckBox Grid.Column="1" x:Name="CreateNewFolderBox" Content="包里文件多于一个时建目录" />
+          </Grid>
+          <Grid ColumnDefinitions="190,*">
+            <TextBlock Text="解压到压缩包同名目录" VerticalAlignment="Center" />
+            <CheckBox Grid.Column="1" x:Name="CreateNameFolderBox" Content="不管几个文件都建同名目录" />
+          </Grid>
+          <Grid ColumnDefinitions="190,*">
+            <TextBlock Text="解压成功后删除档案" VerticalAlignment="Center" />
+            <CheckBox Grid.Column="1" x:Name="DeleteFinishFileBox" Content="分卷会删掉整组（不可恢复）" />
+          </Grid>
+          <Grid ColumnDefinitions="190,*">
+            <TextBlock Text="广告文件过滤规则" VerticalAlignment="Center" />
+            <TextBox Grid.Column="1" x:Name="ExtractFilterBox" Watermark="分号分隔，* 通配，例如 *.url;*广告*" />
+          </Grid>
+
+          <TextBlock Text="自定义输出目录" FontWeight="SemiBold" Margin="0,6,0,0" />
+          <TextBlock Text="配合上面的「自定义目录 1」到「自定义目录 8」使用，最多 8 个。"
+                     Opacity="0.5" FontSize="12" TextWrapping="Wrap" />
+          <ListBox x:Name="FolderList" Background="Transparent" BorderThickness="0" MaxHeight="260">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <Grid ColumnDefinitions="150,*,Auto" Margin="0,2">
+                  <TextBox Text="{Binding Name}" Watermark="名称" Margin="0,0,8,0" />
+                  <TextBox Grid.Column="1" Text="{Binding FolderPath}" Watermark="/home/me/下载" Margin="0,0,8,0" />
+                  <Button Grid.Column="2" Content="删除" Click="OnRemoveFolder" />
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
           <StackPanel Orientation="Horizontal" Spacing="8">
-            <TextBlock Text="自定义路径" VerticalAlignment="Center" Opacity="0.75" />
-            <TextBox x:Name="Custom7zBox" Width="420" Watermark="留空则自动检测" />
+            <Button Content="添加目录" Click="OnAddFolder" />
+            <TextBlock x:Name="FolderCountText" VerticalAlignment="Center" Opacity="0.5" FontSize="12" />
           </StackPanel>
         </StackPanel>
       </Border>
 
+      <!-- 并发与行为 -->
       <Border Background="#1E1E24" CornerRadius="8" Padding="16">
         <StackPanel Spacing="10">
-          <TextBlock Text="并发" FontWeight="SemiBold" />
+          <TextBlock Text="性能与行为" FontWeight="SemiBold" />
           <StackPanel Orientation="Horizontal" Spacing="10">
             <TextBlock Text="同时解压" VerticalAlignment="Center" />
             <NumericUpDown x:Name="ParallelExtractBox" Minimum="1" Maximum="8" Increment="1" Width="120" />
             <TextBlock Text="同时压缩" VerticalAlignment="Center" Margin="16,0,0,0" />
             <NumericUpDown x:Name="ParallelCompressBox" Minimum="1" Maximum="8" Increment="1" Width="120" />
           </StackPanel>
-        </StackPanel>
-      </Border>
-
-      <Border Background="#1E1E24" CornerRadius="8" Padding="16">
-        <StackPanel Spacing="8">
-          <TextBlock Text="行为" FontWeight="SemiBold" />
           <CheckBox x:Name="VerifyBox" Content="压缩后自检产物" />
           <CheckBox x:Name="PreviewBox" Content="单个压缩包先预览再解压" />
           <CheckBox x:Name="OpenAfterBox" Content="解压完成后打开目录" />
           <CheckBox x:Name="RecycleBox" Content="删除源文件时进回收站" />
+          <CheckBox x:Name="TrimSpaceBox" Content="密码前后空格自动去掉（关掉则按原样使用）" />
         </StackPanel>
       </Border>
 
+      <!-- 快捷键 -->
+      <Border Background="#1E1E24" CornerRadius="8" Padding="16">
+        <StackPanel Spacing="10">
+          <TextBlock Text="快捷键" FontWeight="SemiBold" />
+          <CheckBox x:Name="UseHotKeyBox" Content="启用全局热键（X11；Wayland 暂不支持）" />
+          <Grid ColumnDefinitions="190,*">
+            <TextBlock Text="当前组合" VerticalAlignment="Center" />
+            <TextBox Grid.Column="1" x:Name="HotkeyBox" IsReadOnly="True" Width="240"
+                     HorizontalAlignment="Left" Watermark="点这里后按下组合键" />
+          </Grid>
+          <Grid ColumnDefinitions="190,*">
+            <TextBlock Text="主键" VerticalAlignment="Center" />
+            <ComboBox Grid.Column="1" x:Name="HotkeyKeyBox" Width="200" HorizontalAlignment="Left"
+                      SelectionChanged="OnHotkeyKeyChanged" />
+          </Grid>
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <CheckBox x:Name="HotkeyCtrlBox" Content="Ctrl" IsCheckedChanged="OnHotkeyModifierChanged" />
+            <CheckBox x:Name="HotkeyAltBox" Content="Alt" IsCheckedChanged="OnHotkeyModifierChanged" />
+            <CheckBox x:Name="HotkeyShiftBox" Content="Shift" IsCheckedChanged="OnHotkeyModifierChanged" />
+            <Button Content="清除" Click="OnClearHotkey" />
+          </StackPanel>
+          <TextBlock x:Name="HotkeyHintText" Opacity="0.5" FontSize="12" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <!-- 7-Zip 与日志 -->
+      <Border Background="#1E1E24" CornerRadius="8" Padding="16">
+        <StackPanel Spacing="10">
+          <TextBlock Text="7-Zip 与日志" FontWeight="SemiBold" />
+          <TextBlock x:Name="SevenZipText" TextWrapping="Wrap" Opacity="0.75" />
+          <Grid ColumnDefinitions="190,*,Auto">
+            <TextBlock Text="自定义 7z 路径" VerticalAlignment="Center" />
+            <TextBox Grid.Column="1" x:Name="Custom7zBox" Watermark="留空则自动检测" />
+            <Button Grid.Column="2" Content="浏览" Margin="8,0,0,0" Click="OnBrowse7z" />
+          </Grid>
+          <Grid ColumnDefinitions="190,*">
+            <TextBlock Text="压缩日志写明密码" VerticalAlignment="Center" />
+            <CheckBox Grid.Column="1" x:Name="LogPasswordsBox" Content="关掉后只能从包里找回口令" />
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <!-- 监听目录 -->
       <Border Background="#1E1E24" CornerRadius="8" Padding="16">
         <StackPanel Spacing="8">
           <TextBlock Text="监听目录" FontWeight="SemiBold" />
           <CheckBox x:Name="WatchEnabledBox" Content="启用监听（新包出现时自动解压）" />
-          <TextBox x:Name="WatchFolderBox" Watermark="/home/me/Downloads" />
+          <Grid ColumnDefinitions="190,*,Auto">
+            <TextBlock Text="监听的文件夹" VerticalAlignment="Center" />
+            <TextBox Grid.Column="1" x:Name="WatchFolderBox" Watermark="/home/me/Downloads" />
+            <Button Grid.Column="2" Content="浏览" Margin="8,0,0,0" Click="OnBrowseWatchFolder" />
+          </Grid>
+          <TextBlock Text="下载工具把包写进这个文件夹就会自动解压；只监听该层，未写完的文件会等落盘后再处理。"
+                     Opacity="0.5" FontSize="12" TextWrapping="Wrap" />
         </StackPanel>
       </Border>
 
+      <!-- 桌面集成 -->
       <Border Background="#1E1E24" CornerRadius="8" Padding="16">
         <StackPanel Spacing="10">
           <TextBlock Text="桌面集成" FontWeight="SemiBold" />
           <TextBlock x:Name="CapsText" TextWrapping="Wrap" Opacity="0.75" />
           <TextBlock x:Name="MenuStateText" Opacity="0.75" TextWrapping="Wrap" />
-          <CheckBox x:Name="HotkeyBox" Content="启用全局热键（X11：Ctrl+Alt+U 唤起窗口；Wayland 暂不支持）" />
           <StackPanel Orientation="Horizontal" Spacing="8">
             <Button Content="安装右键菜单" Click="OnInstallMenu" />
             <Button Content="移除右键菜单" Click="OnRemoveMenu" />
           </StackPanel>
           <TextBlock Text="Nautilus 与 Dolphin 自动生效；Thunar 需自行添加自定义动作。"
+                     Opacity="0.5" FontSize="12" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <!-- 更新 -->
+      <Border Background="#1E1E24" CornerRadius="8" Padding="16">
+        <StackPanel Spacing="10">
+          <TextBlock Text="更新" FontWeight="SemiBold" />
+          <CheckBox x:Name="CheckUpdateOnStartupBox" Content="启动时检查更新（最多一天问一次，失败静默）" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button x:Name="CheckUpdateButton" Content="立即检查更新" Click="OnCheckUpdate" />
+            <TextBlock x:Name="UpdateStatusText" VerticalAlignment="Center" TextWrapping="Wrap" Opacity="0.75" />
+          </StackPanel>
+          <TextBlock Text="只访问 GitHub Releases 的公开接口，不上传任何本地信息。Linux 版不支持就地自更新，发现新版会提示你用包管理器升级。"
                      Opacity="0.5" FontSize="12" TextWrapping="Wrap" />
         </StackPanel>
       </Border>

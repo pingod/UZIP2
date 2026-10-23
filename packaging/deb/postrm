@@ -1,0 +1,25 @@
+#!/bin/sh
+# UZIP2 的 deb 卸载后脚本。
+#
+# 只刷新桌面数据库。**不删用户数据**：
+#   ~/.config/uzip2   配置、历史、密码本（secret.key）
+#   ~/.local/state/uzip2  日志
+# 这些目录不属于包管理的管辖范围（它们属于安装用户，不在 /usr 下），
+# 想在卸载时清掉请用户手动删，或以后加一个显式的 purge 开关。
+#
+# 必须容错：最小化系统上不一定有 desktop-file-utils / gtk-update-icon-cache。
+set -e
+
+# $1 = remove | purge | upgrade | failed-upgrade | abort-install | abort-upgrade | disappear
+case "$1" in
+    remove|purge)
+        if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database -q /usr/share/applications >/dev/null 2>&1 || true
+        fi
+        if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+            gtk-update-icon-cache -q -t /usr/share/icons/hicolor >/dev/null 2>&1 || true
+        fi
+        ;;
+esac
+
+exit 0

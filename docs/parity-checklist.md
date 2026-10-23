@@ -240,3 +240,54 @@
 | O9 | **X11 实机验证**：WSL + Xvfb 真 X 服务器上启动，`xwininfo` 看到 `"UZIP2" 1000x700` 窗口，日志记录热键注册成功，`xdotool` 按住 Ctrl+Alt+U 后记录"全局热键触发"；轮询从 150ms 收紧到 25ms 以接住 100ms 级按键 | 见 commit；日志两条：`全局热键已启用（X11）: u` / `全局热键触发，唤起窗口` |
 | O10 | **tar.gz 安装脚本**：`install.sh` / `uninstall.sh`（`PREFIX` 可调，装二进制 + 桌面入口 + 图标，刷新 desktop/icon 缓存；卸载保留配置） | WSL 实测：`PREFIX=/tmp/prefix ./install.sh` 后二进制 `--version` 正常，`uninstall.sh` 只删自己的 4 个文件 |
 | O11 | **能力文案按桌面区分**：非 GNOME 的 Wayland 不再说"GNOME 限制"，改为"当前桌面不提供该接口"；启动时把能力摘要写进日志 | WSLg（Weston）实跑日志：`会话 Wayland / none；托盘没有可用的 SNI 宿主；…` |
+
+## v3.12 后续（Linux 桌面实机验证与 Avalonia 功能对齐）
+
+基线与验证方式：**无头测试** = `dotnet test UZIP2.Avalonia.Tests`（21 条，Release，0 警告 0 错误）；
+**实机** = Hyprland 0.56.2（Wayland + XWayland `:0`，双显示器 DP-2/DP-3）真会话；
+**CLI** = `artifacts/3.12.0/UZIP2-3.12.0-linux-x64.tar.gz` 解包后的 `UZIP2` 二进制。
+GUI 部分刻意不在用户真实会话里开窗（AGENTS.md 铁律），改用无头渲染测试覆盖。
+
+### 功能对齐（Avalonia ← WPF）
+
+| # | 内容 | 证据 |
+|---|------|------|
+| A1 | **设置页补齐 10 项**：主题、热键组合选择（改完免重启）、解压输出模式、覆盖策略、自定义文件夹、启动清理临时目录、窗口置顶、任务排序、记录口令、文件名转密码；另补 7 项 Core 已在消费但 UI 没暴露的（新建文件夹/按名建目录/压完删源/解压过滤/口令去空格/调试模式/迷你方块） | 无头测试；`SettingsView.axaml` 72→215 行、`.cs` 103→569 行 |
+| A2 | **主题跟随设置**：删掉 `App.axaml` 写死的 `RequestedThemeVariant="Dark"`，改由 App 在建窗口前 `ThemeApplier.Apply(settings.Theme)`，避免第一帧跳变 | 构建 0 警告；`ThemeApplier.Normalize` 把 WPF 的 HighContrast 归为「跟随系统」 |
+| A3 | **热键免重启生效**：`MainWindow.ReloadHotkey()`（`StopHotkey` + `StartHotkey`），`App.ApplyWindowSettingsOnUi` 用五元组 `_appliedHotkey` 判变化才重注册 | 实机日志 `全局热键已启用（X11）: Ctrl+Alt+F5 → keysym F5`（旧代码只映射 A-Z/0-9，会退化成 `u`） |
+| A4 | **任务排序真正作用到主页**：`HomeView` 不再直接绑 `Worker.Jobs`，改为按 `JobOrder` 维护 `_sorted` 镜像（对齐 WPF `HomeViewModel` 的 `RebuildMirror`/`RepositionJob` 语义），`RebuildSorted` + `InsertIndex` + `Move` | `Home_list_follows_the_configured_job_sort`（四种模式的 Compare 与 InsertIndex） |
+| A5 | **历史页「重跑」**：`Kind != "Test"` 才可重跑（对齐 `HistoryViewModel.cs:118 CanRetry`），压缩作业走 `EnqueueCompress`、其余 `EnqueueExtract` | `History_page_skips_retry_for_verification_entries`（直测 `HistoryKindRetryableConverter`） |
+| A6 | **卡片「重试」「删除源文件」**：重试带 `job.UsedPassword`（失败时为 null → 重走密码链）；删除源文件时 `recycle = OperatingSystem.IsWindows() && DeleteToRecycle`（`FilterService.Delete` 走 `Microsoft.VisualBasic.FileIO.FileSystem`，Linux 必抛 `PlatformNotSupportedException`，故降级直删并换提示语） | `Home_card_shows_retry_and_delete_source_for_terminal_jobs` |
+| A7 | **卡片 9 个按钮逐个对齐 WPF**（`UZIP2/Shell/Pages/HomeView.xaml:140-171`）：取消=Queued/Running、预览=Extract、校验与转格式=Success, Failed、打开目录=Success、移除=IsTerminal；「对比」是 Avalonia 独有（WPF 无此控件）保持 IsTerminal | `JobStatusVisibilityConverter` / `JobKindVisibilityConverter`（Avalonia 11 无 DataTrigger，自建 IValueConverter） |
+| A8 | **「清除失败项」**：`Worker.RemoveTerminal(j => j.Status == Failed)` | `Home_page_exposes_the_failed_clear_button` |
+| A9 | **密码页剪贴板粘贴**：`Clean(raw, trimSpace)` 逐字符对齐 WPF `ClipboardService.cs:25` 的 `Regex.Replace(raw, "[\t\r]", "")`；Avalonia 11.3.2 的 `IClipboard` 没有 `ContainsText`，只能 `await GetTextAsync()` 把 null 当空 | `Clipboard_paste_cleans_control_characters_like_wpf`、`Password_page_has_a_clipboard_paste_entry` |
+| A10 | **托盘失败气泡**：`notify-send` → `gdbus org.freedesktop.Notifications.Notify` → 只写日志，三级降级；`FailureNotifier(900, 5000)` 节流；窗口在前台不弹；完整报告写 `failure-report-yyyyMMdd-HHmmss.txt`（UTF-8 BOM，刻意不含密码） | 实机 dbus-monitor：隐藏 + 3 个坏包 → 1 条通知（标题「UZIP 有 3 个任务失败」）；前台 → 0 条；最小化 → 1 条；连发 3 次仍 1 条 |
+
+### 真实桌面实机验证
+
+| # | 内容 | 证据 |
+|---|------|------|
+| B1 | **托盘图标与菜单（E2）** | `busctl --user list` 出现 `org.kde.StatusNotifierItem-<pid>-0`，pid 与 `_smoke/live/app.pid` 一致；`Properties.GetAll` 返回 `Category=ApplicationStatus`、`Id=UZIP2`、`IconPixmap=[(128,128,16384 bytes)]`，把像素解出来（`magick … rgba:`）就是 UZIP 图标；dbusmenu `GetLayout` = 「显示 UZIP / 桌面只留方块(checkmark) / 分隔符 / 退出」。宿主是 quickshell（`qs -p /run/user/1000/danklinux-shell/…`），不是 waybar |
+| B2 | **托盘注册全链路** | dbus-monitor 抓到 `RegisterStatusNotifierItem` → `StatusNotifierItemRegistered` → `NewTitle/NewIcon/NewToolTip/NewStatus` → host `GetAll` |
+| B3 | **方块位置恢复（E3 真 bug）** | 窗口未映射时设 `Position` 会被合成器丢弃（实测设 800,600 读回 0,0，最终落 2240,600）。改成 50ms × 最多 20 次的追踪式重设（`_target` + `_restoring` 抑制回写），实机 4 组坐标（800,600 / 1200,300 / 100,1400 / 2000,800）全部精确恢复且 settings 未被污染。回归测试 `Puck_restores_the_saved_position_instead_of_the_compositor_default` |
+| B4 | **置顶即时生效** | `Save(WindowOnTop=false)` → `Topmost=False` 立刻体现；但 **Hyprland 不实现 EWMH**（`xprop -root _NET_SUPPORTED` 无 `_NET_WM_STATE_ABOVE`，`hyprctl -j clients` 恒 `pinned:false`），所以「重启后仍在最上层」在此桌面无法验收 |
+| B5 | **桌面能力判定与实际一致** | 真机日志：`桌面能力: 会话 Wayland / Hyprland；托盘可用；全局热键不可用（当前 Wayland 桌面没有 GlobalShortcuts portal）；悬浮方块可定位。` |
+| B6 | **CLI 日常操作（E5）** | `extract plain.7z -o out` 解出 2 个文件；加密包无口令 → `密码错误或加密头损坏`（不挂起）；`--password Secret123` 解出 2 个文件；`list` → 3 项。注意命令行是 `--password` 不是 `-p`，也没有 `--nologo` |
+
+### 两处实机才暴露的 bug
+
+| # | 内容 | 证据 |
+|---|------|------|
+| D1 | **拖动方块导致设置被反复写盘 + 日志刷屏**：`PuckWindow.SavePosition` 每次 `PositionChanged` 都 `Settings.Save`，而 `SettingsService.Save` 无条件写盘并全量 `Changed?.Invoke`（无差异比较）；合成器重新摆放窗口会反复抛同坐标，实机 7 秒刷 430 行「设置已变更，窗口置顶 = 开」。修法：坐标没变就不 Save；`ApplyWindowSettingsOnUi` 只在置顶值真变时打日志（文案改「窗口置顶 = X」） | **变异验证**：把去重条件改成 `if (false) return;`，`Puck_window_does_not_rewrite_settings_when_the_position_is_unchanged` 立刻变红（mtime 断言失败）；恢复后 21/21 绿 |
+| D2 | **`scripts/aur-sums.sh` 下载截断时误报 hash 不一致**：GitHub 对 35 MB Release 包会中途断流而 `curl -f` 仍以 0 退出，留下残缺文件；脚本对残缺文件算 sha256，得出「PKGBUILD 值与实测不一致」。新增 `fetch_verified()` 用 `<url>.sha256` 侧车交叉验证，区分「缓存坏了」与「hash 填错了」，缓存坏了删了重下 | 实测：缓存里 5,066,752 字节（tar 已损坏）时输出「缓存与官方侧车不符…重下一次」，而不再报 PKGBUILD 错 |
+
+### 工程与发布
+
+| # | 内容 | 证据 |
+|---|------|------|
+| P1 | **AUR 准备完成**：`.SRCINFO` / `.SRCINFO-bin` 已生成；`sha256sums` 填真值（源码包 `53b4203d663bc9a54e3897c2c4a4f5e6b3b260d01c279d64e9bc646e6e621ce5`；bin 包改架构专属数组 `sha256sums_x86_64=8adbee12…` / `sha256sums_aarch64=d870252a…`）；新增 `scripts/aur-sums.sh`（check/`--print`/`--fill`/`--srcinfo`/`--offline`）一条命令完成下载→计算→比对→回填→生成 .SRCINFO | `makepkg --printsrcinfo` 两个 PKGBUILD 都通过；`--offline` 复查「全部一致」。**真提交做不了**：无 SSH key（`Host key verification failed`）、无 sudo |
+| P2 | **deb / rpm / AppImage**：新增 `scripts/package-linux.sh` + `packaging/{deb,rpm,appimage}/`。三种格式共用一份「已装好布局」的暂存树（`usr/bin/uzip2`、desktop、hicolor 48/128 图标、LICENSE、copyright），保证逐字节一致；全程不 strip（`%global __strip /bin/true` 等），CI 里用 `cmp` 对包内二进制与 tarball 逐字节比对兜底 | **deb 真打包成功 36 MB**（`ar rcD` 回退路径，本机无 dpkg-deb），拆包核对 `Depends`/`Architecture`/`Version`/`Installed-Size: 84864`；rpm/AppImage 本机缺 rpmbuild/appimagetool，明示跳过并退出码 0 不谎报产出 |
+| P3 | **arm64**：两个 PKGBUILD 的 `arch` 与 `build()` 支持 aarch64（`case "$CARCH" in aarch64) _rid=linux-arm64`）；`package-linux.sh --arch arm64` 路径可跑；CI 按规格 arm64 只产 tar.gz | 代码路径本地实跑；真 arm64 运行待设备 |
+| P4 | **Windows CI 跑 Avalonia 测试**：`build-windows.yml` 加 `Test the Avalonia shell (headless, Windows)`，用项目级 `.csproj`（不是 .sln）所以不会把 WPF 拉进 restore 图，也不需要 `EnableWindowsTargeting` | 本地等价命令通过 |
+| P5 | **版本号单一来源**：新增 `scripts/version.ps1`（四行来源声明 + `Get-UzipVersion` 以 Avalonia csproj 为权威、归一化到三段比对、漂移即 throw 并列出四行）；两个 publish 脚本都改成 `. version.ps1; Get-UzipVersion` | `_tools/pwsh/pwsh -NoProfile -Command '. ./scripts/version.ps1; Get-UzipVersion'` → `VERSION=3.12.0`，四行全读出；真跑 `publish-linux.ps1 -Rids linux-x64` 产出 35.6 MB tar.gz，解包 `--version` → `UZIP 3.12.0` |
+| P6 | **README 精简** | `README.md` 339→138 行；v3.8 及更早整段移到新增 `docs/history.md`（212 行） |

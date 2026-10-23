@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   Reproducible publish for UZIP2: builds BOTH shipping artifacts into .\artifacts\<version>\
   and prints a size + SHA-256 manifest.
@@ -33,17 +33,15 @@ param(
 $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $Proj     = Join-Path $RepoRoot 'UZIP2\UZIP2.csproj'
-$AiFile   = Join-Path $RepoRoot 'UZIP2\Properties\AssemblyInfo.cs'
 
 if (-not (Get-Command $Dotnet -ErrorAction SilentlyContinue)) {
   throw "dotnet not found ('$Dotnet'). Install the .NET 8 SDK or pass -Dotnet <full path>."
 }
 
-# Read version from Properties/AssemblyInfo.cs so the artifact name can never drift from the build.
-$m = Select-String -Path $AiFile -Pattern '^\s*\[assembly:\s*AssemblyVersion\("([^"]+)"\)' | Select-Object -First 1
-if (-not $m) { throw 'Could not read AssemblyVersion from AssemblyInfo.cs' }
-$VerFull = $m.Matches[0].Groups[1].Value            # e.g. 3.4.0.0
-$Ver     = ($VerFull.Split('.') | Select-Object -First 3) -join '.'  # 3.4.0
+# 版本号的唯一读取点见 scripts/version.ps1 —— 四处声明（两个 csproj + 两个
+# AssemblyInfo.cs）必须指向同一个版本，任何一处漂移都会让发布中止。
+. (Join-Path $PSScriptRoot 'version.ps1')
+$Ver = Get-UzipVersion -RepoRoot $RepoRoot
 
 $OutRoot   = Join-Path $RepoRoot 'artifacts'
 $OutVer    = Join-Path $OutRoot $Ver

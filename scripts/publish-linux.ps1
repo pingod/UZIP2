@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   构建 Linux 版 UZIP2（无界面 CLI）并打包成 tar.gz。
 
@@ -24,7 +24,6 @@ param(
 $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $Proj     = Join-Path $RepoRoot 'UZIP2.Avalonia/UZIP2.Avalonia.csproj'
-$AiFile   = Join-Path $RepoRoot 'UZIP2/Properties/AssemblyInfo.cs'
 
 if (-not (Get-Command $Dotnet -ErrorAction SilentlyContinue)) {
   throw "dotnet not found ('$Dotnet'). Pass -Dotnet <full path>."
@@ -50,10 +49,12 @@ if ($env:OS -eq 'Windows_NT') {
   $TarHasMode = $TarExe -notlike '*\System32\tar.exe'
 }
 
-$m = Select-String -Path $AiFile -Pattern '^\s*\[assembly:\s*AssemblyVersion\("([^"]+)"\)' | Select-Object -First 1
-if (-not $m) { throw 'Could not read AssemblyVersion from AssemblyInfo.cs' }
-$VerFull = $m.Matches[0].Groups[1].Value
-$Ver     = ($VerFull.Split('.') | Select-Object -First 3) -join '.'
+# 版本号的唯一读取点见 scripts/version.ps1 —— 它读四处声明（两个 csproj + 两个
+# AssemblyInfo.cs）、归一化到三段后比对，任何一处漂移都会让发布中止。
+# 以前这里是自己写的一份正则，只读 WPF 的 AssemblyInfo，跟真正发货的 Avalonia
+# 产物没有关系，所以改版本时容易漏。
+. (Join-Path $PSScriptRoot 'version.ps1')
+$Ver = Get-UzipVersion -RepoRoot $RepoRoot
 
 $OutVer = Join-Path (Join-Path $RepoRoot 'artifacts') $Ver
 New-Item -ItemType Directory -Path $OutVer -Force | Out-Null

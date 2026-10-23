@@ -32,6 +32,11 @@
     <AvaloniaResource Include="Assets/**" />
   </ItemGroup>
 
+  <!-- 无头 UI 测试要替换 X11HotkeyWatcher 的降级钩子（见该类说明） -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="UZIP2.Avalonia.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\UZIP2.Core\UZIP2.Core.csproj" />
   </ItemGroup>

@@ -7,3 +7,6 @@ artifacts/
 _measure/
 _smoke/
 .alma-snapshots
+
+# 本地工具链（不随仓库分发）
+_tools/

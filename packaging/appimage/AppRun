@@ -1,0 +1,33 @@
+#!/bin/sh
+# AppImage 入口脚本（appimagetool 要求 AppDir 根目录有可执行的 AppRun）。
+#
+# 为什么需要它：UZIP2 是 .NET 8 自包含单文件，Avalonia 的 X11 后端会在运行时
+# dlopen 桌面库。AppImage 的约定是「AppRun 负责把 AppDir 内的东西暴露给程序」，
+# 所以这里做三件事：
+#   1. 把 APPDIR/usr/bin 加到 PATH 前面，保证 `uzip2` 与 7z 查找顺序正确；
+#   2. 有 $APPDIR/usr/lib 时导出 LD_LIBRARY_PATH（本仓库的包没有自带 lib，
+#      但如果以后打进了 Avalonia 原生库，这里会自动生效）；
+#   3. exec 真正的二进制，并把参数原样透传 —— UZIP2 同一个二进制既是 GUI 也是
+#      CLI，所以 `./UZIP2.AppImage extract a.zip -o out` 必须能工作。
+#
+# 注意：**绝不 strip** 那个二进制。.NET 单文件 bundle 在 ELF 末尾追加了清单与
+# 压缩程序集，strip/objcopy 会切坏它，运行时报
+#     Arithmetic overflow while reading bundle.
+# 本脚本不做任何文件修改，只设置环境变量后 exec。
+
+set -eu
+
+APPDIR=${APPDIR:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)}
+
+if [ -d "$APPDIR/usr/bin" ]; then
+    PATH="$APPDIR/usr/bin:${PATH:-/usr/bin:/bin}"
+    export PATH
+fi
+
+if [ -d "$APPDIR/usr/lib" ]; then
+    LD_LIBRARY_PATH="$APPDIR/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export LD_LIBRARY_PATH
+fi
+
+# 没有 --appimage-* 内部参数要处理，全部透传给真正的程序
+exec "$APPDIR/usr/bin/uzip2" "$@"

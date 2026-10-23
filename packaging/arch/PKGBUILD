@@ -2,6 +2,10 @@
 
 # 源码包：从 tag 归档构建（需要 dotnet-sdk + 网络还原 NuGet）。
 # 想跳过编译用 PKGBUILD-bin（直接装 Release 里的自包含二进制）。
+#
+# 架构：x86_64 与 aarch64 都支持（.NET 的 linux-x64 / linux-arm64 RID）。
+# aarch64 需要在 Arch Linux ARM 上构建/安装（上游 Arch 官方仓库没有 aarch64；
+# dotnet-sdk 也只有 Arch Linux ARM 的 aarch64 版本）。构建时按 $CARCH 选 RID。
 pkgname=uzip2
 pkgver=3.12.0
 # 仓库的发布 tag 是两段（v3.10），包版本是三段（3.10.0）
@@ -19,14 +23,17 @@ conflicts=('uzip2-bin')
 # （实测运行时报 "Arithmetic overflow while reading bundle"）
 options=(!strip !debug)
 source=("$pkgname-$pkgver.tar.gz::$url/archive/$_tag.tar.gz")
-sha256sums=('SKIP')
+# GitHub 的 /archive/<tag>.tar.gz 是按需生成的，正常情况内容稳定；
+# 一旦上游重新打包（或 tag 被强制推走）hash 就会变，那时要同步更新这里。
+# 出问题时的核对方式：curl -L "$url/archive/$_tag.tar.gz" | sha256sum
+sha256sums=('53b4203d663bc9a54e3897c2c4a4f5e6b3b260d01c279d64e9bc646e6e621ce5')
 
 build() {
-  cd "UZIP2-${_tag#v}"   # GitHub 归档目录名跟 tag 走（UZIP2-3.10），不是 pkgver
+  cd "UZIP2-${_tag#v}"   # GitHub 归档目录名跟 tag 走（UZIP2-3.12），不是 pkgver
   case "$CARCH" in
     x86_64)  _rid=linux-x64 ;;
     aarch64) _rid=linux-arm64 ;;
-    *)       error "不支持的架构: $CARCH" ;;
+    *)       error "不支持的架构: $CARCH（只支持 x86_64 / aarch64）" ;;
   esac
   dotnet publish UZIP2.Avalonia/UZIP2.Avalonia.csproj \
     -c Release -r "$_rid" --self-contained true \

@@ -42,6 +42,13 @@ namespace UZIP2.Avalonia.Shell
         private readonly DispatcherTimer _timer;
         private readonly byte[] _keys = new byte[32];
 
+        /// <summary>
+        /// 打开 X 显示的函数。抽成字段只为测试：降级分支（没有 DISPLAY / 没有 libX11）在
+        /// 开着桌面会话的机器上无法用环境变量造出来 —— libX11 会缓存进程内已打开的 Display，
+        /// 改 DISPLAY 对 XOpenDisplay(null) 无效，所以测试直接替换这个钩子返回零指针。
+        /// </summary>
+        internal static Func<IntPtr> DisplayOpener = () => XOpenDisplay(null);
+
         private X11HotkeyWatcher(IntPtr display, IntPtr root, HotkeyMatcher matcher, Action onFire)
         {
             _display = display;
@@ -59,7 +66,7 @@ namespace UZIP2.Avalonia.Shell
             IntPtr display = IntPtr.Zero;
             try
             {
-                display = XOpenDisplay(null);
+                display = DisplayOpener();
                 if (display == IntPtr.Zero) return null;
 
                 ulong sym = XStringToKeysym(keysymName ?? "u");

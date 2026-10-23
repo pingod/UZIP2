@@ -19,6 +19,8 @@ namespace UZIP2.Avalonia.Shell
             InitializeComponent();
             PageHost.Content = _home;
             Highlight(NavHome);
+            var settings = AppHost.Settings?.Current;
+            ApplyWindowOnTop(settings == null || settings.WindowOnTop);
         }
 
         protected override void OnOpened(EventArgs e)
@@ -26,6 +28,22 @@ namespace UZIP2.Avalonia.Shell
             base.OnOpened(e);
             if (AppHost.Settings.Current.MiniPuck) ShowPuck();
             StartHotkey();
+        }
+
+        /// <summary>
+        /// 窗口置顶。启动时按设置设一次，之后设置页保存时由 App 订阅 Settings.Changed 再调进来，
+        /// 所以开关切换立刻生效，不用重开窗口。
+        /// </summary>
+        public void ApplyWindowOnTop(bool onTop)
+        {
+            try
+            {
+                Topmost = onTop;
+            }
+            catch (Exception ex)
+            {
+                AppHost.Logger?.Warn("设置窗口置顶失败: " + ex.Message);
+            }
         }
 
         private void OnNavHome(object sender, RoutedEventArgs e) => Show(_home, NavHome);
@@ -52,11 +70,34 @@ namespace UZIP2.Avalonia.Shell
 
         protected override void OnClosed(EventArgs e)
         {
+            StopHotkey();
+            base.OnClosed(e);
+        }
+
+        void StopHotkey()
+        {
             _hotkey?.Dispose();
             _hotkey = null;
             _portal?.Dispose();
             _portal = null;
-            base.OnClosed(e);
+        }
+
+        /// <summary>
+        /// 设置页改完热键后调这里，免重启生效。先释放旧注册再按当前设置重建：
+        /// X11 是重抓一次键位轮询，Wayland 是重新走一遍 GlobalShortcuts portal。
+        /// 关掉开关时只释放、不再注册一次。
+        /// </summary>
+        public void ReloadHotkey()
+        {
+            try
+            {
+                StopHotkey();
+                StartHotkey();
+            }
+            catch (Exception ex)
+            {
+                AppHost.Logger?.Warn("重载全局热键失败: " + ex.Message);
+            }
         }
 
         public void ShowFromTray()
@@ -99,11 +140,13 @@ namespace UZIP2.Avalonia.Shell
 
             if (AppHost.Capabilities.IsX11)
             {
-                var key = KeySymName(s.HotKeyKey);
+                // Windows 存的是虚拟键码，X11 要 keysym 名：映射交给共享的 HotkeyKeyNames，
+                // 字母/数字之外还能认出 F1-F12、方向键、空格等（旧版只映射 A-Z/0-9）。
+                var key = HotkeyKeyNames.ToKeySymName(s.HotKeyKey);
                 _hotkey = X11HotkeyWatcher.TryCreate(key, s.HotKeyCtrl, s.HotKeyAlt, s.HotKeyShift, show);
                 AppHost.Logger?.Info(_hotkey != null
-                    ? $"全局热键已启用（X11）: {key}"
-                    : "全局热键启用失败（没有 DISPLAY 或 keymap 不含该键）");
+                    ? $"全局热键已启用（X11）: {HotkeyKeyNames.Describe(s.HotKeyKey, s.HotKeyCtrl, s.HotKeyAlt, s.HotKeyShift)} → keysym {key}"
+                    : $"全局热键启用失败（没有 DISPLAY 或 keymap 不含该键）: {HotkeyKeyNames.Describe(s.HotKeyKey, s.HotKeyCtrl, s.HotKeyAlt, s.HotKeyShift)} → keysym {key}");
                 return;
             }
 
@@ -112,14 +155,6 @@ namespace UZIP2.Avalonia.Shell
             AppHost.Logger?.Info(_portal != null
                 ? "全局热键已通过 GlobalShortcuts portal 注册"
                 : "Wayland 会话没有可用的 GlobalShortcuts portal，全局热键未启用");
-        }
-
-        // Windows 存的是虚拟键码；X11 要 keysym 名。字母/数字直接映射，其余退回 u。
-        private static string KeySymName(uint vk)
-        {
-            if (vk >= 'A' && vk <= 'Z') return ((char)('a' + (vk - 'A'))).ToString();
-            if (vk >= '0' && vk <= '9') return ((char)vk).ToString();
-            return "u";
         }
 
         private void ShowPuck()
