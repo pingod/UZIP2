@@ -22,7 +22,7 @@ source=("$pkgname-$pkgver.tar.gz::$url/archive/$_tag.tar.gz")
 sha256sums=('SKIP')
 
 build() {
-  cd "UZIP2-$pkgver"
+  cd "UZIP2-${_tag#v}"   # GitHub 归档目录名跟 tag 走（UZIP2-3.10），不是 pkgver
   case "$CARCH" in
     x86_64)  _rid=linux-x64 ;;
     aarch64) _rid=linux-arm64 ;;
