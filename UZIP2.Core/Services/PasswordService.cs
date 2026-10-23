@@ -31,12 +31,12 @@ namespace UZIP2.Services
             {
                 if (_plainFor != Cipher)
                 {
-                    _plain = DpapiHelper.Decode(Cipher);
+                    _plain = PasswordCipher.Current.Decode(Cipher);
                     _plainFor = Cipher;
                 }
                 return _plain;
             }
-            set => Cipher = DpapiHelper.Encode(value);
+            set => Cipher = PasswordCipher.Current.Encode(value);
         }
     }
 
@@ -119,7 +119,7 @@ namespace UZIP2.Services
                 foreach (var e in entries)
                 {
                     e.IsPaper = false;
-                    e.Cipher = DpapiHelper.Encode(e.Text); // 明文条目自动加密
+                    e.Cipher = PasswordCipher.Current.Encode(e.Text); // 明文条目自动加密
                     if (!string.IsNullOrEmpty(e.Text) && !_book.Any(b => b.Text == e.Text))
                         _book.Add(e);
                 }
@@ -135,7 +135,7 @@ namespace UZIP2.Services
                 foreach (var e in entries)
                 {
                     e.IsPaper = true;
-                    e.Cipher = DpapiHelper.Encode(e.Text);
+                    e.Cipher = PasswordCipher.Current.Encode(e.Text);
                     if (!string.IsNullOrEmpty(e.Text) && !_paper.Any(p => p.Text == e.Text))
                         _paper.Add(e);
                 }
@@ -154,7 +154,7 @@ namespace UZIP2.Services
             lock (_sync)
             {
                 if (_book.Any(b => b.Text == plain)) return; // 去重
-                _book.Add(new PasswordEntry { Name = name ?? "", Cipher = DpapiHelper.Encode(plain) });
+                _book.Add(new PasswordEntry { Name = name ?? "", Cipher = PasswordCipher.Current.Encode(plain) });
                 Save();
             }
             Changed?.Invoke();
@@ -175,7 +175,7 @@ namespace UZIP2.Services
             lock (_sync)
             {
                 entry.Name = name ?? entry.Name;
-                entry.Cipher = DpapiHelper.Encode(plain);
+                entry.Cipher = PasswordCipher.Current.Encode(plain);
                 Save();
             }
             Changed?.Invoke();
@@ -196,7 +196,7 @@ namespace UZIP2.Services
                     if (trimmed.Length == 0) continue;
                     if (_paper.Count >= PaperLimit) break;
                     if (_paper.Any(p => p.Text == trimmed) || _book.Any(b => b.Text == trimmed)) continue;
-                    _paper.Add(new PasswordEntry { IsPaper = true, Cipher = DpapiHelper.Encode(trimmed) });
+                    _paper.Add(new PasswordEntry { IsPaper = true, Cipher = PasswordCipher.Current.Encode(trimmed) });
                     added++;
                 }
                 // 一次粘贴只落盘一次

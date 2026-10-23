@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UZIP2", "UZIP2\UZIP2.csproj
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UZIP2.Tests", "UZIP2.Tests\UZIP2.Tests.csproj", "{FB004927-77A7-4F45-A2B9-E97F48AFE1D3}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UZIP2.Core", "UZIP2.Core\UZIP2.Core.csproj", "{B1E22C7E-2415-426B-B040-5B6F79ED9E24}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{FB004927-77A7-4F45-A2B9-E97F48AFE1D3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FB004927-77A7-4F45-A2B9-E97F48AFE1D3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FB004927-77A7-4F45-A2B9-E97F48AFE1D3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B1E22C7E-2415-426B-B040-5B6F79ED9E24}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B1E22C7E-2415-426B-B040-5B6F79ED9E24}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B1E22C7E-2415-426B-B040-5B6F79ED9E24}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B1E22C7E-2415-426B-B040-5B6F79ED9E24}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

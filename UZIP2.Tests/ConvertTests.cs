@@ -159,7 +159,8 @@ namespace UZIP2.Tests
             var zip = await PackZip(MakeFile("c1.bin"));
             var outDir = Path.Combine(_root, "convNoUi");
 
-            var worker = new ArchiveWorker(_client, _passwords, _settings, null, null, null, BlockedDispatcher());
+            var worker = new ArchiveWorker(_client, _passwords, _settings, null, null, null,
+                new UZIP2.Shell.WpfUiDispatcher(BlockedDispatcher()));
             var jobs = worker.EnqueueConvert(new[] { zip }, 1, outDir);
             await worker.WhenIdleAsync();
 

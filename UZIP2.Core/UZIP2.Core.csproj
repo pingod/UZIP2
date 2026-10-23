@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 跨平台核心：Models + 可移植 Services + CLI 引擎。
+       这里绝不能出现 WPF / WinForms / DPAPI / 注册表 —— Windows 与 Avalonia 两个界面
+       都只通过 UZIP2.Core 共享引擎，平台差异走 IUiDispatcher / IPasswordCipher 等接缝。 -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>12</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>UZIP2.Core</AssemblyName>
+    <RootNamespace>UZIP2</RootNamespace>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <!-- 与主工程一致：单文件发布时不要 PDB，否则 Core 的 pdb 会跟着产物目录一起被打包 -->
+  <PropertyGroup Condition="'$(PublishSingleFile)' == 'true'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+  </ItemGroup>
+
+</Project>

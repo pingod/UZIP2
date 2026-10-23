@@ -178,7 +178,7 @@ namespace UZIP2.Shell
 
         void Paint(double? percent, bool finishing)
         {
-            var geometry = PuckProgress.RingGeometry(percent, RingSize, RingThickness);
+            var geometry = PuckRingGeometry.RingGeometry(percent, RingSize, RingThickness);
             if (geometry == null) ClearRing();
             else
             {

@@ -20,6 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../UZIP2.Core/UZIP2.Core.csproj" />
     <ProjectReference Include="../UZIP2/UZIP2.csproj" />
   </ItemGroup>
 

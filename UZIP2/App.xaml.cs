@@ -20,6 +20,10 @@ namespace UZIP2
 
         private void OnStartup(object sender, StartupEventArgs e)
         {
+            // 平台接缝必须在任何服务之前装好：CLI 分支同样会读写密码本与右键菜单。
+            PasswordCipher.Current = new DpapiCipher();
+            ShellIntegration.Factory = () => new ShellMenuService();
+
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             string configDir = Path.Combine(baseDir, "Config");
 
@@ -67,6 +71,7 @@ namespace UZIP2
             var services = new ServiceCollection();
             services.AddSingleton<IFileLogger>(logger);
             services.AddSingleton<ISettingsService>(settings);
+            services.AddSingleton<IUiDispatcher>(new WpfUiDispatcher(Dispatcher));
             services.AddSingleton(passwords);
             services.AddSingleton<CompressLogService>(sp => new CompressLogService(configDir, settings));
             services.AddSingleton<IHistoryService>(sp => new HistoryService(configDir, settings));

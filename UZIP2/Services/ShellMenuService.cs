@@ -3,8 +3,6 @@ using Microsoft.Win32;
 
 namespace UZIP2.Services
 {
-    public enum ShellMenuState { Missing, Current, Stale }
-
     public sealed class ShellMenuEntry
     {
         public ShellMenuEntry(string key, string label, string verb, string placeholder)
@@ -19,7 +17,7 @@ namespace UZIP2.Services
 
     // HKCU 右键菜单: 不需要管理员权限，也不需要 COM shell 扩展。
     // 代价是 Windows 11 下这些项落在"显示更多选项"(经典菜单)里，和 7-Zip/Bandizip 一致。
-    public sealed class ShellMenuService : IDisposable
+    public sealed class ShellMenuService : IShellIntegration
     {
         public static readonly ShellMenuEntry[] Menu =
         {

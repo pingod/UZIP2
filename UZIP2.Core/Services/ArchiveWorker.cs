@@ -6,7 +6,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using System.Windows.Data;
 using UZIP2.Models;
 
 namespace UZIP2.Services
@@ -49,7 +48,7 @@ namespace UZIP2.Services
         private readonly SlotPool _extractGate;
         private readonly SlotPool _compressGate;
         private readonly object _sync = new object();
-        private readonly System.Windows.Threading.Dispatcher _dispatcher;
+        private readonly IUiDispatcher _dispatcher;
         private long _seq;
         private int _active;
         private int _pending;
@@ -71,7 +70,7 @@ namespace UZIP2.Services
         public ArchiveWorker(IArchiveEngine zip, PasswordService passwords,
             ISettingsService settings, IFileLogger logger = null, CompressLogService compressLog = null,
             IHistoryService history = null,
-            System.Windows.Threading.Dispatcher dispatcher = null)
+            IUiDispatcher dispatcher = null)
         {
             _zip = zip;
             _passwords = passwords;
@@ -80,8 +79,8 @@ namespace UZIP2.Services
             _compressLog = compressLog ?? new CompressLogService(settings.ConfigDirectory, settings);
             _history = history;
             _jobsView = new ReadOnlyObservableCollection<JobEntry>(_jobs);
-            _dispatcher = dispatcher ?? System.Windows.Application.Current?.Dispatcher;
-            try { BindingOperations.EnableCollectionSynchronization(_jobs, _sync); } catch { }
+            _dispatcher = dispatcher;
+            try { _dispatcher?.EnableCollectionSync(_jobs, _sync); } catch { }
 
             var s = settings.Current;
             _extractGate = new SlotPool(Clamp(s.ParallelExtract));
@@ -178,7 +177,7 @@ namespace UZIP2.Services
             {
                 // 异步派发：多级解压的后续入队在解压线程上，用 Invoke 会把 worker 挂进 UI 队列，
                 // UI 一忙整批作业跟着停摆。
-                _dispatcher.BeginInvoke(() => { lock (_sync) _jobs.Add(job); });
+                _dispatcher.Post(() => { lock (_sync) _jobs.Add(job); });
             }
             Enqueue(job);
         }

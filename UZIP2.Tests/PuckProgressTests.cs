@@ -29,7 +29,7 @@ namespace UZIP2.Tests
         }
 
         static PathFigure FirstFigure(double? percent)
-            => PuckProgress.RingGeometry(percent, Size, Thickness).Figures.First();
+            => PuckRingGeometry.RingGeometry(percent, Size, Thickness).Figures.First();
 
         // ---------- SweepAngle：百分比 -> 角度 ----------
 
@@ -108,7 +108,7 @@ namespace UZIP2.Tests
         [InlineData(75.0)]
         public void Ring_ends_where_the_matching_angle_lands(double percent)
         {
-            var figs = PuckProgress.RingGeometry(percent, Size, Thickness).Figures;
+            var figs = PuckRingGeometry.RingGeometry(percent, Size, Thickness).Figures;
             var last = figs.First().Segments.OfType<ArcSegment>().Last();
             var expected = ExpectedPoint(percent);
             Assert.Equal(expected.X, last.Point.X, 4);
@@ -148,7 +148,7 @@ namespace UZIP2.Tests
         {
             foreach (double? p in new double?[] { null, 0 })
             {
-                var geo = PuckProgress.RingGeometry(p, Size, Thickness);
+                var geo = PuckRingGeometry.RingGeometry(p, Size, Thickness);
                 Assert.True(geo == null || geo.Figures.Count == 0, $"进度 {p} 不该画出环");
             }
         }
@@ -158,7 +158,7 @@ namespace UZIP2.Tests
         {
             foreach (double p in new[] { 5.0, 33.0, 66.0, 99.0, 100.0 })
             {
-                var geo = PuckProgress.RingGeometry(p, Size, Thickness);
+                var geo = PuckRingGeometry.RingGeometry(p, Size, Thickness);
                 var bounds = geo.GetRenderBounds(new Pen(Brushes.Black, Thickness));
                 Assert.True(bounds.X >= -0.01 && bounds.Y >= -0.01 &&
                             bounds.Right <= Size + 0.01 && bounds.Bottom <= Size + 0.01,

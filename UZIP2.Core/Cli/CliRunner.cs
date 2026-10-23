@@ -726,18 +726,27 @@ namespace UZIP2.Cli
         int DoShell(CliRequest r)
         {
             var sub = r.Args.Count > 0 ? r.Args[0].ToLowerInvariant() : "status";
-            using (var svc = new ShellMenuService())
+            try
             {
-                switch (sub)
+                using (var svc = ShellIntegration.Create())
                 {
-                    case "register": svc.Register(ShellMenuService.CurrentExePath); _out("已注册右键菜单 -> " + ShellMenuService.CurrentExePath); return 0;
-                    case "unregister": svc.Unregister(); _out("已移除右键菜单"); return 0;
-                    case "status":
-                        var st = svc.State(ShellMenuService.CurrentExePath);
-                        _out("状态: " + st + "   当前指向: " + (svc.ProbeCommand() ?? "(无)"));
-                        return st == ShellMenuState.Missing ? 1 : 0;
-                    default: _err("未知 shell 子命令: " + sub); return 2;
+                    var exe = ShellIntegration.CurrentExe;
+                    switch (sub)
+                    {
+                        case "register": svc.Register(exe); _out("已注册右键菜单 -> " + exe); return 0;
+                        case "unregister": svc.Unregister(); _out("已移除右键菜单"); return 0;
+                        case "status":
+                            var st = svc.State(exe);
+                            _out("状态: " + st + "   当前指向: " + (svc.ProbeCommand() ?? "(无)"));
+                            return st == ShellMenuState.Missing ? 1 : 0;
+                        default: _err("未知 shell 子命令: " + sub); return 2;
+                    }
                 }
+            }
+            catch (PlatformNotSupportedException ex)
+            {
+                _err(ex.Message);
+                return 2;
             }
         }
 
