@@ -44,6 +44,36 @@ v3.7 交付后又把整条更新链路、CLI 剩余死参数和几处热路径�
 
 **真机冒烟补做了什么**：单测进程里没有 WPF 消息泵，进度环这类"看得见"的东西只能拿真二进制跑一遍。做法是在 `artifacts\smoke\run` 起一个带独立 `Config` 的隔离实例（不碰部署版的数据），把方块放到副屏（`puckLeft=2700`），再用第二个进程把包通过单实例管道转给它——等价于把文件拖上方块——期间按 1.2 秒连拍方块窗口的真实矩形。为了不把"环有没有长大"交给肉眼，连拍里对每张图统计强调色像素数：空闲基线 180（外框与图标本身是强调色），满环再加约 170。解一个 4GB 的 solid 7z 读到的序列是 `180 → 180 → 180 → 210 → 246 → 268 → 310 → 350 → 350 → 180`，中间帧截图上是约四分之三圈配"75%"，收尾满环配"完成"，两秒后环收起、文案回到"拖到这里"。这轮冒烟同时抓出并修掉了两个单测原理上盖不住的问题：方块记不住副屏（缺陷 5）与闪示后提示位回不来（新功能 1）。**仍未真机验证**：主页/历史列表虚拟化的滚动手感（只有编译与静态检查）。
 
+## Linux 版（v3.10 起，当前为命令行）
+
+Windows 界面是 WPF，无法在 Linux 上构建或运行，所以 Linux 版从跨平台核心出发：v3.10 先把 `Models + 可移植 Services + CLI` 拆成 `UZIP2.Core`（`net8.0`，不引用任何 UI 框架），再新增无界面宿主 `UZIP2.Cli`。**当前 Linux 产物是命令行版**，功能与 Windows 的 CLI 对齐：`list / extract / compress / test / convert / diff / checksum / vault / history / config / log / watch once / update --check`。Avalonia 图形界面在后续阶段移植。
+
+安装（Arch）：
+
+```
+# 源码构建
+cd packaging/arch && makepkg -si          # PKGBUILD
+# 或用预编译二进制
+cd packaging/arch && makepkg -si -p PKGBUILD-bin
+```
+
+其它发行版直接解包 tar.gz：
+
+```
+tar -xzf UZIP2-3.10.0-linux-x64.tar.gz
+sudo install -Dm755 UZIP2-3.10.0-linux-x64/UZIP2 /usr/bin/uzip2
+```
+
+依赖只有 7-Zip（Arch: `pacman -S 7zip`；Debian/Ubuntu: `apt install 7zip`）。程序会依次找 `7zz/7z/7za`（`/usr/bin`、`/usr/local/bin`、`/usr/lib/p7zip`、`/usr/lib/7zip`，再扫 `PATH`），也可用 `uzip2 config set customize7zPath <路径>` 指定。配置落 `~/.config/uzip2`，日志落 `~/.local/state/uzip2`（遵循 XDG），程序目录只读也能跑。
+
+密码本的加密在 Linux 上没有 DPAPI，改用 **AES-256-GCM + 本机密钥文件**（`~/.config/uzip2/secret.key`，权限 0600，GUI/CLI 共用）。跨机器或换用户后旧密文解不开，程序按"密码缺失"处理而不是拿垃圾串去试。
+
+自更新（`update --apply`）只在 Windows 可用；Linux 上明确提示用包管理器更新，不做换二进制的动作。右键菜单、托盘、全局热键、悬浮方块属于桌面集成，随 Avalonia 阶段一起做，并会按 X11 / Wayland 能力降级。
+
+构建与打包：`scripts/publish-linux.ps1`（Windows 与 Linux 都能跑，交叉发布 x64/arm64 并组装 tar.gz + `.sha256` + `SHA256SUMS-linux.txt`）；CI 见 `.github/workflows/build-linux.yml`，在 `archlinux` 容器里跑真正的 `makepkg` 并安装冒烟。真机验证：Arch（WSL）上跑通 `list/extract/compress/diff`，`.pkg.tar.zst` 解包后 `uzip2 --version` 输出 `3.10.0`。
+
+一个打包坑记在这里：makepkg 默认会 `strip`，而 .NET 单文件在 ELF 末尾追加了 bundle，strip 之后运行时报 `Arithmetic overflow while reading bundle`。两个 PKGBUILD 都必须带 `options=(!strip !debug)`。
+
 ## 历史增强（v3.7 — 全量审计：并发缺陷清账 + 性能 + 格式互转/包对比）
 
 对 v3.6 做了一轮完整体检：并发与资源缺陷、CLI 正确性、服务层健壮性、性能、还能加什么场景，逐项按"先写会失败的定向测试 → 最小实现"推进。修掉审计发现的 14 项缺陷（P0 5 项 / P1 9 项；下面按主题重排展示，其中有 4 项属必死锁或必崩级），做了 6 项性能优化，新增 5 项功能。

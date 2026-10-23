@@ -1,0 +1,101 @@
+name: Build Linux
+
+# Linux 版（无界面 CLI）+ Arch 安装包。
+# 产物：
+#   UZIP2-<ver>-linux-x64.tar.gz / -arm64.tar.gz（自包含单文件，含 .sha256 侧车）
+#   uzip2-<ver>-<rel>-<arch>.pkg.tar.zst（makepkg 真构建，安装后冒烟）
+#
+# Linux 版不依赖 WPF，所以可以在 Linux 上直接 dotnet publish；
+# Windows 的 GUI 发布会话与这里互不影响。
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  linux-binary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          v=$(sed -n 's/.*AssemblyVersion("\([0-9.]*\)").*/\1/p' UZIP2/Properties/AssemblyInfo.cs | head -1 | cut -d. -f1-3)
+          test -n "$v" || { echo 'AssemblyVersion 未找到'; exit 1; }
+          echo "value=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Publish both architectures
+        shell: pwsh
+        run: ./scripts/publish-linux.ps1 -Dotnet dotnet
+
+      - name: Smoke test the x64 tarball
+        shell: bash
+        run: |
+          v="${{ steps.ver.outputs.value }}"
+          sudo apt-get update -qq && sudo apt-get install -y -qq 7zip
+          mkdir -p /tmp/smoke && tar -xzf "artifacts/$v/UZIP2-$v-linux-x64.tar.gz" -C /tmp/smoke
+          "/tmp/smoke/UZIP2-$v-linux-x64/UZIP2" --version
+          cd /tmp/smoke
+          echo hello > a.txt
+          7z a p.zip a.txt >/dev/null
+          "/tmp/smoke/UZIP2-$v-linux-x64/UZIP2" extract p.zip -o out
+          test -f out/a.txt || { echo '解压冒烟失败'; exit 1; }
+
+      - name: Upload tarballs
+        uses: actions/upload-artifact@v4
+        with:
+          name: UZIP2-linux
+          path: |
+            artifacts/${{ steps.ver.outputs.value }}/*.tar.gz
+            artifacts/${{ steps.ver.outputs.value }}/*.tar.gz.sha256
+            artifacts/${{ steps.ver.outputs.value }}/SHA256SUMS-linux.txt
+          retention-days: 14
+
+  arch-package:
+    # 源码包从 tag 归档拉取，所以只在打 tag 时跑
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Install build tools
+        run: |
+          pacman -Syu --noconfirm --needed base-devel git dotnet-sdk 7zip
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build package (source PKGBUILD)
+        shell: bash
+        run: |
+          useradd -m builder
+          chown -R builder "$GITHUB_WORKSPACE"
+          cp "$GITHUB_WORKSPACE/packaging/arch/PKGBUILD" /tmp/PKGBUILD
+          # makepkg 拒绝以 root 运行
+          su builder -c 'cd /tmp && makepkg -f --noconfirm'
+
+      - name: Install and smoke test
+        shell: bash
+        run: |
+          pacman -U --noconfirm /tmp/uzip2-*.pkg.tar.zst
+          uzip2 --version
+          mkdir -p /tmp/t && cd /tmp/t
+          echo hello > a.txt && 7z a p.zip a.txt >/dev/null
+          uzip2 extract p.zip -o out
+          test -f out/a.txt || { echo 'Arch 安装包冒烟失败'; exit 1; }
+
+      - name: Upload Arch package
+        uses: actions/upload-artifact@v4
+        with:
+          name: uzip2-arch
+          path: /tmp/uzip2-*.pkg.tar.zst
+          retention-days: 14

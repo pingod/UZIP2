@@ -40,7 +40,7 @@ namespace UZIP2.Cli
         {
             if (r.HasError) { _err(r.Error); _err(""); _err(Usage.OneLine); return 2; }
             if (_zip.SevenZipPath == null && Needs7z(r.Command))
-            { _err("未找到 7z.exe，请安装 7-Zip 或用 config set customize7zPath <路径>"); return 1; }
+            { _err("未找到 7-Zip（7z / 7zz / 7za），请安装 7zip 包，或用 config set customize7zPath <路径> 指定"); return 1; }
 
             // 7z 以自身目录为工作目录运行，相对路径会被解析到 7-Zip\ 下；
             // CLI 面向 shell，先把文件类命令的位置参数与输出目录规范成绝对路径。
@@ -827,6 +827,8 @@ namespace UZIP2.Cli
 
             // --apply
             if (!newer) { _out("已是最新版本 " + cur + "，无需更新"); return 0; }
+            if (!UpdatePolicy.CanApplyInPlaceOn(OperatingSystem.IsWindows()))
+            { _err(UpdatePolicy.PackageManagerHint); return 1; }
             if (string.IsNullOrEmpty(info.DownloadUrl))
             { _err("最新版本没有框架依赖直链，请从下载页手动更新: " + info.Url); return 1; }
             if (!SelfUpdater.CanApplyInPlace(exe))

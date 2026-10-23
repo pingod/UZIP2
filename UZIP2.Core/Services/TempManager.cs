@@ -24,10 +24,25 @@ namespace UZIP2.Services
             if (!Directory.Exists(dir))
             {
                 var created = Directory.CreateDirectory(dir);
-                created.Attributes |= FileAttributes.Hidden;
+                ApplyHidden(dir, OperatingSystem.IsWindows());
             }
             JournalAdd(journalDir, dir);
             return Completion(dir);
+        }
+
+        /// <summary>
+        /// 隐藏属性只有 Windows 有意义；Linux 上对目录设 FileAttributes.Hidden 会抛
+        /// PlatformNotSupportedException，那会把"建临时目录"整个搞挂。
+        /// </summary>
+        public static void ApplyHidden(string dir, bool isWindows)
+        {
+            if (!isWindows) return;
+            try
+            {
+                var info = new DirectoryInfo(dir);
+                if (info.Exists) info.Attributes |= FileAttributes.Hidden;
+            }
+            catch { /* 属性设不上不影响使用 */ }
         }
 
         static void JournalAdd(string journalDir, string dir)

@@ -172,3 +172,19 @@
 | G15 | **闪示结束后提示位回不来**：进度环收起（`ClearRing`）时没管图标下方那行小字，于是"完成"永远挂在空闲方块上，直到下一次拖拽才被覆盖。把提示位的取舍抽成纯函数 `PuckProgress.ResolveHint`（预览 > 完成 > 进度 > 空闲），环与文案由同一次判定决定 | `PuckHintTests` 10 个，其中 `Restores_the_idle_prompt_when_the_flash_ends` 就是这个缺陷的回归用例；真机：满环 + "完成"（t=5s）→ 两秒后环收起且文案回到"拖到这里"（t=7s 截图），强调色读数从 350 回到基线 180 |
 
 **本轮刻意不做**：更新检查的 ETag/条件 GET 与 TTL 缓存；watcher 的 `Changed` 去重与启动时先扫现存文件；跨进程历史/设置写回合并；`InstanceBus` 转发的 ack 与日志；历史搜索防抖；重定向 CLI stdout 的 UTF-8 代码页。
+
+## v3.10 Linux 阶段（P1 + P2）
+
+| # | 能力 / 修复 | 证据 |
+|---|------|------|
+| L1 | **跨平台核心 `UZIP2.Core`**：Models + 可移植 Services + CLI 共 39 个文件迁出 WPF；三个接缝 `IUiDispatcher` / `IPasswordCipher` / `IShellIntegration`；WPF 只留 DPAPI、注册表菜单、托盘、热键、剪贴板、环几何 | 763 个既有测试全绿（Debug/Release）、0 警告；`dotnet build UZIP2.Core -r linux-x64` 成功 |
+| L2 | **无界面宿主 `UZIP2.Cli`**：XDG 配置/日志（`~/.config/uzip2`、`~/.local/state/uzip2`），不建窗口、不碰单实例总线 | Arch（WSL）实测：`list`/`extract`/`compress`（含自检）/`diff`/`version --json` 全部正常，配置落在 `~/.config/uzip2` |
+| L3 | **Linux 7-Zip 定位**：`7zz/7z/7za` 的发行版路径 + `PATH` 扫描，尾分隔符归一；Windows 候选不变 | `SevenZipLocatorTests` 6 个；实机 7zip 包只提供 `/usr/sbin/7z`，靠 PATH 命中 |
+| L4 | **密码存储（无 DPAPI）**：AES-256-GCM，密钥 `secret.key` 0600，密文 `AESGCM1:` 前缀；损坏密文/换密钥/异平台密文一律按"缺失"处理；损坏密钥文件自动重生成 | `FileSecretCipherTests` 10 个（往返、不泄露明文、跨密钥失败、篡改拒绝、0600 创建、损坏自愈） |
+| L5 | **临时目录隐藏属性按平台**：Linux 不碰 `FileAttributes.Hidden`（会抛 PlatformNotSupported） | `TempHiddenTests` 3 个 |
+| L6 | **自更新平台策略**：`update --apply` 在 Linux 明确拒绝并提示包管理器 | `UpdatePolicyTests` 2 个 |
+| L7 | **tar.gz 发布**：x64/arm64 自包含单文件、包内 0755、`.sha256` 侧车、`SHA256SUMS-linux.txt` | `scripts/publish-linux.ps1` 实测产出 28.3 MB / 27.0 MB；解包后 `./UZIP2 --version` → 3.10.0 |
+| L8 | **Arch 包**：`PKGBUILD`（源码构建）与 `PKGBUILD-bin`（预编译），`arch=(x86_64 aarch64)`，必须 `options=(!strip !debug)`——strip 会切坏 .NET 单文件 bundle | Arch 真机 `makepkg -f` 产出 `.pkg.tar.zst`，解包后 36 MB 二进制 `uzip2 --version` → 3.10.0，`extract`/`diff` 冒烟通过；首次 strip 版本实测报 `Arithmetic overflow while reading bundle` |
+| L9 | **CI**：`.github/workflows/build-linux.yml`（ubuntu 发布双架构 + `archlinux` 容器 makepkg + 安装冒烟） | 尚未触发（首次打 tag 时验证） |
+
+**本阶段刻意不做**：Avalonia 界面（P3）、托盘/悬浮方块/热键/右键菜单等桌面集成（P4）、Linux 上的就地自更新、arm64 包的实机运行（仅有交叉构建）。

@@ -57,13 +57,10 @@ namespace UZIP2.Services
             if (s != null && s.Customize7z && !string.IsNullOrEmpty(s.Customize7zPath) && File.Exists(s.Customize7zPath))
                 return s.Customize7zPath;
             basePath = basePath ?? AppContext.BaseDirectory;
-            var embedded = Path.Combine(basePath, "7-Zip", "7z.exe");
-            if (File.Exists(embedded)) return embedded;
-            string[] candidates =
-            {
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "7-Zip", "7z.exe"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "7-Zip", "7z.exe")
-            };
+            var candidates = SevenZipLocator.Candidates(basePath, OperatingSystem.IsWindows(),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                Environment.GetEnvironmentVariable("PATH"));
             foreach (var c in candidates)
                 if (File.Exists(c)) return c;
             return null;
