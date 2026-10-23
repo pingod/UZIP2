@@ -4,6 +4,8 @@
 # pkgver 与 tag 对应；发布新版本时同步改这里与 sha256。
 pkgname=uzip2-bin
 pkgver=3.10.0
+# 仓库的发布 tag 是两段（v3.10），包版本是三段（3.10.0）
+_tag=v3.10
 pkgrel=1
 pkgdesc="UZIP2 — 7-Zip 前端（Linux 命令行版，预编译）"
 arch=('x86_64' 'aarch64')
@@ -19,7 +21,7 @@ case "$CARCH" in
   aarch64) _arch=arm64 ;;
   *)       _arch=x64 ;;
 esac
-source=("$pkgname-$pkgver-$_arch.tar.gz::$url/releases/download/v$pkgver/UZIP2-$pkgver-linux-$_arch.tar.gz")
+source=("$pkgname-$pkgver-$_arch.tar.gz::$url/releases/download/$_tag/UZIP2-$pkgver-linux-$_arch.tar.gz")
 # 首次发布后把 tar.gz 的 sha256 填进来（可以用 Release 附带的 .sha256 侧车核对）
 sha256sums=('SKIP')
 
