@@ -50,7 +50,7 @@ Windows 界面是 WPF，无法在 Linux 上构建或运行，所以 Linux 版从
 
 已对齐：主页队列（拖放、并发、卡片操作）、包内预览（可勾选只解压选中项）、密码本/密码纸、设置、历史、托盘、悬浮拖拽方块（含进度环）、Nautilus/Dolphin 右键菜单；CLI 全部命令与 Windows 一致：`list / extract / compress / test / convert / diff / checksum / vault / history / config / log / watch once / update --check`。
 
-Wayland 兼容性按能力降级，而不是假装对齐：X11 三项全开；KDE Wayland 托盘/热键/方块定位都可用；GNOME Wayland 没有窗口定位接口、托盘需要 AppIndicator 扩展；sway/Hyprland 这类 wlroots 合成器可定位（layer-shell）且有托盘宿主。设置页会直接把当前会话判定结果写出来。**全局热键目前只做了能力判定，尚未真正注册。**
+Wayland 兼容性按能力降级，而不是假装对齐：X11 三项全开；KDE Wayland 托盘/热键/方块定位都可用；GNOME Wayland 没有窗口定位接口、托盘需要 AppIndicator 扩展；sway/Hyprland 这类 wlroots 合成器可定位（layer-shell）且有托盘宿主。设置页会直接把当前会话判定结果写出来。**全局热键在 X11 上已实现**（轮询键位图，Ctrl+Alt+U 唤起窗口，可在设置里关闭）；Wayland 仍只做能力判定，没有注册（需要 `GlobalShortcuts` portal）。
 
 安装（Arch）：
 

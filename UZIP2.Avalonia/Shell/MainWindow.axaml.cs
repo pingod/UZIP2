@@ -11,6 +11,7 @@ namespace UZIP2.Avalonia.Shell
         private readonly Pages.HistoryView _history = new Pages.HistoryView();
         private readonly Pages.SettingsView _settings = new Pages.SettingsView();
         private PuckWindow _puck;
+        private X11HotkeyWatcher _hotkey;
 
         public MainWindow()
         {
@@ -23,6 +24,7 @@ namespace UZIP2.Avalonia.Shell
         {
             base.OnOpened(e);
             if (AppHost.Settings.Current.MiniPuck) ShowPuck();
+            StartHotkey();
         }
 
         private void OnNavHome(object sender, RoutedEventArgs e) => Show(_home, NavHome);
@@ -45,6 +47,13 @@ namespace UZIP2.Avalonia.Shell
                 b.Background = b == active
                     ? global::Avalonia.Media.Brush.Parse("#2D2D33")
                     : global::Avalonia.Media.Brushes.Transparent;
+        }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            _hotkey?.Dispose();
+            _hotkey = null;
+            base.OnClosed(e);
         }
 
         public void ShowFromTray()
@@ -70,6 +79,28 @@ namespace UZIP2.Avalonia.Shell
                 _puck = null;
                 ShowFromTray();
             }
+        }
+
+        private void StartHotkey()
+        {
+            var s = AppHost.Settings.Current;
+            if (!s.UseHotKey) return;
+            if (!AppHost.Capabilities.GlobalHotkeys || !AppHost.Capabilities.IsX11) return;
+
+            var key = KeySymName(s.HotKeyKey);
+            _hotkey = X11HotkeyWatcher.TryCreate(key, s.HotKeyCtrl, s.HotKeyAlt, s.HotKeyShift,
+                () => global::Avalonia.Threading.Dispatcher.UIThread.Post(ShowFromTray));
+            AppHost.Logger?.Info(_hotkey != null
+                ? $"全局热键已启用: {key}"
+                : "全局热键启用失败（没有 DISPLAY 或 keymap 不含该键）");
+        }
+
+        // Windows 存的是虚拟键码；X11 要 keysym 名。字母/数字直接映射，其余退回 u。
+        private static string KeySymName(uint vk)
+        {
+            if (vk >= 'A' && vk <= 'Z') return ((char)('a' + (vk - 'A'))).ToString();
+            if (vk >= '0' && vk <= '9') return ((char)vk).ToString();
+            return "u";
         }
 
         private void ShowPuck()

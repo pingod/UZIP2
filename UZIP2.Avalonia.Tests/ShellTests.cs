@@ -147,6 +147,25 @@ namespace UZIP2.Avalonia.Tests
             }
         }
 
+        [AvaloniaFact]
+        public void Convert_dialog_offers_every_creatable_format()
+        {
+            EnsureHost();
+            var dlg = new ConvertDialog("/tmp/sample.zip");
+            var box = dlg.FindControl<ComboBox>("FormatBox");
+            var items = ((System.Collections.IEnumerable)box.ItemsSource).Cast<string>().ToList();
+            Assert.Equal(7, items.Count);
+            Assert.Contains("7z", items[1]);
+            Assert.Equal(1, box.SelectedIndex);
+        }
+
+        [Fact]
+        public void X11_hotkey_watcher_degrades_without_a_display()
+        {
+            // Windows 上没 libX11；Linux CI 上没有 DISPLAY —— 两种情况都必须安静地返回 null
+            Assert.Null(X11HotkeyWatcher.TryCreate("u", true, true, false, () => { }));
+        }
+
         // 单实例在 Linux 上也得成立：命名管道在 Unix 下是域套接字，值得真跑一遍。
         [Fact]
         public async System.Threading.Tasks.Task Single_instance_bus_forwards_files_on_this_platform()

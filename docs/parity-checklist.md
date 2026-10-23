@@ -231,3 +231,6 @@
 
 | O3 | **密码页（Avalonia）**：密码本增删、逐行显示/隐藏、复制、成功次数；密码纸整段粘贴、清空、上限提示 | `Password_page_masks_the_book_and_reveals_on_demand`；渲染截图 `artifacts/ui/avalon-password.png` |
 | O4 | **包内预览勾选**：清单逐项勾选 + 全选/清空 + 解压选中（走 `onlyEntries`），解压全部照旧 | 复用既有 onlyEntries 路径；UI 接线 |
+
+| O5 | **主页卡片新增三个入口**：转格式（7 种可创建格式，原包保留）、校验和（SHA-256 + 旁挂校验文件逐条比对）、包对比（选另一个包，清单差异） | `Convert_dialog_offers_every_creatable_formats`；三者复用既有 `EnqueueConvert` / `ChecksumService.VerifyAsync` / `ArchiveDiff` |
+| O6 | **X11 全局热键**：不抢键，150ms 轮询键位图与修饰键掩码，边沿触发（Ctrl+Alt+U 唤起窗口）；无 DISPLAY / 无 libX11 时安静降级 | `HotkeyMatcherTests` 8 个（边沿、修饰键精确匹配、别的键不触发）；`X11_hotkey_watcher_degrades_without_a_display` |

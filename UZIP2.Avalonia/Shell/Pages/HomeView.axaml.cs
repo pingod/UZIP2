@@ -141,6 +141,38 @@ namespace UZIP2.Avalonia.Shell.Pages
             if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir)) OpenPath(dir);
         }
 
+        private void OnConvertJob(object sender, RoutedEventArgs e)
+        {
+            var job = Job(sender);
+            if (job == null || !File.Exists(job.Archive)) return;
+            var owner = TopLevel.GetTopLevel(this) as Window;
+            var dlg = new ConvertDialog(job.Archive);
+            if (owner != null) dlg.ShowDialog(owner); else dlg.Show();
+        }
+
+        private void OnChecksumJob(object sender, RoutedEventArgs e)
+        {
+            var job = Job(sender);
+            if (job == null || !File.Exists(job.Archive)) return;
+            new ChecksumWindow(job.Archive).Show();
+        }
+
+        private async void OnDiffJob(object sender, RoutedEventArgs e)
+        {
+            var job = Job(sender);
+            if (job == null || !File.Exists(job.Archive)) return;
+            var top = TopLevel.GetTopLevel(this);
+            if (top?.StorageProvider == null) return;
+            var picked = await top.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "选择要对比的另一个包",
+                AllowMultiple = false
+            });
+            var other = picked.FirstOrDefault()?.TryGetLocalPath();
+            if (string.IsNullOrEmpty(other)) return;
+            new DiffWindow(job.Archive, other).Show();
+        }
+
         private void OnClearDone(object sender, RoutedEventArgs e)
         {
             AppHost.Worker.RemoveTerminal(j => j.Status == JobStatus.Success || j.Status == JobStatus.Cancelled);

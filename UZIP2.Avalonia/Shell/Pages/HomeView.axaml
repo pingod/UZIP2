@@ -38,12 +38,15 @@
                 <TextBlock Text="{Binding Status, Converter={StaticResource StatusText}}"
                            Foreground="#8AB4F8" VerticalAlignment="Center" />
               </StackPanel>
-              <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="6">
-                <Button Content="取消" Click="OnCancelJob" IsVisible="{Binding !IsTerminal}" />
-                <Button Content="预览" Click="OnPreviewJob" IsVisible="{Binding IsTerminal}" />
-                <Button Content="打开目录" Click="OnOpenOutput" IsVisible="{Binding IsTerminal}" />
-                <Button Content="移除" Click="OnRemoveJob" IsVisible="{Binding IsTerminal}" />
-              </StackPanel>
+              <WrapPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="取消" Margin="6,0,0,0" Click="OnCancelJob" IsVisible="{Binding !IsTerminal}" />
+                <Button Content="预览" Margin="6,0,0,0" Click="OnPreviewJob" IsVisible="{Binding IsTerminal}" />
+                <Button Content="转格式" Margin="6,0,0,0" Click="OnConvertJob" IsVisible="{Binding IsTerminal}" />
+                <Button Content="校验" Margin="6,0,0,0" Click="OnChecksumJob" IsVisible="{Binding IsTerminal}" />
+                <Button Content="对比" Margin="6,0,0,0" Click="OnDiffJob" IsVisible="{Binding IsTerminal}" />
+                <Button Content="打开目录" Margin="6,0,0,0" Click="OnOpenOutput" IsVisible="{Binding IsTerminal}" />
+                <Button Content="移除" Margin="6,0,0,0" Click="OnRemoveJob" IsVisible="{Binding IsTerminal}" />
+              </WrapPanel>
               <ProgressBar Grid.Row="1" Grid.ColumnSpan="2" Margin="0,10,0,0" Minimum="0" Maximum="100"
                            Value="{Binding Percent, Converter={StaticResource Pct}}" />
               <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Margin="0,6,0,0" Opacity="0.6" FontSize="12"

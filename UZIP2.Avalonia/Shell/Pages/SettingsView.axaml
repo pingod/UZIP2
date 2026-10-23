@@ -51,6 +51,7 @@
           <TextBlock Text="桌面集成" FontWeight="SemiBold" />
           <TextBlock x:Name="CapsText" TextWrapping="Wrap" Opacity="0.75" />
           <TextBlock x:Name="MenuStateText" Opacity="0.75" TextWrapping="Wrap" />
+          <CheckBox x:Name="HotkeyBox" Content="启用全局热键（X11：Ctrl+Alt+U 唤起窗口；Wayland 暂不支持）" />
           <StackPanel Orientation="Horizontal" Spacing="8">
             <Button Content="安装右键菜单" Click="OnInstallMenu" />
             <Button Content="移除右键菜单" Click="OnRemoveMenu" />

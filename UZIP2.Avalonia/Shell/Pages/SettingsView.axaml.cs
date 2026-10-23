@@ -29,6 +29,7 @@ namespace UZIP2.Avalonia.Shell.Pages
             OpenAfterBox.IsChecked = s.AutoOpenAfterExtract;
             RecycleBox.IsChecked = s.DeleteToRecycle;
             WatchEnabledBox.IsChecked = s.WatchEnabled;
+            HotkeyBox.IsChecked = s.UseHotKey;
             WatchFolderBox.Text = s.WatchFolder;
             VersionText.Text = $"UZIP {UpdateService.CurrentVersion()} · 配置目录 {AppHost.Layout.ConfigDirectory}";
             CapsText.Text = AppHost.Capabilities.Summary();
@@ -91,6 +92,7 @@ namespace UZIP2.Avalonia.Shell.Pages
                 s.AutoOpenAfterExtract = OpenAfterBox.IsChecked == true;
                 s.DeleteToRecycle = RecycleBox.IsChecked == true;
                 s.WatchEnabled = WatchEnabledBox.IsChecked == true;
+                s.UseHotKey = HotkeyBox.IsChecked == true;
                 s.WatchFolder = WatchFolderBox.Text ?? "";
             });
             AppHost.Watcher.Apply();

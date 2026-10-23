@@ -1,0 +1,17 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="UZIP2.Avalonia.Shell.ConvertDialog"
+        Title="转换格式" Width="420" Height="220"
+        WindowStartupLocation="CenterOwner" CanResize="False">
+  <StackPanel Margin="20" Spacing="14">
+    <TextBlock x:Name="SourceText" Opacity="0.75" TextWrapping="Wrap" />
+    <TextBlock Text="目标格式" FontWeight="SemiBold" />
+    <ComboBox x:Name="FormatBox" HorizontalAlignment="Stretch" SelectedIndex="1" />
+    <TextBlock Text="原包会保留；单流格式（bz2/gz/xz）只装得下单个文件，多条目会被拒绝。"
+               Opacity="0.55" FontSize="12" TextWrapping="Wrap" />
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <Button Content="转换" Click="OnConvert" />
+      <Button Content="取消" Click="OnCancel" />
+    </StackPanel>
+  </StackPanel>
+</Window>
