@@ -3,9 +3,9 @@
 # 二进制包：直接用 GitHub Release 里的自包含 tar.gz，不编译、不需要 dotnet-sdk。
 # pkgver 与 tag 对应；发布新版本时同步改这里与 sha256。
 pkgname=uzip2-bin
-pkgver=3.11.0
+pkgver=3.12.0
 # 仓库的发布 tag 是两段（v3.10），包版本是三段（3.10.0）
-_tag=v3.11
+_tag=v3.12
 pkgrel=1
 pkgdesc="UZIP2 — 7-Zip 前端（Linux 命令行版，预编译）"
 arch=('x86_64' 'aarch64')

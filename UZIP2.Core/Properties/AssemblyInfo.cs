@@ -7,5 +7,5 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyProduct("UZIP2")]
 [assembly: AssemblyCopyright("Copyright © 无常 (pingod) 2021-2026")]
 [assembly: ComVisible(false)]
-[assembly: AssemblyVersion("3.11.0.0")]
-[assembly: AssemblyFileVersion("3.11.0.0")]
+[assembly: AssemblyVersion("3.12.0.0")]
+[assembly: AssemblyFileVersion("3.12.0.0")]
