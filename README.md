@@ -26,7 +26,7 @@ v3.10 把 Linux 版做出来了，v3.11 把它补齐到"日常能直接用"：�
 
 **验证**：811 个 WPF 测试 + 11 个 Avalonia 测试（含单实例转发、桌面能力判定、热键边沿逻辑、密码页遮罩、渲染截图），Debug/Release 全绿、0 警告。
 
-**仍未做**：Wayland 的全局热键（需要 `GlobalShortcuts` portal）；Thunar 自定义动作的 `uca.xml` 合并；托盘/方块定位仍未有真实 Wayland/X11 会话的实机验证。
+**验证**：X11 侧在 WSL + Xvfb 里真跑过（窗口创建、热键注册、100ms 按键触发均留日志）；Wayland portal 与托盘/方块定位仍缺真实桌面会话的实机验证。
 
 ## 本次增强（v3.8 — 悬浮方块进度环 + 审计第二轮：更新链路 / CLI 补漏 / 性能）
 
@@ -67,7 +67,7 @@ Windows 界面是 WPF，无法在 Linux 上构建或运行，所以 Linux 版从
 
 已对齐：主页队列（拖放、并发、卡片操作）、包内预览（可勾选只解压选中项）、密码本/密码纸、设置、历史、托盘、悬浮拖拽方块（含进度环）、Nautilus/Dolphin 右键菜单；CLI 全部命令与 Windows 一致：`list / extract / compress / test / convert / diff / checksum / vault / history / config / log / watch once / update --check`。
 
-Wayland 兼容性按能力降级，而不是假装对齐：X11 三项全开；KDE Wayland 托盘/热键/方块定位都可用；GNOME Wayland 没有窗口定位接口、托盘需要 AppIndicator 扩展；sway/Hyprland 这类 wlroots 合成器可定位（layer-shell）且有托盘宿主。设置页会直接把当前会话判定结果写出来。**全局热键在 X11 上已实现**（轮询键位图，Ctrl+Alt+U 唤起窗口，可在设置里关闭）；Wayland 仍只做能力判定，没有注册（需要 `GlobalShortcuts` portal）。
+Wayland 兼容性按能力降级，而不是假装对齐：X11 三项全开；KDE Wayland 托盘/热键/方块定位都可用；GNOME Wayland 没有窗口定位接口、托盘需要 AppIndicator 扩展；sway/Hyprland 这类 wlroots 合成器可定位（layer-shell）且有托盘宿主。设置页会直接把当前会话判定结果写出来。**全局热键**：X11 用 25ms 轮询键位图（Ctrl+Alt+U 唤起窗口，在 Xvfb 实机上验证过按下即触发）；Wayland 走 XDG 的 `GlobalShortcuts` portal（经 `gdbus` 调用，目前只有 KDE 实现了它），没有 portal 时安静关闭并在日志里说明。
 
 安装（Arch）：
 

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Xml.Linq;
 using UZIP2.Services;
 using Xunit;
 
@@ -95,6 +96,68 @@ namespace UZIP2.Tests
             Assert.False(File.Exists(Path.Combine(scripts, "UZIP2 压缩")));
             Assert.True(File.Exists(foreign), "不是我们写的脚本不能删");
             Assert.Equal(ShellMenuState.Missing, svc.State(_exe));
+        }
+
+        private string UcaPath => Path.Combine(_home, ".config", "Thunar", "uca.xml");
+
+        private void SeedUserThunarAction()
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(UcaPath));
+            File.WriteAllText(UcaPath,
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+                "<actions><action><unique-id>user-one</unique-id><name>用户自己的动作</name>" +
+                "<command>echo hi</command></action></actions>");
+        }
+
+        private static System.Collections.Generic.List<string> Ids(string path)
+            => XDocument.Load(path).Descendants("unique-id").Select(e => e.Value).ToList();
+
+        [Fact]
+        public void Register_merges_thunar_actions_and_keeps_the_users_own()
+        {
+            SeedUserThunarAction();
+            using var svc = New();
+            svc.Register(_exe);
+
+            var ids = Ids(UcaPath);
+            Assert.Contains("user-one", ids);
+            Assert.Contains("uzip2-extract-here", ids);
+            Assert.Contains("uzip2-compress", ids);
+            Assert.True(File.Exists(UcaPath + ".uzip2.bak"), "改用户的 uca.xml 前必须留备份");
+            Assert.Contains(_exe, File.ReadAllText(UcaPath));
+        }
+
+        [Fact]
+        public void Register_is_idempotent_for_thunar()
+        {
+            using var svc = New();
+            svc.Register(_exe);
+            svc.Register(_exe);
+            var ids = Ids(UcaPath);
+            Assert.Single(ids.Where(i => i == "uzip2-extract-here"));
+            Assert.Single(ids.Where(i => i == "uzip2-compress"));
+        }
+
+        [Fact]
+        public void Unregister_leaves_the_thunar_file_and_user_actions_intact()
+        {
+            SeedUserThunarAction();
+            using var svc = New();
+            svc.Register(_exe);
+            svc.Unregister();
+
+            var ids = Ids(UcaPath);
+            Assert.Equal(new[] { "user-one" }, ids);
+            Assert.False(File.Exists(Path.Combine(_home, ".local", "share", "nautilus", "scripts", "UZIP2 压缩")));
+        }
+
+        [Fact]
+        public void State_turns_stale_when_thunar_entries_point_elsewhere()
+        {
+            using var svc = New();
+            svc.Register(_exe);
+            File.WriteAllText(UcaPath, File.ReadAllText(UcaPath).Replace(_exe, "/opt/other/uzip2"));
+            Assert.Equal(ShellMenuState.Stale, svc.State(_exe));
         }
 
         [Fact]

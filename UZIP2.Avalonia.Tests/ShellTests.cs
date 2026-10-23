@@ -166,6 +166,13 @@ namespace UZIP2.Avalonia.Tests
             Assert.Null(X11HotkeyWatcher.TryCreate("u", true, true, false, () => { }));
         }
 
+        [Fact]
+        public void Wayland_portal_returns_null_when_no_portal_is_available()
+        {
+            // Windows：不是 Linux；Linux CI：没有 WAYLAND_DISPLAY/portal —— 都必须安静返回 null
+            Assert.Null(WaylandShortcutPortal.TryCreate("toggle", "显示 UZIP2", "CTRL+ALT+u", () => { }));
+        }
+
         // 单实例在 Linux 上也得成立：命名管道在 Unix 下是域套接字，值得真跑一遍。
         [Fact]
         public async System.Threading.Tasks.Task Single_instance_bus_forwards_files_on_this_platform()

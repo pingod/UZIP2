@@ -234,3 +234,7 @@
 
 | O5 | **主页卡片新增三个入口**：转格式（7 种可创建格式，原包保留）、校验和（SHA-256 + 旁挂校验文件逐条比对）、包对比（选另一个包，清单差异） | `Convert_dialog_offers_every_creatable_formats`；三者复用既有 `EnqueueConvert` / `ChecksumService.VerifyAsync` / `ArchiveDiff` |
 | O6 | **X11 全局热键**：不抢键，150ms 轮询键位图与修饰键掩码，边沿触发（Ctrl+Alt+U 唤起窗口）；无 DISPLAY / 无 libX11 时安静降级 | `HotkeyMatcherTests` 8 个（边沿、修饰键精确匹配、别的键不触发）；`X11_hotkey_watcher_degrades_without_a_display` |
+
+| O7 | **Thunar 右键菜单**：动作合并进用户已有的 `~/.config/Thunar/uca.xml`（不覆盖别人的动作），首次修改前留 `.uzip2.bak`，重复注册幂等，卸载只移除 `uzip2-extract-here`/`uzip2-compress` 两条 | `LinuxShellIntegrationTests` 新增 4 个（保留用户动作、幂等、卸载还原、指向别的版本时 Stale） |
+| O8 | **Wayland 全局热键（GlobalShortcuts portal）**：经 `gdbus` 建会话、绑定 `toggle`（Ctrl+Alt+U）、监听 `Activated` 信号；仅 Wayland + 有 portal 的桌面（KDE）启用，缺 gdbus/portal 时返回 null | `PortalOutputTests` 4 个（会话路径解析、激活行识别、别的信号不误判）；无 portal 时安静降级（测试） |
+| O9 | **X11 实机验证**：WSL + Xvfb 真 X 服务器上启动，`xwininfo` 看到 `"UZIP2" 1000x700` 窗口，日志记录热键注册成功，`xdotool` 按住 Ctrl+Alt+U 后记录"全局热键触发"；轮询从 150ms 收紧到 25ms 以接住 100ms 级按键 | 见 commit；日志两条：`全局热键已启用（X11）: u` / `全局热键触发，唤起窗口` |

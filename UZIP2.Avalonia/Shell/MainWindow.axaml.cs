@@ -12,6 +12,7 @@ namespace UZIP2.Avalonia.Shell
         private readonly Pages.SettingsView _settings = new Pages.SettingsView();
         private PuckWindow _puck;
         private X11HotkeyWatcher _hotkey;
+        private WaylandShortcutPortal _portal;
 
         public MainWindow()
         {
@@ -53,6 +54,8 @@ namespace UZIP2.Avalonia.Shell
         {
             _hotkey?.Dispose();
             _hotkey = null;
+            _portal?.Dispose();
+            _portal = null;
             base.OnClosed(e);
         }
 
@@ -85,14 +88,30 @@ namespace UZIP2.Avalonia.Shell
         {
             var s = AppHost.Settings.Current;
             if (!s.UseHotKey) return;
-            if (!AppHost.Capabilities.GlobalHotkeys || !AppHost.Capabilities.IsX11) return;
+            if (!AppHost.Capabilities.GlobalHotkeys) return;
 
-            var key = KeySymName(s.HotKeyKey);
-            _hotkey = X11HotkeyWatcher.TryCreate(key, s.HotKeyCtrl, s.HotKeyAlt, s.HotKeyShift,
-                () => global::Avalonia.Threading.Dispatcher.UIThread.Post(ShowFromTray));
-            AppHost.Logger?.Info(_hotkey != null
-                ? $"全局热键已启用: {key}"
-                : "全局热键启用失败（没有 DISPLAY 或 keymap 不含该键）");
+            var show = new Action(() =>
+                global::Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    AppHost.Logger?.Info("全局热键触发，唤起窗口");
+                    ShowFromTray();
+                }));
+
+            if (AppHost.Capabilities.IsX11)
+            {
+                var key = KeySymName(s.HotKeyKey);
+                _hotkey = X11HotkeyWatcher.TryCreate(key, s.HotKeyCtrl, s.HotKeyAlt, s.HotKeyShift, show);
+                AppHost.Logger?.Info(_hotkey != null
+                    ? $"全局热键已启用（X11）: {key}"
+                    : "全局热键启用失败（没有 DISPLAY 或 keymap 不含该键）");
+                return;
+            }
+
+            // Wayland：只有实现了 GlobalShortcuts portal 的桌面（如 KDE）才有全局热键
+            _portal = WaylandShortcutPortal.TryCreate("toggle", "显示 UZIP2", "CTRL+ALT+u", show);
+            AppHost.Logger?.Info(_portal != null
+                ? "全局热键已通过 GlobalShortcuts portal 注册"
+                : "Wayland 会话没有可用的 GlobalShortcuts portal，全局热键未启用");
         }
 
         // Windows 存的是虚拟键码；X11 要 keysym 名。字母/数字直接映射，其余退回 u。

@@ -48,7 +48,7 @@ namespace UZIP2.Avalonia.Shell
             _root = root;
             _matcher = matcher;
             _onFire = onFire;
-            _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+            _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(25) };
             _timer.Tick += (_, __) => Poll();
             _timer.Start();
         }
