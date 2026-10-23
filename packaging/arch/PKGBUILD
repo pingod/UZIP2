@@ -36,5 +36,12 @@ build() {
 
 package() {
   install -Dm755 "$srcdir/out/UZIP2.Avalonia" "$pkgdir/usr/bin/uzip2"
-  install -Dm644 "$srcdir/UZIP2-${_tag#v}/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  _src="$srcdir/UZIP2-${_tag#v}"
+  install -Dm644 "$_src/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  # 桌面入口与图标是 v3.11 起才随源码提供的；旧 tag 没有这些文件时照常构建，只是不出菜单项
+  if [[ -f "$_src/packaging/linux/uzip2.desktop" ]]; then
+    install -Dm644 "$_src/packaging/linux/uzip2.desktop" "$pkgdir/usr/share/applications/uzip2.desktop"
+    install -Dm644 "$_src/packaging/linux/uzip2.png" "$pkgdir/usr/share/icons/hicolor/128x128/apps/uzip2.png"
+    install -Dm644 "$_src/packaging/linux/uzip2-48.png" "$pkgdir/usr/share/icons/hicolor/48x48/apps/uzip2.png"
+  fi
 }

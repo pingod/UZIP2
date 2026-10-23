@@ -65,6 +65,10 @@ UZIP2 $Ver —— Linux 版（图形界面 + 命令行）
   tar -xzf UZIP2-$Ver-linux-<rid>.tar.gz
   sudo install -Dm755 UZIP2-$Ver-linux-<rid>/UZIP2 /usr/bin/uzip2
 
+桌面菜单项（可选，装完就能在应用列表里搜到 UZIP2）：
+  sudo install -Dm644 UZIP2-$Ver-linux-<rid>/uzip2.desktop /usr/share/applications/uzip2.desktop
+  sudo install -Dm644 UZIP2-$Ver-linux-<rid>/uzip2.png /usr/share/icons/hicolor/128x128/apps/uzip2.png
+
 依赖：7-Zip（Arch: pacman -S 7zip；Debian/Ubuntu: apt install 7zip / p7zip-full）
 配置与日志：~/.config/uzip2 与 ~/.local/state/uzip2（遵循 XDG）
 密码本：AES-256-GCM，密钥在 ~/.config/uzip2/secret.key（0600）
@@ -95,6 +99,10 @@ foreach ($rid in $Rids) {
   New-Item -ItemType Directory -Path $stage -Force | Out-Null
   # 发布出来的可执行名是 UZIP2.Avalonia；装到系统里统一叫 uzip2
   Copy-Item (Join-Path $publishDir 'UZIP2.Avalonia') (Join-Path $stage 'UZIP2') -Force
+  # 桌面入口与图标：tarball 里一并带上，安装脚本/PKGBUILD-bin 直接用
+  Copy-Item (Join-Path $RepoRoot 'packaging/linux/uzip2.desktop') $stage -Force
+  Copy-Item (Join-Path $RepoRoot 'packaging/linux/uzip2.png') $stage -Force
+  Copy-Item (Join-Path $RepoRoot 'packaging/linux/uzip2-48.png') $stage -Force
   Set-Content -Path (Join-Path $stage 'README.md') -Value $readme -Encoding UTF8
 
   $tarName = "UZIP2-$Ver-linux-$arch.tar.gz"

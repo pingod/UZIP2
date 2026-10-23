@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=UZIP2
+GenericName=Archive Manager
+Comment=7-Zip 前端：解压 / 压缩 / 格式转换
+Exec=uzip2 %F
+Icon=uzip2
+Terminal=false
+Categories=Utility;Archiver;
+MimeType=application/zip;application/x-7z-compressed;application/x-rar;application/vnd.rar;application/x-tar;application/gzip;application/x-bzip2;application/x-xz;
+StartupNotify=true

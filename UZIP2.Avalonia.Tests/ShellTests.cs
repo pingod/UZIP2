@@ -106,8 +106,7 @@ namespace UZIP2.Avalonia.Tests
 
         [AvaloniaFact]
         public void Ring_geometry_is_empty_at_zero_and_closes_at_full()
-        {
-            Assert.Null(PuckRingGeometry.Build(null, 56, 4));
+        {            Assert.Null(PuckRingGeometry.Build(null, 56, 4));
             Assert.Null(PuckRingGeometry.Build(0, 56, 4));
 
             var half = PuckRingGeometry.Build(50, 56, 4);
@@ -120,6 +119,27 @@ namespace UZIP2.Avalonia.Tests
             var full = PuckRingGeometry.Build(100, 56, 4);
             Assert.NotNull(full);
             Assert.True(full.Bounds.Width >= 50 && full.Bounds.Height >= 50, $"满圈应闭合，实际 {full.Bounds}");
+        }
+
+        // 单实例在 Linux 上也得成立：命名管道在 Unix 下是域套接字，值得真跑一遍。
+        [Fact]
+        public async System.Threading.Tasks.Task Single_instance_bus_forwards_files_on_this_platform()
+        {
+            var suffix = Guid.NewGuid().ToString("N");
+            var mutex = "UZipTestMutex_" + suffix;
+            var pipe = "UZipTestPipe_" + suffix;
+
+            using var primary = new InstanceBus(mutex, pipe);
+            Assert.True(primary.TryBecomePrimary());
+            var received = new System.Threading.Tasks.TaskCompletionSource<string[]>();
+            primary.FilesReceived += files => received.TrySetResult(files);
+
+            // 同进程里再造一个 InstanceBus 会重入同一把互斥体（同线程所有），
+            // 所以第二实例直接走转发路径模拟——这里要证明的是管道在 Unix 上也能通。
+            Assert.True(InstanceBus.ForwardArgsToPrimary(pipe, new[] { "/tmp/a.zip", "/tmp/b.7z" }));
+
+            var files = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(new[] { "/tmp/a.zip", "/tmp/b.7z" }, files);
         }
     }
 }

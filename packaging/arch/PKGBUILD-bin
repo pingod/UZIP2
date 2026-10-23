@@ -26,5 +26,12 @@ source=("$pkgname-$pkgver-$_arch.tar.gz::$url/releases/download/$_tag/UZIP2-$pkg
 sha256sums=('SKIP')
 
 package() {
-  install -Dm755 "$srcdir/UZIP2-$pkgver-linux-$_arch/UZIP2" "$pkgdir/usr/bin/uzip2"
+  _src="$srcdir/UZIP2-$pkgver-linux-$_arch"
+  install -Dm755 "$_src/UZIP2" "$pkgdir/usr/bin/uzip2"
+  # 旧版 tar.gz 里没有桌面入口，缺了就照常装二进制
+  if [[ -f "$_src/uzip2.desktop" ]]; then
+    install -Dm644 "$_src/uzip2.desktop" "$pkgdir/usr/share/applications/uzip2.desktop"
+    install -Dm644 "$_src/uzip2.png" "$pkgdir/usr/share/icons/hicolor/128x128/apps/uzip2.png"
+    install -Dm644 "$_src/uzip2-48.png" "$pkgdir/usr/share/icons/hicolor/48x48/apps/uzip2.png"
+  fi
 }

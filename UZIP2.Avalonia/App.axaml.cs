@@ -23,6 +23,21 @@ namespace UZIP2.Avalonia
                 var window = new MainWindow();
                 desktop.MainWindow = window;
                 SetupTray(window, desktop);
+
+                // 启动参数里带的文件（文件管理器"打开方式"）在服务就绪后入队
+                if (Program.StartupFiles.Length > 0)
+                    global::Avalonia.Threading.Dispatcher.UIThread.Post(() => FileRouter.EnqueueAuto(Program.StartupFiles));
+
+                // 第二实例转发的路径
+                if (Program.Bus != null)
+                {
+                    Program.Bus.FilesReceived += files => global::Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                    {
+                        window.ShowFromTray();
+                        FileRouter.EnqueueAuto(files);
+                    });
+                }
+
                 desktop.ShutdownRequested += (_, __) => AppHost.Shutdown();
             }
             base.OnFrameworkInitializationCompleted();

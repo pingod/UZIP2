@@ -221,3 +221,10 @@
 | R1 | Linux 发布物切换到 **Avalonia 二进制**（GUI + CLI 同一文件），`publish-linux.ps1` 增加 `IncludeNativeLibrariesForSelfExtract` 并把产物统一命名为 `UZIP2` | tar.gz 37.3 MB / 33.9 MB；Arch 上解包后 `--version` → 3.10.0、`extract` 正常 |
 | R2 | Arch 包依赖补齐 `fontconfig freetype2 libice libsm`（Avalonia 运行时需要），源码包改为构建 `UZIP2.Avalonia` | Arch（WSL）真机 `makepkg` 产出 `.pkg.tar.zst`，payload 86.7 MB、`uzip2 --version` → 3.10.0；缺依赖时 makepkg 会明确报 "Could not resolve all dependencies"（已据此补全） |
 | R3 | 文档：README 的 Linux 章节改写为"图形界面 + 命令行、同一个二进制"，说明 Wayland 能力降级与全局热键尚未注册 | 本节 + README |
+
+## v3.11 后续（Linux 桌面体验收尾）
+
+| # | 内容 | 证据 |
+|---|------|------|
+| O1 | **单实例 + 文件参数**：Linux 图形版接上 `InstanceBus`，第二个进程只转发路径；启动参数（文件管理器"打开方式"）在服务就绪后按自动模式入队；拖放/参数/转发共用 `FileRouter` | 新增跨平台测试 `Single_instance_bus_forwards_files_on_this_platform`（Linux CI 真跑命名管道转发） |
+| O2 | **桌面入口**：`packaging/linux/uzip2.desktop` + 48/128 px 图标，随 tar.gz 与 Arch 包安装（旧 tag 缺文件时跳过，不阻断构建） | makepkg 安装路径检查；tarball 内含 desktop/icon |

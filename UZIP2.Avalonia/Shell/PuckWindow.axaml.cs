@@ -88,19 +88,9 @@ namespace UZIP2.Avalonia.Shell
                 .Select(f => f.TryGetLocalPath())
                 .Where(p => !string.IsNullOrEmpty(p))
                 .ToArray() ?? Array.Empty<string>();
-            if (paths.Length > 0) EnqueuePaths(paths);
+            if (paths.Length > 0) FileRouter.EnqueueAuto(paths);
             e.Handled = true;
             Refresh();
-        }
-
-        internal static void EnqueuePaths(string[] paths)
-        {
-            var list = paths.Where(p => File.Exists(p) || Directory.Exists(p)).ToList();
-            if (list.Count == 0) return;
-            var archives = list.Where(p => File.Exists(p) && ArchiveInspector.CanExtractByExtension(p)).ToList();
-            var others = list.Except(archives).ToList();
-            if (archives.Count > 0) AppHost.Worker.EnqueueExtract(archives);
-            if (others.Count > 0) AppHost.Worker.EnqueueCompress(others);
         }
 
         // ---- 进度环 ----
