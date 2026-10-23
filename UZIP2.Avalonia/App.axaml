@@ -1,0 +1,14 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="using:UZIP2.Avalonia.Converters"
+             x:Class="UZIP2.Avalonia.App"
+             RequestedThemeVariant="Dark">
+  <Application.Resources>
+    <converters:PercentValueConverter x:Key="Pct" />
+    <converters:JobStatusTextConverter x:Key="StatusText" />
+    <converters:UnixMsConverter x:Key="UnixMs" />
+  </Application.Resources>
+  <Application.Styles>
+    <FluentTheme />
+  </Application.Styles>
+</Application>

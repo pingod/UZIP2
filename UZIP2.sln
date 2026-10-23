@@ -11,6 +11,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UZIP2.Core", "UZIP2.Core\UZ
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UZIP2.Cli", "UZIP2.Cli\UZIP2.Cli.csproj", "{47FD7A5F-B052-4BE1-93E7-E64127E4F114}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UZIP2.Avalonia", "UZIP2.Avalonia\UZIP2.Avalonia.csproj", "{69FC192A-6A27-4CEB-AE1A-E34BAEDBA77F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UZIP2.Avalonia.Tests", "UZIP2.Avalonia.Tests\UZIP2.Avalonia.Tests.csproj", "{4A109623-9037-451E-AEBE-A7C94A1E2080}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +37,14 @@ Global
 		{47FD7A5F-B052-4BE1-93E7-E64127E4F114}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{47FD7A5F-B052-4BE1-93E7-E64127E4F114}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{47FD7A5F-B052-4BE1-93E7-E64127E4F114}.Release|Any CPU.Build.0 = Release|Any CPU
+		{69FC192A-6A27-4CEB-AE1A-E34BAEDBA77F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{69FC192A-6A27-4CEB-AE1A-E34BAEDBA77F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{69FC192A-6A27-4CEB-AE1A-E34BAEDBA77F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{69FC192A-6A27-4CEB-AE1A-E34BAEDBA77F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4A109623-9037-451E-AEBE-A7C94A1E2080}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4A109623-9037-451E-AEBE-A7C94A1E2080}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4A109623-9037-451E-AEBE-A7C94A1E2080}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4A109623-9037-451E-AEBE-A7C94A1E2080}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

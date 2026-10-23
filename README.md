@@ -46,7 +46,7 @@ v3.7 交付后又把整条更新链路、CLI 剩余死参数和几处热路径�
 
 ## Linux 版（v3.10 起，当前为命令行）
 
-Windows 界面是 WPF，无法在 Linux 上构建或运行，所以 Linux 版从跨平台核心出发：v3.10 先把 `Models + 可移植 Services + CLI` 拆成 `UZIP2.Core`（`net8.0`，不引用任何 UI 框架），再新增无界面宿主 `UZIP2.Cli`。**当前 Linux 产物是命令行版**，功能与 Windows 的 CLI 对齐：`list / extract / compress / test / convert / diff / checksum / vault / history / config / log / watch once / update --check`。Avalonia 图形界面在后续阶段移植。
+Windows 界面是 WPF，无法在 Linux 上构建或运行，所以 Linux 版从跨平台核心出发：v3.10 先把 `Models + 可移植 Services + CLI` 拆成 `UZIP2.Core`（`net8.0`，不引用任何 UI 框架），再新增无界面宿主 `UZIP2.Cli`。**v3.10 的 Linux 发布产物是命令行版**，功能与 Windows 的 CLI 对齐：`list / extract / compress / test / convert / diff / checksum / vault / history / config / log / watch once / update --check`。图形界面 `UZIP2.Avalonia` 已经可以构建、能渲染主页/预览/设置/历史并复用同一套服务，但还没有接入发布包（P4 补桌面集成，P5 随 v3.10 一起发）。
 
 安装（Arch）：
 

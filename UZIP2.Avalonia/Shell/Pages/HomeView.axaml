@@ -1,0 +1,57 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="UZIP2.Avalonia.Shell.Pages.HomeView">
+  <Grid RowDefinitions="Auto,Auto,Auto,*">
+    <Border Grid.Row="0" x:Name="DropZone" Height="150" CornerRadius="10"
+            BorderThickness="1" BorderBrush="#3A3A44" Background="#1E1E24"
+            DragDrop.AllowDrop="True">
+      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">
+        <TextBlock Text="将压缩包 / 文件 / 文件夹拖到这里" FontSize="18" HorizontalAlignment="Center" />
+        <TextBlock Text="或" Opacity="0.55" HorizontalAlignment="Center" />
+        <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+          <Button Content="添加文件" Click="OnAddFiles" />
+          <Button Content="添加压缩包" Click="OnAddArchives" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
+    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="10" Margin="2,14,0,4">
+      <TextBlock Text="模式" VerticalAlignment="Center" Opacity="0.75" />
+      <RadioButton x:Name="ModeAuto" Content="自动" IsChecked="True" GroupName="mode" Checked="OnModeChanged" />
+      <RadioButton x:Name="ModeExtract" Content="仅解压" GroupName="mode" Checked="OnModeChanged" />
+      <RadioButton x:Name="ModeCompress" Content="仅压缩" GroupName="mode" Checked="OnModeChanged" />
+      <Button Content="清除已完成" Click="OnClearDone" Margin="18,0,0,0" />
+      <Button Content="全部取消" Click="OnCancelAll" />
+    </StackPanel>
+
+    <TextBlock Grid.Row="2" x:Name="SummaryText" Margin="2,6,0,8" Opacity="0.75" />
+
+    <ListBox Grid.Row="3" x:Name="JobsList" Background="Transparent" BorderThickness="0"
+             SelectionMode="Single">
+      <ListBox.ItemTemplate>
+        <DataTemplate>
+          <Border Background="#1E1E24" CornerRadius="8" Padding="14,12" Margin="0,0,0,8">
+            <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto">
+              <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding Kind}" Opacity="0.5" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding Status, Converter={StaticResource StatusText}}"
+                           Foreground="#8AB4F8" VerticalAlignment="Center" />
+              </StackPanel>
+              <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                <Button Content="取消" Click="OnCancelJob" IsVisible="{Binding !IsTerminal}" />
+                <Button Content="预览" Click="OnPreviewJob" IsVisible="{Binding IsTerminal}" />
+                <Button Content="打开目录" Click="OnOpenOutput" IsVisible="{Binding IsTerminal}" />
+                <Button Content="移除" Click="OnRemoveJob" IsVisible="{Binding IsTerminal}" />
+              </StackPanel>
+              <ProgressBar Grid.Row="1" Grid.ColumnSpan="2" Margin="0,10,0,0" Minimum="0" Maximum="100"
+                           Value="{Binding Percent, Converter={StaticResource Pct}}" />
+              <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Margin="0,6,0,0" Opacity="0.6" FontSize="12"
+                         Text="{Binding CurrentFile}" TextTrimming="CharacterEllipsis" />
+            </Grid>
+          </Border>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </Grid>
+</UserControl>

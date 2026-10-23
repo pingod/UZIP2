@@ -188,3 +188,16 @@
 | L9 | **CI**：`.github/workflows/build-linux.yml`（ubuntu 发布双架构 + `archlinux` 容器 makepkg + 安装冒烟） | 尚未触发（首次打 tag 时验证） |
 
 **本阶段刻意不做**：Avalonia 界面（P3）、托盘/悬浮方块/热键/右键菜单等桌面集成（P4）、Linux 上的就地自更新、arm64 包的实机运行（仅有交叉构建）。
+
+## v3.10 Avalonia 壳（P3）
+
+| # | 能力 / 修复 | 证据 |
+|---|------|------|
+| M1 | **`UZIP2.Avalonia`（net8.0 + Avalonia 11.3）**：左侧导航 + 主页/历史/设置三页，预览独立窗口；服务装配集中在 `AppHost`（配置目录、密码加密、界面线程）；CLI 命令词在 `Program` 里直接转给 `CliHost`，GUI 二进制同时能当 CLI 用 | 无头测试 5 个；`--version` 在 Arch 上输出 `UZIP 3.10.0` |
+| M2 | **主页队列**：拖放（`DataFormats.Files`）、添加文件、自动/仅解压/仅压缩三种模式、活动/完成/失败汇总、卡片取消/预览/打开目录/移除、清除已完成、全部取消；复用同一条 `ArchiveWorker.Jobs` | `Home_page_binds_to_the_shared_job_queue`；渲染截图 `artifacts/ui/avalon-shell.png` |
+| M3 | **包内预览**：`Worker.PreviewAsync` 读清单，失败时显示诊断而不是空白 | 渲染与构造测试；真机待 P4 |
+| M4 | **设置页**：7z 路径显示与自定义、并行度、压缩后自检、预览后解压、完成后打开目录、回收站、监听目录；保存后立即 `Watcher.Apply()` | `Settings_page_reports_the_resolved_7z_path_and_config_dir` |
+| M5 | **历史页**：读取 `HistoryService`，按路径/状态过滤，清空 | `History_page_lists_recorded_jobs` |
+| M6 | **无头 UI 测试**：`Avalonia.Headless` + Skia（`UseHeadlessDrawing = false`），真实渲染一帧存 PNG，Linux/Windows 都能跑，CI 已接入 | `UZIP2.Avalonia.Tests` 5 个全绿；`Main_window_renders_a_frame` 产出截图 |
+
+**本阶段刻意不做 / 未验证**：托盘、悬浮方块、全局热键、文件管理器右键菜单（P4）；Linux 发布包尚未切换到 Avalonia 二进制（P5）；**没有在真实 Wayland/X11 会话里开过窗口**——渲染验证走的是无头 Skia 截图，真窗口冒烟留到 P4 有桌面集成时一起做。

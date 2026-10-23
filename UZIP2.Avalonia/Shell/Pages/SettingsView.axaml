@@ -1,0 +1,57 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="UZIP2.Avalonia.Shell.Pages.SettingsView">
+  <ScrollViewer>
+    <StackPanel Spacing="14" MaxWidth="720" HorizontalAlignment="Left">
+      <TextBlock Text="设置" FontSize="22" FontWeight="SemiBold" />
+
+      <Border Background="#1E1E24" CornerRadius="8" Padding="16">
+        <StackPanel Spacing="10">
+          <TextBlock Text="7-Zip" FontWeight="SemiBold" />
+          <TextBlock x:Name="SevenZipText" TextWrapping="Wrap" Opacity="0.75" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="自定义路径" VerticalAlignment="Center" Opacity="0.75" />
+            <TextBox x:Name="Custom7zBox" Width="420" Watermark="留空则自动检测" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <Border Background="#1E1E24" CornerRadius="8" Padding="16">
+        <StackPanel Spacing="10">
+          <TextBlock Text="并发" FontWeight="SemiBold" />
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <TextBlock Text="同时解压" VerticalAlignment="Center" />
+            <NumericUpDown x:Name="ParallelExtractBox" Minimum="1" Maximum="8" Increment="1" Width="120" />
+            <TextBlock Text="同时压缩" VerticalAlignment="Center" Margin="16,0,0,0" />
+            <NumericUpDown x:Name="ParallelCompressBox" Minimum="1" Maximum="8" Increment="1" Width="120" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <Border Background="#1E1E24" CornerRadius="8" Padding="16">
+        <StackPanel Spacing="8">
+          <TextBlock Text="行为" FontWeight="SemiBold" />
+          <CheckBox x:Name="VerifyBox" Content="压缩后自检产物" />
+          <CheckBox x:Name="PreviewBox" Content="单个压缩包先预览再解压" />
+          <CheckBox x:Name="OpenAfterBox" Content="解压完成后打开目录" />
+          <CheckBox x:Name="RecycleBox" Content="删除源文件时进回收站" />
+        </StackPanel>
+      </Border>
+
+      <Border Background="#1E1E24" CornerRadius="8" Padding="16">
+        <StackPanel Spacing="8">
+          <TextBlock Text="监听目录" FontWeight="SemiBold" />
+          <CheckBox x:Name="WatchEnabledBox" Content="启用监听（新包出现时自动解压）" />
+          <TextBox x:Name="WatchFolderBox" Watermark="/home/me/Downloads" />
+        </StackPanel>
+      </Border>
+
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <Button Content="保存" Click="OnSave" />
+        <TextBlock x:Name="SavedText" VerticalAlignment="Center" Foreground="#7BD88F" />
+      </StackPanel>
+
+      <TextBlock x:Name="VersionText" Opacity="0.5" FontSize="12" TextWrapping="Wrap" />
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>
