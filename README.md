@@ -78,11 +78,13 @@ cd packaging/arch && makepkg -si          # PKGBUILD
 cd packaging/arch && makepkg -si -p PKGBUILD-bin
 ```
 
-其它发行版直接解包 tar.gz：
+其它发行版直接解包 tar.gz，目录里带安装脚本：
 
 ```
 tar -xzf UZIP2-3.11.0-linux-x64.tar.gz
-sudo install -Dm755 UZIP2-3.11.0-linux-x64/UZIP2 /usr/bin/uzip2
+cd UZIP2-3.11.0-linux-x64 && sudo ./install.sh      # 默认 /usr/local，装桌面入口与图标
+# 卸载：sudo PREFIX=/usr/local ./uninstall.sh（配置目录保留）
+# 只要二进制：sudo install -Dm755 UZIP2 /usr/bin/uzip2
 ```
 
 依赖：7-Zip（Arch: `pacman -S 7zip`；Debian/Ubuntu: `apt install 7zip`），图形界面另需 `fontconfig`、`freetype2`、`libice`、`libsm`（Arch 包的 `depends` 已声明；纯命令行用法在无图形库的机器上也能跑，因为单文件是自包含的）。程序会依次找 `7zz/7z/7za`（`/usr/bin`、`/usr/local/bin`、`/usr/lib/p7zip`、`/usr/lib/7zip`，再扫 `PATH`），也可用 `uzip2 config set customize7zPath <路径>` 指定。配置落 `~/.config/uzip2`，日志落 `~/.local/state/uzip2`（遵循 XDG），程序目录只读也能跑。

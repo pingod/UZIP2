@@ -63,10 +63,18 @@ namespace UZIP2.Services
             var parts = new System.Collections.Generic.List<string> { $"会话 {session} / {name}" };
 
             if (TraySupported) parts.Add("托盘可用");
-            else parts.Add("托盘需要 AppIndicator 扩展（GNOME 默认不显示）");
+            else if (IsGnome) parts.Add("托盘需要 AppIndicator 扩展（GNOME 默认不显示）");
+            else parts.Add("托盘没有可用的 SNI 宿主");
 
-            parts.Add(GlobalHotkeys ? "全局热键可用" : "全局热键不可用（Wayland 没有通用接口）");
-            parts.Add(PuckPositioning ? "悬浮方块可定位" : "悬浮方块无法定位窗口（GNOME Wayland 限制）");
+            if (GlobalHotkeys) parts.Add("全局热键可用");
+            else parts.Add(IsWayland
+                ? "全局热键不可用（当前 Wayland 桌面没有 GlobalShortcuts portal）"
+                : "全局热键不可用");
+
+            if (PuckPositioning) parts.Add("悬浮方块可定位");
+            else parts.Add(IsGnome
+                ? "悬浮方块无法定位窗口（GNOME 在 Wayland 下不提供该接口）"
+                : "悬浮方块无法定位窗口（当前桌面不提供该接口）");
             return string.Join("；", parts) + "。";
         }
 

@@ -238,3 +238,5 @@
 | O7 | **Thunar 右键菜单**：动作合并进用户已有的 `~/.config/Thunar/uca.xml`（不覆盖别人的动作），首次修改前留 `.uzip2.bak`，重复注册幂等，卸载只移除 `uzip2-extract-here`/`uzip2-compress` 两条 | `LinuxShellIntegrationTests` 新增 4 个（保留用户动作、幂等、卸载还原、指向别的版本时 Stale） |
 | O8 | **Wayland 全局热键（GlobalShortcuts portal）**：经 `gdbus` 建会话、绑定 `toggle`（Ctrl+Alt+U）、监听 `Activated` 信号；仅 Wayland + 有 portal 的桌面（KDE）启用，缺 gdbus/portal 时返回 null | `PortalOutputTests` 4 个（会话路径解析、激活行识别、别的信号不误判）；无 portal 时安静降级（测试） |
 | O9 | **X11 实机验证**：WSL + Xvfb 真 X 服务器上启动，`xwininfo` 看到 `"UZIP2" 1000x700` 窗口，日志记录热键注册成功，`xdotool` 按住 Ctrl+Alt+U 后记录"全局热键触发"；轮询从 150ms 收紧到 25ms 以接住 100ms 级按键 | 见 commit；日志两条：`全局热键已启用（X11）: u` / `全局热键触发，唤起窗口` |
+| O10 | **tar.gz 安装脚本**：`install.sh` / `uninstall.sh`（`PREFIX` 可调，装二进制 + 桌面入口 + 图标，刷新 desktop/icon 缓存；卸载保留配置） | WSL 实测：`PREFIX=/tmp/prefix ./install.sh` 后二进制 `--version` 正常，`uninstall.sh` 只删自己的 4 个文件 |
+| O11 | **能力文案按桌面区分**：非 GNOME 的 Wayland 不再说"GNOME 限制"，改为"当前桌面不提供该接口"；启动时把能力摘要写进日志 | WSLg（Weston）实跑日志：`会话 Wayland / none；托盘没有可用的 SNI 宿主；…` |

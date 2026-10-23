@@ -54,6 +54,7 @@ namespace UZIP2.Avalonia
             Worker = new ArchiveWorker(Zip, Passwords, Settings, Logger, compressLog, History,
                 new AvaloniaUiDispatcher());
             Watcher = new WatchFolderService(Settings, Worker);
+            Logger.Info("桌面能力: " + Capabilities.Summary());
 
             if (Settings.Current.CleanTempOnStartup)
                 TempManager.CleanupOnStartup(AppContext.BaseDirectory, Layout.ConfigDirectory);

@@ -61,8 +61,13 @@ New-Item -ItemType Directory -Path $OutVer -Force | Out-Null
 $readme = @"
 UZIP2 $Ver —— Linux 版（图形界面 + 命令行）
 
-安装：
+安装（推荐，会同时装桌面入口与图标）：
   tar -xzf UZIP2-$Ver-linux-<rid>.tar.gz
+  cd UZIP2-$Ver-linux-<rid> && sudo ./install.sh
+  # 装到 /usr：sudo PREFIX=/usr ./install.sh
+  # 卸载：sudo PREFIX=/usr ./uninstall.sh（配置目录保留）
+
+只装二进制：
   sudo install -Dm755 UZIP2-$Ver-linux-<rid>/UZIP2 /usr/bin/uzip2
 
 桌面菜单项（可选，装完就能在应用列表里搜到 UZIP2）：
@@ -103,6 +108,8 @@ foreach ($rid in $Rids) {
   Copy-Item (Join-Path $RepoRoot 'packaging/linux/uzip2.desktop') $stage -Force
   Copy-Item (Join-Path $RepoRoot 'packaging/linux/uzip2.png') $stage -Force
   Copy-Item (Join-Path $RepoRoot 'packaging/linux/uzip2-48.png') $stage -Force
+  Copy-Item (Join-Path $RepoRoot 'packaging/linux/install.sh') $stage -Force
+  Copy-Item (Join-Path $RepoRoot 'packaging/linux/uninstall.sh') $stage -Force
   Set-Content -Path (Join-Path $stage 'README.md') -Value $readme -Encoding UTF8
 
   $tarName = "UZIP2-$Ver-linux-$arch.tar.gz"
