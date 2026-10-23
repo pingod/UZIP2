@@ -121,6 +121,32 @@ namespace UZIP2.Avalonia.Tests
             Assert.True(full.Bounds.Width >= 50 && full.Bounds.Height >= 50, $"满圈应闭合，实际 {full.Bounds}");
         }
 
+        [AvaloniaFact]
+        public void Password_page_masks_the_book_and_reveals_on_demand()
+        {
+            EnsureHost();
+            var unique = "pw-" + Guid.NewGuid().ToString("N");
+            AppHost.Passwords.AddBook(unique, "secret-" + unique);
+
+            var page = new PasswordView();
+            var list = page.FindControl<ListBox>("BookList");
+            var rows = ((System.Collections.IEnumerable)list.ItemsSource).Cast<PasswordView.Row>().ToList();
+            var row = rows.Single(r => r.Name == unique);
+
+            Assert.Equal("••••••", row.DisplayText);
+            row.Revealed = true;
+            Assert.Equal("secret-" + unique, row.DisplayText);
+
+            var outDir = Environment.GetEnvironmentVariable("UZIP2_SHOT_DIR");
+            if (!string.IsNullOrEmpty(outDir))
+            {
+                Directory.CreateDirectory(outDir);
+                var win = new Window { Content = page, Width = 1000, Height = 700 };
+                win.Show();
+                win.CaptureRenderedFrame()?.Save(Path.Combine(outDir, "avalon-password.png"));
+            }
+        }
+
         // 单实例在 Linux 上也得成立：命名管道在 Unix 下是域套接字，值得真跑一遍。
         [Fact]
         public async System.Threading.Tasks.Task Single_instance_bus_forwards_files_on_this_platform()

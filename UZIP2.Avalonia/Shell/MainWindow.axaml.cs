@@ -7,6 +7,7 @@ namespace UZIP2.Avalonia.Shell
     public partial class MainWindow : Window
     {
         private readonly Pages.HomeView _home = new Pages.HomeView();
+        private readonly Pages.PasswordView _password = new Pages.PasswordView();
         private readonly Pages.HistoryView _history = new Pages.HistoryView();
         private readonly Pages.SettingsView _settings = new Pages.SettingsView();
         private PuckWindow _puck;
@@ -25,12 +26,14 @@ namespace UZIP2.Avalonia.Shell
         }
 
         private void OnNavHome(object sender, RoutedEventArgs e) => Show(_home, NavHome);
+        private void OnNavPassword(object sender, RoutedEventArgs e) => Show(_password, NavPassword);
         private void OnNavHistory(object sender, RoutedEventArgs e) => Show(_history, NavHistory);
         private void OnNavSettings(object sender, RoutedEventArgs e) => Show(_settings, NavSettings);
 
         private void Show(Control page, Button nav)
         {
             PageHost.Content = page;
+            if (page == _password) _password.Reload();
             if (page == _history) _history.Refresh();
             if (page == _settings) _settings.Reload();
             Highlight(nav);
@@ -38,7 +41,7 @@ namespace UZIP2.Avalonia.Shell
 
         private void Highlight(Button active)
         {
-            foreach (var b in new[] { NavHome, NavHistory, NavSettings })
+            foreach (var b in new[] { NavHome, NavPassword, NavHistory, NavSettings })
                 b.Background = b == active
                     ? global::Avalonia.Media.Brush.Parse("#2D2D33")
                     : global::Avalonia.Media.Brushes.Transparent;

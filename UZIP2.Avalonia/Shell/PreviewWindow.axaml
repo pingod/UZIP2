@@ -1,21 +1,26 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="UZIP2.Avalonia.Shell.PreviewWindow"
-        Title="包内预览" Width="760" Height="560"
+        Title="包内预览" Width="780" Height="580"
         WindowStartupLocation="CenterOwner">
   <Grid RowDefinitions="Auto,*,Auto" Margin="16">
     <TextBlock x:Name="HeaderText" Grid.Row="0" Margin="0,0,0,10" TextWrapping="Wrap" />
-    <ListBox Grid.Row="1" x:Name="EntryList" Background="Transparent" BorderThickness="0">
+    <ListBox Grid.Row="1" x:Name="EntryList" Background="Transparent" BorderThickness="0"
+             SelectionMode="Multiple">
       <ListBox.ItemTemplate>
         <DataTemplate>
-          <Grid ColumnDefinitions="*,140">
-            <TextBlock Grid.Column="0" Text="{Binding Path}" TextTrimming="CharacterEllipsis" />
-            <TextBlock Grid.Column="1" Text="{Binding Size}" Opacity="0.6" HorizontalAlignment="Right" />
+          <Grid ColumnDefinitions="Auto,*,140">
+            <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" Margin="0,0,8,0" />
+            <TextBlock Grid.Column="1" Text="{Binding Path}" TextTrimming="CharacterEllipsis" />
+            <TextBlock Grid.Column="2" Text="{Binding SizeText}" Opacity="0.6" HorizontalAlignment="Right" />
           </Grid>
         </DataTemplate>
       </ListBox.ItemTemplate>
     </ListBox>
     <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,12,0,0">
+      <Button Content="全选" Click="OnSelectAll" />
+      <Button Content="清空选择" Click="OnSelectNone" />
+      <Button Content="解压选中" Click="OnExtractSelected" />
       <Button Content="解压全部" Click="OnExtractAll" />
       <Button Content="关闭" Click="OnClose" />
     </StackPanel>

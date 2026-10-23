@@ -228,3 +228,6 @@
 |---|------|------|
 | O1 | **单实例 + 文件参数**：Linux 图形版接上 `InstanceBus`，第二个进程只转发路径；启动参数（文件管理器"打开方式"）在服务就绪后按自动模式入队；拖放/参数/转发共用 `FileRouter` | 新增跨平台测试 `Single_instance_bus_forwards_files_on_this_platform`（Linux CI 真跑命名管道转发） |
 | O2 | **桌面入口**：`packaging/linux/uzip2.desktop` + 48/128 px 图标，随 tar.gz 与 Arch 包安装（旧 tag 缺文件时跳过，不阻断构建） | makepkg 安装路径检查；tarball 内含 desktop/icon |
+
+| O3 | **密码页（Avalonia）**：密码本增删、逐行显示/隐藏、复制、成功次数；密码纸整段粘贴、清空、上限提示 | `Password_page_masks_the_book_and_reveals_on_demand`；渲染截图 `artifacts/ui/avalon-password.png` |
+| O4 | **包内预览勾选**：清单逐项勾选 + 全选/清空 + 解压选中（走 `onlyEntries`），解压全部照旧 | 复用既有 onlyEntries 路径；UI 接线 |

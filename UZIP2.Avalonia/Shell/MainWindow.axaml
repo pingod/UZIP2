@@ -9,6 +9,8 @@
         <TextBlock Text="UZIP" FontSize="22" FontWeight="SemiBold" Margin="8,10,8,18"/>
         <Button x:Name="NavHome" Content="主页" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                 Background="Transparent" BorderThickness="0" Padding="12,10" Click="OnNavHome"/>
+        <Button x:Name="NavPassword" Content="密码" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                Background="Transparent" BorderThickness="0" Padding="12,10" Click="OnNavPassword"/>
         <Button x:Name="NavHistory" Content="历史" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                 Background="Transparent" BorderThickness="0" Padding="12,10" Click="OnNavHistory"/>
         <Button x:Name="NavSettings" Content="设置" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
