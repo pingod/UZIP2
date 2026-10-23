@@ -19,7 +19,7 @@
 - **tar.gz 安装脚本**：`install.sh` / `uninstall.sh`，装二进制、桌面入口与图标；卸载保留配置。
 - 启动时把桌面能力摘要写进日志，远程排查不用开设置页。
 
-完整历史见 [CHANGELOG.md](CHANGELOG.md)。
+完整历史见 [CHANGELOG.md](CHANGELOG.md)，剩余待办（含需要真实桌面才能验证的项）见 [docs/TODO.md](docs/TODO.md)。
 
 ## 本次增强（v3.11 — Linux 图形版补全 + X11 全局热键）
 
