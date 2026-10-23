@@ -65,7 +65,9 @@ namespace UZIP2.Tests
             File.WriteAllText(ok, "data");
             var sw = Stopwatch.StartNew();
             Assert.True(await WatchFolderService.WaitUntilStableAsync(ok, CancellationToken.None, 50));
-            Assert.True(sw.ElapsedMilliseconds < 2000, "空闲文件应立刻判定写完，实测 " + sw.ElapsedMilliseconds + " ms");
+            // 冷启动的 Windows CI 上（JIT + Defender 扫描刚写入的文件）实测到过 2.7 秒，
+            // 这里只守住"远小于 60 秒默认超时"的语义，不跟机器快慢较劲。
+            Assert.True(sw.ElapsedMilliseconds < 10000, "空闲文件应在默认超时前判定写完，实测 " + sw.ElapsedMilliseconds + " ms");
 
             var busy = Path.Combine(_watch, "busy.bin");
             File.WriteAllText(busy, "data");
