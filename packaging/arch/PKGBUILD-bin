@@ -30,12 +30,12 @@ case "$CARCH" in
   *)       error "不支持的架构: $CARCH（只支持 x86_64 / aarch64）" ;;
 esac
 source_x86_64=("UZIP2-$pkgver-linux-x64.tar.gz::$url/releases/download/$_tag/UZIP2-$pkgver-linux-x64.tar.gz")
-sha256sums_x86_64=('fcf1f84be017bdcee2aa16e0dbcb6199796802229eb4c959cc5f6c8130a5da1b')
+sha256sums_x86_64=('fdca60ce44f7c03cd439154bec0a993f41614f9fad53cc0cc3dacbd04cc1177e')
 source_aarch64=("UZIP2-$pkgver-linux-arm64.tar.gz::$url/releases/download/$_tag/UZIP2-$pkgver-linux-arm64.tar.gz")
 # aarch64 与 x86_64 用各自的侧车真值：两个 tarball 是分别构建的（x86_64 在主机上、
 # arm64 交叉构建），内容不同，不能共用同一个 hash。换版本或重新打包后，用
 # `bash scripts/aur-sums.sh --dir packaging/arch --fill` 从 Release 侧车重新对齐。
-sha256sums_aarch64=('71e9706ef9c93a441d3b77a69b89d1605c0c419b688ea8c947e76ebf6a4d33dd')
+sha256sums_aarch64=('cf36520739d5e659b68670ada04c8b70d6c97aa5f1b2e1e3ca1063eab88eaa87')
 
 package() {
   _src="$srcdir/UZIP2-$pkgver-linux-$_arch"
