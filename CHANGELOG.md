@@ -23,15 +23,33 @@ Linux 图形界面从 **XWayland** 切到**原生 Wayland**，并补齐了缺位
 
 ### 新增（Arch 分发）
 
-- **`uzip2-bin-3.13.0-1-x86_64.pkg.tar.zst`（34 MB）本机真构建并验证**：`makepkg -f -p PKGBUILD-bin`
-  走完整 fakeroot 流程，`bsdtar tf` 确认包含 `usr/bin/uzip2`、桌面入口、48/128 两档图标；
-  解包后 `--version` 输出 `UZIP 3.13.0`，在纯 Wayland 会话里能正常开窗。
+- **两个 Arch 包都在本机真构建并验证**（`makepkg` 走完整 fakeroot 流程）：
+  - `uzip2-bin-3.13.0-1-x86_64.pkg.tar.zst`（34 MB，预编译）
+  - `uzip2-3.13.0-1-x86_64.pkg.tar.zst`（34 MB，源码构建，多一份 `usr/share/licenses/uzip2/LICENSE`）
+
+  `bsdtar tf` 确认包含 `usr/bin/uzip2`、桌面入口、48/128 两档图标；解包后 `--version`
+  都输出 `UZIP 3.13.0`，在纯 Wayland 会话里能正常开窗。源码包这一路同时验证了
+  `sha256sums` 里的源码归档真值（下载 → 校验 → `dotnet publish` → 打包全通）。
 - **`PKGBUILD-bin` 改用架构专属数组**（`source_x86_64` / `sha256sums_x86_64` 等），
   x86_64 与 aarch64 各校验各自的包，不再是共用一个 `('SKIP')`。
 - 两个 PKGBUILD 的 `pkgver` 提到 3.13.0、`_tag` 提到 v3.13，`.SRCINFO` 重新生成。
+- **所有 sha256 都换成真值**（与 Release 侧车逐字核对）：源码包 `0a792aea…`、
+  `sha256sums_x86_64=fcf1f84b…`、`sha256sums_aarch64=71e9706e…`。CI 的
+  `Validate both PKGBUILDs` 会断言 aarch64 那个值必须是真值。
+- `pkgdesc` 更正：两处都还写着「Linux 命令行版」，但包里自 v3.10 起就是图形界面 + 命令行。
 
 ### 修复（Avalonia 12 迁移）
 
+- **Windows 框架依赖产物被误打成 144 MB**：.NET 10 把 `--self-contained` 从「带值选项」
+  改成了纯开关，`--self-contained false` 里的 `false` 不再被当作取值，等于没关自包含。
+  实测 `--self-contained false` 与 `--self-contained=false` 都出 144.8 MB，而
+  `-p:SelfContained=false` 是正常的 9.2 MB（SDK 8 上旧写法也是 9.2 MB）。
+  `UZIP2.exe` 是应用内自更新下载的那个附件，体积错了会让每次更新多下 135 MB。
+  三处发布链路（`scripts/publish.ps1`、`scripts/publish-linux.ps1`、Windows CI）
+  统一改成 `-p:SelfContained=` 属性形式。
+- **Linux 上交叉构建 Windows 产物**报 `NETSDK1100`（需要 `EnableWindowsTargeting`），
+  `publish.ps1` 现在按平台自动补。判据用 `RuntimeInformation.IsOSPlatform` 而非
+  `$IsWindows`（后者只在 PowerShell 6+ 存在，5.1 里是 `$null`，判断会反掉）。
 - 拖放数据改用新的 `IDataTransfer` API（`e.DataTransfer.TryGetFiles()` / `DataFormat.File`），
   旧的 `e.Data` + `DataFormats.Files` 在 12 里已移除。
 - 剪贴板改用 `ClipboardExtensions` 的 `TryGetTextAsync` / `SetTextAsync`（`IClipboard` 接口本身只剩
@@ -43,6 +61,9 @@ Linux 图形界面从 **XWayland** 切到**原生 Wayland**，并补齐了缺位
   以 Exe 形态通过 `dotnet <tests>.dll` 运行。
 
 **测试**：21/21 通过，构建 0 警告 0 错误。
+
+**发布**：GitHub Release [`v3.13`](https://github.com/pingod/UZIP2/releases/tag/v3.13)，
+五个产物 + 各自的 `.sha256` 侧车。
 
 ## [3.12.0 的 Linux 收尾] — Linux 桌面收尾与 Avalonia 功能对齐（2026-10-23）
 

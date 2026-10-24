@@ -11,7 +11,7 @@ pkgver=3.13.0
 # 仓库的发布 tag 是两段（v3.10），包版本是三段（3.10.0）
 _tag=v3.13
 pkgrel=1
-pkgdesc="UZIP2 — 7-Zip 前端（Linux 命令行版）"
+pkgdesc="UZIP2 — 7-Zip 前端（图形界面 + 命令行）"
 arch=('x86_64' 'aarch64')
 url="https://github.com/pingod/UZIP2"
 license=('GPL-3.0-or-later')
@@ -30,9 +30,10 @@ source=("$pkgname-$pkgver.tar.gz::$url/archive/$_tag.tar.gz")
 #     bash scripts/aur-sums.sh --dir packaging/arch --fill
 #     脚本会下载归档、与声明的值比对并就地回填，然后
 #     bash scripts/aur-sums.sh --dir packaging/arch --srcinfo --write 刷新 .SRCINFO。
-# 3.13.0 的 tag 尚未推送，这里先留 SKIP；推 tag 后必须补真值，否则 makepkg
-# 只打一条警告就放过，等于源码不校验。
-sha256sums=('SKIP')
+# 下面这个值取自 v3.13 tag 推上去之后下载的归档（3,745,901 字节，262 条目，
+# 顶层目录 UZIP2-3.13/）。GitHub 的服务端重新生成归档时 hash 可能变，届时
+# makepkg 会报有效性检查失败，重跑上面两条命令即可。
+sha256sums=('0a792aea10371bb170063be2524f89fd4f1ac0b5773b987d656ae150de01703b')
 build() {
   cd "UZIP2-${_tag#v}"   # GitHub 归档目录名跟 tag 走（UZIP2-3.13），不是 pkgver
   case "$CARCH" in

@@ -1,5 +1,5 @@
 pkgbase = uzip2
-	pkgdesc = UZIP2 — 7-Zip 前端（Linux 命令行版）
+	pkgdesc = UZIP2 — 7-Zip 前端（图形界面 + 命令行）
 	pkgver = 3.13.0
 	pkgrel = 1
 	url = https://github.com/pingod/UZIP2
@@ -17,6 +17,6 @@ pkgbase = uzip2
 	options = !strip
 	options = !debug
 	source = uzip2-3.13.0.tar.gz::https://github.com/pingod/UZIP2/archive/v3.13.tar.gz
-	sha256sums = SKIP
+	sha256sums = 0a792aea10371bb170063be2524f89fd4f1ac0b5773b987d656ae150de01703b
 
 pkgname = uzip2

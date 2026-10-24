@@ -11,6 +11,13 @@
 4. 优化临时缓存文件夹相关代码，每个压缩包有单独的缓存文件夹，并且该文件夹是隐藏的。
 5. 支持多级解压，压缩包内第一层压缩包再次解压，持续符合条件时会循环解压。
 
+## 本次增强（v3.13 — 原生 Wayland / Arch 分发）
+
+- **原生 Wayland**：升级到 Avalonia 12.1.4 并接入 `Avalonia.Wayland`，Linux 上不再走 XWayland。根因是 `Avalonia.Wayland` 包从 12.1.0 才发布，11.x 系列根本没有 Wayland 后端。纯 Wayland 会话里 `WAYLAND_DEBUG=1` 能抓到 `wl_compositor` / `xdg_wm_base` / `wl_shm` / `wl_seat` 往返，进程 fd 里 X11 socket 数量为 0。
+- **Arch 包补齐**：`uzip2-bin`（预编译）与 `uzip2`（源码构建）都在本机跑完 `makepkg` 完整 fakeroot 流程，解包 `--version` 均输出 `UZIP 3.13.0`；`sha256sums` 全部填 Release 侧车真值。
+- **修掉 .NET 10 的一个发布坑**：`--self-contained` 在 .NET 10 里变成纯开关，`--self-contained false` 不再生效，框架依赖产物被打成 144 MB（正确值 9 MB）——`UZIP2.exe` 正是应用内自更新下载的附件，会让每次更新多下 135 MB。三处发布链路统一改用 `-p:SelfContained=`。
+- 顺带修掉 Avalonia 11.3.2 的 SNI 上游 bug：`Status` 槽位曾被写入 `Id`（`"UZIP2"`），Avalonia 12 已返回规范的 `Active`。
+
 ## 本次增强（v3.12 — Thunar 菜单 / Wayland 热键 / 安装脚本）
 
 - **Thunar 右键菜单**：两个动作合并进用户已有的 `uca.xml`（改前备份，卸载只删自己那两条）。
@@ -48,8 +55,15 @@ Wayland 兼容性按能力降级，而不是假装对齐：X11 三项全开；KD
 
 安装（Arch）：
 
+安装（Arch）：最新包在 [Releases](https://github.com/pingod/UZIP2/releases/latest) 页面，直接装现成的：
+
 ```
-# 源码构建
+sudo pacman -U uzip2-bin-3.13.0-1-x86_64.pkg.tar.zst    # 预编译
+```
+
+或者从源码构建（需要 `dotnet-sdk>=10`，见下面的说明）：
+
+```
 cd packaging/arch && makepkg -si          # PKGBUILD
 # 或用预编译二进制
 cd packaging/arch && makepkg -si -p PKGBUILD-bin
@@ -58,8 +72,8 @@ cd packaging/arch && makepkg -si -p PKGBUILD-bin
 其它发行版直接解包 tar.gz，目录里带安装脚本：
 
 ```
-tar -xzf UZIP2-3.11.0-linux-x64.tar.gz
-cd UZIP2-3.11.0-linux-x64 && sudo ./install.sh      # 默认 /usr/local，装桌面入口与图标
+tar -xzf UZIP2-3.13.0-linux-x64.tar.gz
+cd UZIP2-3.13.0-linux-x64 && sudo ./install.sh      # 默认 /usr/local，装桌面入口与图标
 # 卸载：sudo PREFIX=/usr/local ./uninstall.sh（配置目录保留）
 # 只要二进制：sudo install -Dm755 UZIP2 /usr/bin/uzip2
 ```

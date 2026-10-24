@@ -15,7 +15,7 @@ pkgver=3.13.0
 # 仓库的发布 tag 是两段（v3.10），包版本是三段（3.10.0）
 _tag=v3.13
 pkgrel=1
-pkgdesc="UZIP2 — 7-Zip 前端（Linux 命令行版，预编译）"
+pkgdesc="UZIP2 — 7-Zip 前端（图形界面 + 命令行，预编译）"
 arch=('x86_64' 'aarch64')
 url="https://github.com/pingod/UZIP2"
 license=('GPL-3.0-or-later')
