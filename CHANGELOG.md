@@ -21,7 +21,7 @@ Linux 图形界面从 **XWayland** 切到**原生 Wayland**，并补齐了缺位
   SDK 8 自带的 4.11 跑不了（表现为 `error CS0103: 不存在名称 InitializeComponent`）。
   CI 的 `dotnet-version` 与 PKGBUILD 的 `makedepends` 同步改成 10.x。
 
-### 新增（Arch 分发）
+### 新增（发行版打包）
 
 - **两个 Arch 包都在本机真构建并验证**（`makepkg` 走完整 fakeroot 流程）：
   - `uzip2-bin-3.13.0-1-x86_64.pkg.tar.zst`（34 MB，预编译）
@@ -37,6 +37,11 @@ Linux 图形界面从 **XWayland** 切到**原生 Wayland**，并补齐了缺位
   `sha256sums_x86_64=fcf1f84b…`、`sha256sums_aarch64=71e9706e…`。CI 的
   `Validate both PKGBUILDs` 会断言 aarch64 那个值必须是真值。
 - `pkgdesc` 更正：两处都还写着「Linux 命令行版」，但包里自 v3.10 起就是图形界面 + 命令行。
+- **deb 与 AppImage 也在本机真构建**（`scripts/package-linux.sh`）：`uzip2_3.13.0_amd64.deb`
+  与 `UZIP2-3.13.0-linux-x64.AppImage`，后者解包运行 `--version` 输出 `UZIP 3.13.0`，
+  在纯 Wayland 沙箱里渲染的截图与 dev build 逐字节相同（md5 一致）。本机没有 `dpkg-deb`，
+  deb 走 `ar` 回退路径。`rpm` 本机无 `rpmbuild`，由 CI 构建并在容器里拆包实跑（包内
+  `/usr/bin/uzip2 --version` 输出 `UZIP 3.13.0`）。
 
 ### 修复（Avalonia 12 迁移）
 
@@ -59,11 +64,21 @@ Linux 图形界面从 **XWayland** 切到**原生 Wayland**，并补齐了缺位
   `WindowDecorations`。
 - 测试项目迁到 **xunit v3**（`Avalonia.Headless.XUnit` 12.x 只提供 v3 适配器），
   以 Exe 形态通过 `dotnet <tests>.dll` 运行。
+- **`dotnet test` 在 CI 上全红**：VSTest 的 `testhost.deps.json` 按老规矩引 `Newtonsoft.Json 13.0.3`，
+  而 xunit.v3 的依赖图里没有它，报 `Testhost process ... exited with error`。加
+  `TestingPlatformDotnetTestSupport` 让 `dotnet test` 走 Microsoft.Testing.Platform、
+  并移掉 `xunit.runner.visualstudio` 后恢复本地与 CI 一致的运行方式。
+- **AppImage 打不出来，是三个坑叠在一起**：桌面文件 `Categories=Utility;Archiver;` 里的
+  `Archiver` 不是注册值（改 `Archiving`）；AppStream `<id>` 必须是反域名（改
+  `io.github.pingod.UZIP2`）；元数据文件名必须与 id 一致（跟着改名，否则报
+  `metainfo-filename-cid-mismatch`）。另外 CI runner 升级到 Ubuntu 26.04 后 `tail` 是
+  uutils 版，`tail -40` 报 `unexpected argument '-4'`，把这堆真实错误全盖住了，改成 `tail -n 40`。
 
 **测试**：21/21 通过，构建 0 警告 0 错误。
 
 **发布**：GitHub Release [`v3.13`](https://github.com/pingod/UZIP2/releases/tag/v3.13)，
-五个产物 + 各自的 `.sha256` 侧车。
+九个产物 + 各自的 `.sha256` 侧车（Windows×2、Linux tar.gz×2、Arch 包、deb、rpm、AppImage，
+外加汇总清单 `SHA256SUMS-linux-packages.txt`）。
 
 ## [3.12.0 的 Linux 收尾] — Linux 桌面收尾与 Avalonia 功能对齐（2026-10-23）
 

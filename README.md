@@ -69,7 +69,14 @@ cd packaging/arch && makepkg -si          # PKGBUILD
 cd packaging/arch && makepkg -si -p PKGBUILD-bin
 ```
 
-其它发行版直接解包 tar.gz，目录里带安装脚本：
+Debian/Ubuntu 用 `.deb`，通用发行版可以用 AppImage：
+
+```
+sudo dpkg -i uzip2_3.13.0_amd64.deb                    # Debian/Ubuntu
+chmod +x UZIP2-3.13.0-linux-x64.AppImage && ./UZIP2-3.13.0-linux-x64.AppImage   # 需 FUSE
+```
+
+或者直接解包 tar.gz，目录里带安装脚本：
 
 ```
 tar -xzf UZIP2-3.13.0-linux-x64.tar.gz
@@ -92,7 +99,7 @@ cd UZIP2-3.13.0-linux-x64 && sudo ./install.sh      # 默认 /usr/local，装桌
 
 **图形后端（v3.13 起）**：升级到 **Avalonia 12.1.4** 并引入 `Avalonia.Wayland`，Linux 上走**原生 Wayland**（实测协议流里有 `wl_compositor` / `xdg_wm_base` / `wl_shm` / `wl_seat`），X11 只是兜底 —— `UseWaylandWithFallback()` 仅在 Wayland 客户端连不上时才退回 XWayland。`Avalonia.Wayland` 从 12.1.0 才开始发布，Avalonia 11.x **完全没有** Wayland 后端，这是之前所有窗口都跑在 XWayland 上的根因。
 
-**已知限制**（都是环境或上游限制，不是没做完）：原生 Wayland 下客户端设窗口坐标本就无效（由合成器决定），悬浮方块的绝对定位因此依赖合成器配合；实测 Hyprland 下能精确恢复保存的位置。Hyprland **不实现 EWMH**，置顶属性设得上但合成器不体现「重启后仍在最上层」；KDE/X11 正常。AppImage 依赖 FUSE，Ubuntu 22.04+ 需自行装 `libfuse2`。`rpm` 与 `AppImage` 因本机无 `rpmbuild`/`appimagetool` 未在本地真构建，由 CI 验证；AUR 包已就绪（含 `.SRCINFO`）但尚未提交（需要 AUR 账号与 SSH key）；arm64 仍只有交叉构建。
+**已知限制**（都是环境或上游限制，不是没做完）：原生 Wayland 下客户端设窗口坐标本就无效（由合成器决定），悬浮方块的绝对定位因此依赖合成器配合；实测 Hyprland 下能精确恢复保存的位置。Hyprland **不实现 EWMH**，置顶属性设得上但合成器不体现「重启后仍在最上层」；KDE/X11 正常。AppImage 依赖 FUSE，Ubuntu 22.04+ 需自行装 `libfuse2`；`appimagetool` 打包最后要联网下载 runtime，网络受限时用 `--runtime-file` 指定可信 runtime（从 appimagetool 自身切出来的那份会导致产物段错误）。`rpm` 因本机无 `rpmbuild` 未在本地真构建，由 CI 构建并在容器里拆包实跑；AUR 包已就绪（含 `.SRCINFO`）但尚未提交（需要 AUR 账号与 SSH key）；arm64 仍只有交叉构建。
 
 一个打包坑记在这里：makepkg 默认会 `strip`，而 .NET 单文件在 ELF 末尾追加了 bundle，strip 之后运行时报 `Arithmetic overflow while reading bundle`。两个 PKGBUILD 都必须带 `options=(!strip !debug)`。
 

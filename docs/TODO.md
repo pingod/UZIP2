@@ -1,7 +1,7 @@
 # 待办事项
 
 截至 **v3.13.0**（2026-10-24）。v3.13 把 Linux 图形界面从 XWayland 换到原生 Wayland，
-并把 Arch 分发补齐；v3.12 后那一轮补完了 E2/E3/E5 实机验证与 F1–F7 功能对齐。
+并补齐发行版打包（Arch / deb / rpm / AppImage）；v3.12 后那一轮补完了 E2/E3/E5 实机验证与 F1–F7 功能对齐。
 下面只留「仍然做不了」和「新发现、尚未做」的部分，末尾记录已做完的与验证方式。
 
 > **v3.13 已关闭的旧条目**：`E3b`（原生 Wayland 下的方块定位）与 `N1`（Avalonia 11.3.2
@@ -18,7 +18,6 @@
 |---|------|-------------|---------|
 | E1 | **KDE Wayland 的 GlobalShortcuts portal 实跑** | 本机是 Hyprland（wlroots），`DesktopCapabilities.GlobalHotkeys` 为 false，代码走不到 portal 分支；只有 X11 热键路径被实机验证过 | 在 KDE Wayland 下启动，`gdbus monitor` 看到 `BindShortcuts` 的 Response，按组合键能唤起窗口 |
 | E4 | **arm64 运行验证** | 只有交叉构建与打包，没有 arm64 设备，也没有 qemu | 在 aarch64 机器上跑 `uzip2 --version` + 解压一个包 |
-| P2b | **rpm / AppImage 真构建** | 本机无 `rpmbuild`、无 `appimagetool`，且无 sudo 装不了；GitHub 发布页在本机网络拉不到 | CI 的 `linux-packages` job 跑通即为验收（脚本已就位） |
 | P1b | **AUR 真提交** | 无 SSH 私钥、无 `ssh-askpass`，`git ls-remote ssh://aur@aur.archlinux.org` 直接 `Host key verification failed`；且 `sudo` 不可用 | 有 AUR 账号与 SSH key 的机器上 `git push` |
 
 ---
@@ -28,6 +27,7 @@
 | # | 事项 | 现状 | 建议 |
 |---|------|------|------|
 | N2 | **AppImage 依赖 FUSE** | Ubuntu 22.04+ 默认没装 `libfuse2`，用户直接双击会报 `dlopen(): error loading libfuse2` | 文档提示，或改用 `--appimage-extract-and-run` 包装启动 |
+| N2b | **`appimagetool` 打包要联网下载 runtime** | 最后一步从 `AppImage/type2-runtime` 的 Releases 拉 `runtime-x86_64`，网络受限时失败并报 `Failed to download runtime`。已加 `--runtime-file PATH` / `APPIMAGE_RUNTIME_FILE` / 同级目录自动发现 `runtime-<arch>`。**注意**：从 `appimagetool` 自身切出来的 runtime 会让产物段错误（`--appimage-extract` 都 core dump），只能用可信来源 | 网络受限环境传入合法 runtime |
 | N3 | **arm64 只有 tar.gz** | deb/rpm/AppImage 的 arm64 分支脚本已支持（`--arch arm64`）但没有任何流程产出，交叉打包无法验证 | 有 arm64 runner 后再接入 CI |
 | N4 | **Hyprland 不实现 EWMH 置顶** | `xprop -root _NET_SUPPORTED` 里没有 `_NET_WM_STATE_ABOVE`，`hyprctl -j clients` 显示 `pinned:false`。置顶开关本身能设（`Topmost` 属性即时变化），但"重启后仍在最上层"在这个桌面上无法体现 | 桌面限制，非代码缺陷。KDE/X11 下正常 |
 
@@ -111,6 +111,16 @@
    Hyprland 会话里按 PID 定位到本进程的 SNI，`Id='UZIP2'`、`Status='Active'` —— 规范了，`N1` 关闭。
 2. **无 SNI 宿主时托盘降级正常**：cage 沙箱里没有 `StatusNotifierWatcher`，程序照常启动、
    窗口正常渲染、日志只记一条桌面能力，不崩不卡。
+
+### 发行版包（deb / rpm / AppImage）
+
+| 事项 | 结果 |
+|------|------|
+| deb 本机真构建 | `scripts/package-linux.sh --arch x64 --formats deb` → `uzip2_3.13.0_amd64.deb`（38.8 MB）。本机没有 `dpkg-deb`，走 `ar + tar` 回退路径 |
+| AppImage 本机真构建 | 同上 `--formats appimage` → `UZIP2-3.13.0-linux-x64.AppImage`（36.5 MB）；`--appimage-extract` 后 `--version` → `UZIP 3.13.0`，cage 无头沙箱渲染截图与 dev build **md5 完全相同** |
+| rpm 由 CI 构建 | 本机无 `rpmbuild`，CI 的 `linux-packages` job 产出 `uzip2-3.13.0-1.x86_64.rpm`（31.7 MB），并在容器里 `rpm2cpio` 拆包、跑 `--version` 得 `UZIP 3.13.0` |
+| AppImage 三个坑 | ① `.desktop` 的 `Categories=Utility;Archiver;` 里 `Archiver` 不是注册值 → 改 `Archiving`；② AppStream `<id>` 必须是反域名 → 改 `io.github.pingod.UZIP2`；③ 元数据文件名必须与 id 一致 → 文件改名（否则报 `metainfo-filename-cid-mismatch`）。另外 CI runner 升到 Ubuntu 26.04 后 `tail` 是 uutils 版，`tail -40` 报 `unexpected argument '-4'`，把上面这些真实错误全盖住了，改成 `tail -n 40` |
+| 发布 | 九个产物 + 各自 `.sha256` 已上传 Release `v3.13`；rpm 是 CI 构建的那个 |
 
 ---
 
