@@ -84,6 +84,8 @@ UZIP2 Linux 打包脚本 —— 生成 .deb / .rpm / AppImage
       --release N         rpm 的 Release 号，默认 1
       --dotnet PATH       dotnet 可执行文件路径，默认取 PATH 上的 dotnet
       --appimagetool PATH appimagetool 路径（默认找 PATH 上的 appimagetool）
+      --runtime-file PATH  AppImage runtime 文件（默认让 appimagetool 自己下载；
+                          网络受限时用这个，或在 appimagetool 旁边放 runtime-<arch>）
       --keep-stage        保留暂存目录（调试用）
   -h, --help              显示本帮助
 
@@ -115,6 +117,7 @@ VERSION_OVERRIDE=""
 RELEASE="1"
 DOTNET_BIN="dotnet"
 APPIMAGETOOL_BIN=""
+APPIMAGE_RUNTIME_FILE=""
 KEEP_STAGE=0
 
 while [ $# -gt 0 ]; do
@@ -129,6 +132,7 @@ while [ $# -gt 0 ]; do
         --release)            RELEASE=${2:?--release 需要参数}; shift 2 ;;
         --dotnet)             DOTNET_BIN=${2:?--dotnet 需要参数}; shift 2 ;;
         --appimagetool)       APPIMAGETOOL_BIN=${2:?--appimagetool 需要参数}; shift 2 ;;
+        --runtime-file)       APPIMAGE_RUNTIME_FILE=${2:?--runtime-file 需要参数}; shift 2 ;;
         --keep-stage)         KEEP_STAGE=1; shift ;;
         *)                    die "不认识的参数：$1（用 --help 看用法）" ;;
     esac
@@ -536,7 +540,7 @@ build_rpm() {
     if ! rpmbuild -bb --target "$rpmarch" --define "_topdir $topdir" "$spec" \
             > "$WORK_ROOT/rpm.log" 2>&1; then
         printf '\n' >&2
-        tail -40 -- "$WORK_ROOT/rpm.log" >&2 || true
+        tail -n 40 -- "$WORK_ROOT/rpm.log" >&2 || true
         die "rpmbuild 失败，完整日志：$WORK_ROOT/rpm.log"
     fi
 
@@ -596,8 +600,8 @@ build_appimage() {
     # 再往 AppDir 根目录放一份会被当成重复元数据（同一个 id 出现两次）。
     mkdir -p -- "$appdir/usr/share/metainfo"
     sed -e "s|@VERSION@|$VERSION|g" -e "s|@DATE@|$(date -u +%Y-%m-%d)|g" \
-        "$REPO_ROOT/packaging/appimage/uzip2.appdata.xml" \
-        > "$appdir/usr/share/metainfo/uzip2.appdata.xml"
+        "$REPO_ROOT/packaging/appimage/io.github.pingod.UZIP2.appdata.xml" \
+        > "$appdir/usr/share/metainfo/io.github.pingod.UZIP2.appdata.xml"
 
     # appimagetool 自己也是 AppImage：没有 FUSE 时用 --appimage-extract-and-run。
     # 先探测哪种调用方式可用；两种都不行就明确失败（不要用一个必然失败的调用硬撞）。
@@ -612,9 +616,30 @@ build_appimage() {
         return 1
     fi
 
+    # appimagetool 在最后一步要往产物前面拼一段 runtime，默认会去 GitHub
+    # （AppImage/type2-runtime）现场下载。网络受限时这一步必然失败，报的是
+    #   Failed to download runtime: server returned status code 0
+    # 看起来像打包脚本的 bug，其实只是下载不来。传 --runtime-file 就能完全离线：
+    # 既接受显式 --runtime-file，也接受在 appimagetool 旁边放一份 runtime-<arch>
+    # 自动发现，避免每次打包都去 GitHub 撞一次。
+    local runtime=${APPIMAGE_RUNTIME_FILE:-}
+    if [ -z "$runtime" ]; then
+        local sibling
+        sibling="$(dirname -- "$tool")/runtime-$archimg"
+        if [ -f "$sibling" ]; then runtime=$sibling; fi
+    fi
+    if [ -n "$runtime" ]; then
+        [ -f "$runtime" ] || die "--runtime-file 指定的文件不存在：$runtime"
+        runner+=("--runtime-file" "$runtime")
+        info "使用本地 runtime：$runtime"
+    fi
+
     # ARCH 必须显式给：交叉打 aarch64 时 appimagetool 靠它决定 ELF 架构
     if ! ARCH="$archimg" "${runner[@]}" "$appdir" "$out" > "$WORK_ROOT/appimage.log" 2>&1; then
-        tail -40 -- "$WORK_ROOT/appimage.log" >&2 || true
+        tail -n 40 -- "$WORK_ROOT/appimage.log" >&2 || true
+        if grep -q 'Failed to download runtime' "$WORK_ROOT/appimage.log" 2>/dev/null; then
+            warn "appimagetool 下载 runtime 失败（网络受限），可用 --runtime-file 指定本地 runtime"
+        fi
         die "appimagetool 失败，完整日志：$WORK_ROOT/appimage.log"
     fi
     [ -f "$out" ] || die "appimagetool 没有产出文件：$out"
@@ -639,7 +664,7 @@ verify_appimage() {
     [ -f "$root/uzip2.desktop" ] || die "AppImage 里没有 uzip2.desktop"
     [ -f "$root/uzip2.png" ]     || die "AppImage 里没有 uzip2.png（appimagetool 要求根目录有图标）"
     [ -x "$root/usr/bin/uzip2" ] || die "AppImage 里没有 usr/bin/uzip2"
-    [ -f "$root/usr/share/metainfo/uzip2.appdata.xml" ] \
+    [ -f "$root/usr/share/metainfo/io.github.pingod.UZIP2.appdata.xml" ] \
         || die "AppImage 里没有 AppStream 元数据（新版 appimagetool 会拒绝构建）"
     # 二进制必须与源文件逐字节一致（AppImage 打包不该动它）
     if [ -n "$src_bin" ]; then

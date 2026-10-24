@@ -8,15 +8,19 @@
   以前可以靠「跳过 appstream 校验」的开关绕过，但老版本 appimagetool 不认这个
   选项（当成未知参数报错），所以「带一个合法的 metainfo」比「传开关」在两端都成立。
 
-  文件名规则（AppStream 规范）：<component-id>.appdata.xml，component-id 与
-  .desktop 的 Name/文件一致，这里就是 uzip2。装到 AppDir 的
-  usr/share/metainfo/ 下，appimagetool 会自己找到。
+  文件名：AppStream 规范要求文件名与 <id> 一致，即
+  io.github.pingod.UZIP2.appdata.xml（否则 appstreamcli 报
+  metainfo-filename-cid-mismatch 警告，新版 appimagetool 会把它当失败）。
+  <id> 标识「这个软件」，<launchable> 才标识「怎么启动它」（uzip2.desktop）。
+  装到 AppDir 的 usr/share/metainfo/ 下，appimagetool 会自己找到。
 
-  id 用反域名；如果以后要上 Flathub/AppStream 仓库，需要与 .desktop 的
-  X-AppImage 或桌面文件 ID 严格对应。
+  为什么 id 不能写成 uzip2.desktop：appstreamcli 会报
+  cid-desktopapp-is-not-rdns（警告级），而新版 appimagetool 把警告当失败，
+  AppImage 直接打不出来，所以正解是把元数据本身写规范。
+  注意：XML 注释里不能出现两个连续的连字符，所以这里不直呼那些命令行开关名。
 -->
 <component type="desktop-application">
-  <id>uzip2.desktop</id>
+  <id>io.github.pingod.UZIP2</id>
   <name>UZIP2</name>
   <summary>7-Zip 前端：解压 / 压缩 / 格式转换</summary>
   <summary xml:lang="en">7-Zip front-end: extract, compress, convert</summary>

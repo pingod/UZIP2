@@ -229,7 +229,7 @@ jobs:
           ( cd /tmp/aimg && "$img" --appimage-extract >/dev/null )
           test -x /tmp/aimg/squashfs-root/AppRun
           test -f /tmp/aimg/squashfs-root/uzip2.desktop
-          test -f /tmp/aimg/squashfs-root/usr/share/metainfo/uzip2.appdata.xml
+          test -f /tmp/aimg/squashfs-root/usr/share/metainfo/io.github.pingod.UZIP2.appdata.xml
           # 包内二进制必须与 tarball 里的逐字节相同（AppImage 打包不该改写它）
           rm -rf /tmp/tarx && mkdir -p /tmp/tarx
           tar -xzf "$d/UZIP2-${v}-linux-x64.tar.gz" -C /tmp/tarx
