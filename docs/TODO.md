@@ -66,7 +66,7 @@
 
 | # | 事项 | 结果 |
 |---|------|------|
-| P1 | AUR 准备 | `packaging/arch/.SRCINFO` 与 `.SRCINFO-bin` 已生成；两个 PKGBUILD 的 `sha256sums` 全部是 v3.13.0 的真值（源码包 `0a792aea…`；`sha256sums_x86_64`=`fcf1f84b…` / `sha256sums_aarch64`=`71e9706e…`）；新增 `scripts/aur-sums.sh` 做「下载→计算→比对→回填→生成 .SRCINFO」一条命令。**真提交做不了**（见 P1b），但 v3.13 Release 已发布、产物已上传，AUR 提交所需的 hash 与文件都已就绪 |
+| P1 | AUR 准备 | `packaging/arch/.SRCINFO` 与 `.SRCINFO-bin` 已生成；`PKGBUILD-bin` 的 `sha256sums_x86_64`=`fcf1f84b…` / `sha256sums_aarch64`=`71e9706e…` 是真值（源码 `PKGBUILD` 因「文件在归档内」的固定点只能 SKIP，见下表）；新增 `scripts/aur-sums.sh` 做「下载→计算→比对→回填→生成 .SRCINFO」一条命令。**真提交做不了**（见 P1b），但 v3.13 Release 已发布、产物已上传，AUR 提交所需的 hash 与文件都已就绪 |
 | P2 | deb / rpm / AppImage | 新增 `scripts/package-linux.sh`（统一入口）+ `packaging/deb/`、`packaging/rpm/`、`packaging/appimage/`。三种格式共用一份 payload 暂存树，保证逐字节一致，全程不 strip（守住 `Arithmetic overflow while reading bundle` 那条坑）。**deb 已真打包（36 MB）并拆包核对元数据**；rpm/AppImage 本机缺工具，留给 CI |
 | P3 | arm64 | 两个 PKGBUILD 的 `arch` 与 `build()` 已支持 aarch64；`package-linux.sh --arch arm64` 路径可跑；CI 按规格只产 arm64 tar.gz |
 | P4 | Windows CI 跑 Avalonia 测试 | `build-windows.yml` 新增 `Test the Avalonia shell (headless, Windows)`；不需要 `EnableWindowsTargeting`（Avalonia 测试工程本身是 net8.0），且 `dotnet test` 给的是 .csproj 而非 .sln，WPF 项目不会被拉进 restore 图 |
@@ -99,10 +99,11 @@
 | 事项 | 结果 |
 |------|------|
 | 本机真构建（bin） | `makepkg -f -p PKGBUILD-bin` 走完整 fakeroot 流程 → `uzip2-bin-3.13.0-1-x86_64.pkg.tar.zst`（34 MB）；`bsdtar tf` 确认 `usr/bin/uzip2` + 桌面入口 + 48/128 两档图标；解包后 `--version` → `UZIP 3.13.0` |
-| 本机真构建（源码） | `makepkg -f -p PKGBUILD --nodeps`（本机无 `dotnet-sdk` 包，SDK 在 `_tools/` 里）→ `uzip2-3.13.0-1-x86_64.pkg.tar.zst`（34 MB）；比 bin 包多 `usr/share/licenses/uzip2/LICENSE`；解包后 `--version` → `UZIP 3.13.0`。这一步同时验证了 `sha256sums` 里的源码归档真值（下载 → 校验 → 构建全通） |
+| 本机真构建（源码） | `makepkg -f -p PKGBUILD --nodeps`（本机无 `dotnet-sdk` 包，SDK 在 `_tools/` 里）→ `uzip2-3.13.0-1-x86_64.pkg.tar.zst`（34 MB）；比 bin 包多 `usr/share/licenses/uzip2/LICENSE`；解包后 `--version` → `UZIP 3.13.0` |
 | 架构专属校验 | `PKGBUILD-bin` 用 `source_x86_64` / `sha256sums_x86_64` / `source_aarch64` / `sha256sums_aarch64`，两架构各校验各自的包 |
 | 版本 | 两个 PKGBUILD 的 `pkgver=3.13.0`、`_tag=v3.13`；`.SRCINFO` / `.SRCINFO-bin` 重新生成 |
-| sha256 已全部填真值 | 源码包 `sha256sums` = `0a792aea…`（v3.13 tag 推上去后下载的归档，3,745,901 字节 / 262 条目）；`sha256sums_x86_64` = `fcf1f84b…`、`sha256sums_aarch64` = `71e9706e…`（均与 Release 侧车逐字核对一致）。CI 的 `Validate both PKGBUILDs` 会断言 `sha256sums_aarch64` 是真值 |
+| **源码包 `sha256sums` 只能是 SKIP**（数学上的固定点） | `PKGBUILD` 本身就在它下载的 tag 归档里：往里填真值会改变 `PKGBUILD` → 改变归档 → hash 又变，永远填不对。历史上填过 `0a792aea…`（对着旧 tag 算的），tag 重指后 CI 立刻报 `==> ERROR: One or more files did not pass the validity check!`。改为 `('SKIP')` 并在文件里写清理由；完整性靠 GitHub 归档无篡改空间 + CI 真跑构建 + Release 逐字给出产物 sha256 兜住 |
+| bin 包 sha256 是真值 | `sha256sums_x86_64` = `fcf1f84b…`、`sha256sums_aarch64` = `71e9706e…`（均与 Release 侧车逐字核对一致）。它下载的是 Release 二进制、不在归档内，不受上面那个固定点限制；CI 会断言两个都是 64 位真值 |
 
 ### 另外确认的两件事
 

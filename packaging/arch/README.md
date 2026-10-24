@@ -10,7 +10,7 @@
 ```bash
 cd packaging/arch
 makepkg -si                 # 源码包
-makepkg -si -p PKGBUILD-bin # 预编译包（首次发布后把 tar.gz 的 sha256 填进 sha256sums）
+makepkg -si -p PKGBUILD-bin # 预编译包（两架构的 sha256 来自 Release 侧车）
 ```
 
 产物装到 `/usr/bin/uzip2`，配置在 `~/.config/uzip2`。
@@ -37,6 +37,24 @@ Arithmetic overflow while reading bundle.
 Release 页面附带的 `.sha256` 侧车 —— 不能拿本地构建的 tar.gz 去算，gzip 头带 mtime，
 同一份代码两次打包字节流不同。回填/核对用 `scripts/aur-sums.sh`（`--print` 只打印、
 `--fill` 回填、`--srcinfo` 生成 AUR 需要的 `.SRCINFO`）。
+
+## 为什么源码 `PKGBUILD` 的 `sha256sums` 是 `SKIP`
+
+不是省事，是**数学上填不对**：`packaging/arch/PKGBUILD` 自己就在它下载的那个
+`archive/<tag>.tar.gz` 里。往 `sha256sums` 里填真值 → `PKGBUILD` 变了 → 归档变了 →
+hash 又变了，永远追不上。
+
+所以 `scripts/aur-sums.sh --fill` 只对 `PKGBUILD-bin` 有意义；对源码包它会一直报
+「不一致」，这是预期行为，不要照着它回填。
+
+填 `SKIP` 之后完整性靠三件事兜住：
+
+1. GitHub 的 tag 归档由 tag 唯一决定，没有篡改空间（服务端重新打包时字节可能变，但内容不会变）；
+2. CI 的 `Validate both PKGBUILDs` 会检查源码包**确实是 `SKIP` 且注释里写了理由**，并真跑一遍 `makepkg` 构建；
+3. Release 页面里每个产物都逐字给出 `.sha256`，用户装的是产物而不是源码包。
+
+`PKGBUILD-bin` 不受这个限制：它下载的是 Release 上的二进制，不在归档内，所以那两个 hash
+必须、也确实填的是真值。
 
 ## 其它发行版
 

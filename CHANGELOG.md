@@ -33,9 +33,10 @@ Linux 图形界面从 **XWayland** 切到**原生 Wayland**，并补齐了缺位
 - **`PKGBUILD-bin` 改用架构专属数组**（`source_x86_64` / `sha256sums_x86_64` 等），
   x86_64 与 aarch64 各校验各自的包，不再是共用一个 `('SKIP')`。
 - 两个 PKGBUILD 的 `pkgver` 提到 3.13.0、`_tag` 提到 v3.13，`.SRCINFO` 重新生成。
-- **所有 sha256 都换成真值**（与 Release 侧车逐字核对）：源码包 `0a792aea…`、
-  `sha256sums_x86_64=fcf1f84b…`、`sha256sums_aarch64=71e9706e…`。CI 的
-  `Validate both PKGBUILDs` 会断言 aarch64 那个值必须是真值。
+- **sha256**：`PKGBUILD-bin` 的两个架构专属数组是真值（`sha256sums_x86_64=fcf1f84b…`、
+  `sha256sums_aarch64=71e9706e…`，与 Release 侧车逐字核对）。源码 `PKGBUILD` 的
+  `sha256sums` 只能是 `('SKIP')` —— 它自己就在下载的那个 tag 归档里，填真值会改变归档、
+  归档一变 hash 又变，是个无解的固定点（详见「修复」里的 CI 条目）。
 - `pkgdesc` 更正：两处都还写着「Linux 命令行版」，但包里自 v3.10 起就是图形界面 + 命令行。
 - **deb 与 AppImage 也在本机真构建**（`scripts/package-linux.sh`）：`uzip2_3.13.0_amd64.deb`
   与 `UZIP2-3.13.0-linux-x64.AppImage`，后者解包运行 `--version` 输出 `UZIP 3.13.0`，
@@ -73,6 +74,13 @@ Linux 图形界面从 **XWayland** 切到**原生 Wayland**，并补齐了缺位
   `io.github.pingod.UZIP2`）；元数据文件名必须与 id 一致（跟着改名，否则报
   `metainfo-filename-cid-mismatch`）。另外 CI runner 升级到 Ubuntu 26.04 后 `tail` 是
   uutils 版，`tail -40` 报 `unexpected argument '-4'`，把这堆真实错误全盖住了，改成 `tail -n 40`。
+- **源码 `PKGBUILD` 的 `sha256sums` 是个无解的固定点**：`packaging/arch/PKGBUILD` 本身就在它
+  下载的 `archive/v3.13.tar.gz` 里，往 `sha256sums` 填真值会改变 `PKGBUILD` → 改变归档 →
+  hash 又变。之前填的 `0a792aea…` 是对着旧 tag 算的，tag 重指到该提交之后，tag 触发的 CI
+  在 `Build package (source PKGBUILD)` 步骤报 `==> ERROR: One or more files did not pass
+  the validity check!`（而前一步 `Validate both PKGBUILDs` 是通过的，所以一开始误判为断言写错）。
+  改为 `('SKIP')` 并在文件里写清理由；CI 断言同步拆开：源码包必须是 SKIP 且带「固定点」说明，
+  `PKGBUILD-bin` 两个架构仍必须是 64 位真值。本地 `makepkg -f --nodeps` 用 SKIP 完整构建通过。
 
 **测试**：21/21 通过，构建 0 警告 0 错误。
 

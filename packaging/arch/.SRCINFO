@@ -17,6 +17,6 @@ pkgbase = uzip2
 	options = !strip
 	options = !debug
 	source = uzip2-3.13.0.tar.gz::https://github.com/pingod/UZIP2/archive/v3.13.tar.gz
-	sha256sums = 0a792aea10371bb170063be2524f89fd4f1ac0b5773b987d656ae150de01703b
+	sha256sums = SKIP
 
 pkgname = uzip2

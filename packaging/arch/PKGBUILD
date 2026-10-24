@@ -23,17 +23,20 @@ conflicts=('uzip2-bin')
 # （实测运行时报 "Arithmetic overflow while reading bundle"）
 options=(!strip !debug)
 source=("$pkgname-$pkgver.tar.gz::$url/archive/$_tag.tar.gz")
-# GitHub 的 /archive/<tag>.tar.gz 是按需生成的：同一个 tag 正常情况内容稳定，
-# 但归档由服务端现打包，一旦上游重新生成 hash 就会变。
-#
-# ⚠️ 这个 hash 必须对应 **_tag 指向的那个 tag**。发新版本时先推 tag，再跑
-#     bash scripts/aur-sums.sh --dir packaging/arch --fill
-#     脚本会下载归档、与声明的值比对并就地回填，然后
-#     bash scripts/aur-sums.sh --dir packaging/arch --srcinfo --write 刷新 .SRCINFO。
-# 下面这个值取自 v3.13 tag 推上去之后下载的归档（3,745,901 字节，262 条目，
-# 顶层目录 UZIP2-3.13/）。GitHub 的服务端重新生成归档时 hash 可能变，届时
-# makepkg 会报有效性检查失败，重跑上面两条命令即可。
-sha256sums=('0a792aea10371bb170063be2524f89fd4f1ac0b5773b987d656ae150de01703b')
+# 这个位置必须是 SKIP，不能填 hash —— 原因不是懒得填，而是这里存在一个
+# **数学上无解的固定点**：
+#   - 本文件（PKGBUILD）本身就在它下载的那个 GitHub tag 归档里；
+#   - 往 sha256sums 里填真值会改变 PKGBUILD，也就会改变归档内容；
+#   - 归档内容一变，hash 又变，于是永远填不对。
+# 历史上填过 v3.13 的具体值 `0a792aea…`，当时是对着旧 tag 算的；一旦 tag 重指
+# 到这行之后，CI 立刻报 `==> ERROR: One or more files did not pass the validity check!`。
+# 所以源码包这一路只能是 SKIP（makepkg 会打印 “Skipping integrity checks”），
+# 完整性由三件事兜住：① GitHub tag 归档本身不提供篡改空间；② CI 的
+# `Validate both PKGBUILDs` 断言这里**就是** SKIP 且本注释含「固定点」说明，
+# 并真跑一遍 makepkg 构建；③ 发布产物（tar.gz/包）的 sha256 在 Release 里逐字给出。
+# PKGBUILD-bin 不受这个限制：它下载的是 Release 上的二进制，不在归档内，
+# 因此那边必须、也确实填的是真值。
+sha256sums=('SKIP')
 build() {
   cd "UZIP2-${_tag#v}"   # GitHub 归档目录名跟 tag 走（UZIP2-3.13），不是 pkgver
   case "$CARCH" in

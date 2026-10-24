@@ -354,7 +354,7 @@ jobs:
           done"
 
           # 断言放在 su 外面（root 能读 builder 写的文件），逻辑与风格保持显式：
-          # 架构、防 strip、以及"两个架构各自有 sha256"是这套包能用的前提。
+          # 架构与"防 strip"是这套包能用的前提，两个 PKGBUILD 都要满足。
           for p in PKGBUILD PKGBUILD-bin; do
             f="/tmp/$p.srcinfo"
             grep -q $'^\tarch = x86_64$'  "$f" || { echo "$p 缺 x86_64"; exit 1; }
@@ -362,12 +362,22 @@ jobs:
             # strip/debug 必须关掉，否则 .NET 单文件 bundle 会被切坏
             grep -q $'^\toptions = !strip$' "$f" || { echo "$p 没有 !strip"; exit 1; }
             grep -q $'^\toptions = !debug$' "$f" || { echo "$p 没有 !debug"; exit 1; }
-            # 两个架构都必须有 sha256，且不能是 SKIP（SKIP 等于不校验）
-            grep -qE $'^\tsha256sums(_x86_64)? = [0-9a-f]{64}$' "$f" \
-              || { echo "$p 的 x86_64 sha256 不是真值"; exit 1; }
-            echo "$p 校验通过"
+            echo "$p 基本字段校验通过"
           done
-          # PKGBUILD-bin 是架构专属数组，必须两个架构各一份 hash
+
+          # 源码 PKGBUILD 下载的是 GitHub tag 归档，而它自己就在那个归档里面：
+          # 填真值会改变归档、归档一变 hash 又变，是个填不对的固定点。所以它必须
+          # 是 SKIP，且这个 SKIP 是**有意为之**，得有注释说明（防止有人图省事照抄）。
+          grep -qE $'^\tsha256sums = SKIP$' /tmp/PKGBUILD.srcinfo \
+            || { echo 'PKGBUILD 的 sha256sums 应该是 SKIP（见 PKGBUILD 注释）'; exit 1; }
+          grep -q '固定点' "$GITHUB_WORKSPACE/packaging/arch/PKGBUILD" \
+            || { echo 'PKGBUILD 里缺少「为什么必须 SKIP」的说明注释'; exit 1; }
+          echo 'PKGBUILD 的 SKIP 是有说明的'
+
+          # PKGBUILD-bin 下载的是 Release 上的二进制，不在归档内 → 必须填真值，
+          # 而且两个架构各一份（架构专属数组）。
+          grep -qE $'^\tsha256sums_x86_64 = [0-9a-f]{64}$' /tmp/PKGBUILD-bin.srcinfo \
+            || { echo 'PKGBUILD-bin 的 x86_64 sha256 不是真值'; exit 1; }
           grep -qE $'^\tsha256sums_aarch64 = [0-9a-f]{64}$' /tmp/PKGBUILD-bin.srcinfo \
             || { echo 'PKGBUILD-bin 的 aarch64 sha256 不是真值'; exit 1; }
           echo '两个 PKGBUILD 校验通过'
