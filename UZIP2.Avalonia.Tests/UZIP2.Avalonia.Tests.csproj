@@ -8,13 +8,20 @@
     <Nullable>disable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- xunit v3 自带内进程 runner，产物是 Exe。 -->
     <OutputType>Exe</OutputType>
+    <!-- 让 `dotnet test` 走 Microsoft.Testing.Platform 而不是 VSTest。
+         走 VSTest 时 testhost.deps.json 里会引用 Newtonsoft.Json 13.0.3，而
+         xunit v3 的依赖图里并没有这个包，CI 上直接报
+         "An assembly specified in the application dependencies manifest
+          (testhost.deps.json) was not found: package: 'Newtonsoft.Json'"
+         然后 Test Run Aborted。MTP 模式用测试项目自己的入口点跑，不经过 testhost。 -->
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Avalonia.Headless.XUnit" Version="12.1.4" />
     <PackageReference Include="xunit.v3" Version="3.2.2" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
   </ItemGroup>
 
   <ItemGroup>
