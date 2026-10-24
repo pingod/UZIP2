@@ -8,7 +8,7 @@
 # 用法：
 #   scripts/aur-sums.sh                 检查（默认，只读）：不一致时退出码 1
 #   scripts/aur-sums.sh --print         打印应写入的 sha256sums 行，不改文件
-#   scripts/aur-sums.sh --fill          按实际 hash 回填两个 PKGBUILD
+#   scripts/aur-sums.sh --fill          按实际 hash 回填（只对 PKGBUILD-bin 有效，源码包是 SKIP）
 #   scripts/aur-sums.sh --srcinfo       生成两个 .SRCINFO 到标准输出（AUR 必须带）
 #   scripts/aur-sums.sh --srcinfo --write   直接写进 packaging/arch/
 #
@@ -16,11 +16,19 @@
 #   --dir <path>    PKGBUILD 所在目录，默认 <repo>/packaging/arch
 #   --offline       不下载，只报告「当前值是不是 SKIP」（无网络时用）
 #
-# 依赖：curl、sha256sum（或 shasum）。makepkg 仅在 --srcinfo 时需要。
+# 依赖：curl、sha256sum（或 shasum）。makepkg 仅在 --srcinfo 时需要；--srcinfo
+# 会在下载循环之前直接返回，所以它不需要联网。
 #
-# 注意：GitHub 的 tag 归档（archive/<tag>.tar.gz）由服务端按需生成，其 sha256
-# 不保证永久稳定。--fill 对源码包写的是当期实测值，重新发布或 GitHub 改动归档
-# 格式后必须重跑本脚本。
+# 两个 PKGBUILD 的处理不一样，这是刻意的：
+#   - `PKGBUILD-bin` 下载 Release 上的二进制，sha256sums 必须是真值 → 本脚本负责
+#     核对与回填。
+#   - `PKGBUILD`（源码包）下载的是本仓库的 GitHub tag 归档，而它自己就在那个归档里：
+#     填真值会改变 PKGBUILD → 改变归档 → hash 又变，是个填不对的固定点。所以它的
+#     sha256sums 有意写成 SKIP，本脚本识别到（SKIP + 注释含「固定点」）会直接跳过，
+#     不去报「不一致」。这个 SKIP 由 CI 断言守着，别改成真值。
+#
+# 注意：GitHub 的 tag 归档由服务端按需生成，字节不保证永久稳定；即便哪天这个
+# 固定点被打破，也不要手工去填 —— 先改 PKGBUILD 的注释与 CI 断言。
 
 set -euo pipefail
 
@@ -47,7 +55,7 @@ while [[ $# -gt 0 ]]; do
     --offline) OFFLINE="yes" ;;
     --dir)     shift; PKG_DIR="${1:?--dir 需要一个路径}" ;;
     -h|--help)
-      sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     *) die "未知参数：$1（用 --help 看用法）" ;;
   esac
@@ -165,6 +173,29 @@ current_sums() {
 
 mkdir -p "$CACHE_DIR"
 info "PKGBUILD 目录：$PKG_DIR"
+
+# --srcinfo 只调 makepkg，不需要下载任何文件；放在下载循环之前，避免为了生成
+# .SRCINFO 先把几十 MB 的产物拉一遍（网络不稳时直接卡住）。
+if [[ "$MODE" == "srcinfo" ]]; then
+  command -v makepkg >/dev/null 2>&1 || die "没有 makepkg（只支持 Arch 系）"
+  for pkgfile in PKGBUILD PKGBUILD-bin; do
+    path="$PKG_DIR/$pkgfile"
+    [[ -f "$path" ]] || continue
+    if [[ "$pkgfile" == "PKGBUILD" ]]; then out="$PKG_DIR/.SRCINFO"; else out="$PKG_DIR/.SRCINFO-bin"; fi
+    info ""
+    info "== $pkgfile → $(basename "$out") =="
+    if [[ "$DO_WRITE" == "yes" ]]; then
+      ( cd "$PKG_DIR" && CARCH="${ARCHES[0]}" makepkg --printsrcinfo -p "$pkgfile" > "$out" ) \
+        || die "makepkg --printsrcinfo 失败：$pkgfile"
+      info "  已写入 $out"
+    else
+      ( cd "$PKG_DIR" && CARCH="${ARCHES[0]}" makepkg --printsrcinfo -p "$pkgfile" ) \
+        || die "makepkg --printsrcinfo 失败：$pkgfile"
+    fi
+  done
+  exit 0
+fi
+
 info "缓存目录：    $CACHE_DIR"
 FAIL=0
 
@@ -173,6 +204,18 @@ for pkgfile in PKGBUILD PKGBUILD-bin; do
   [[ -f "$path" ]] || { warn "跳过：$path 不存在"; continue; }
   info ""
   info "== $pkgfile =="
+
+  # 源码 PKGBUILD 下载的是本仓库的 GitHub tag 归档，而它自己就在那个归档里：
+  # 填真值会改变 PKGBUILD → 改变归档 → hash 又变，这是个填不对的固定点。
+  # 这类 PKGBUILD 用 sha256sums=('SKIP') 并在注释里写明理由，这里识别出来直接跳过，
+  # 否则每次都会报「不一致」，把人误导去回填一个必然错的值。
+  if [[ "$pkgfile" == "PKGBUILD" ]] \
+     && grep -q '固定点' "$path" \
+     && [[ "$(current_sums "$path" sha256sums | tr -d '[:space:]')" == "SKIP" ]]; then
+    info "  源码包 sha256sums = SKIP（该 PKGBUILD 就在它自己下载的归档里，见文件注释）"
+    info "  已跳过：这一路没有可回填的 hash；完整性由 CI 校验与 Release 侧车保证"
+    continue
+  fi
 
   # 收集每个架构下 source 的 (url, hash) 列表
   declare -a A_URLS=()   # 全部见过的 URL（去重后）
@@ -333,24 +376,6 @@ for pkgfile in PKGBUILD PKGBUILD-bin; do
       ;;
   esac
 done
-
-if [[ "$MODE" == "srcinfo" ]]; then
-  command -v makepkg >/dev/null 2>&1 || die "没有 makepkg（只支持 Arch 系）"
-  for pkgfile in PKGBUILD PKGBUILD-bin; do
-    path="$PKG_DIR/$pkgfile"
-    [[ -f "$path" ]] || continue
-    if [[ "$pkgfile" == "PKGBUILD" ]]; then out="$PKG_DIR/.SRCINFO"; else out="$PKG_DIR/.SRCINFO-bin"; fi
-    info ""
-    info "== $pkgfile → $(basename "$out") =="
-    if [[ "$DO_WRITE" == "yes" ]]; then
-      ( cd "$PKG_DIR" && makepkg --printsrcinfo -p "$pkgfile" > "$out" ) || die "makepkg --printsrcinfo 失败：$pkgfile"
-      info "  已写入 $out"
-    else
-      ( cd "$PKG_DIR" && makepkg --printsrcinfo -p "$pkgfile" ) || die "makepkg --printsrcinfo 失败：$pkgfile"
-    fi
-  done
-  exit 0
-fi
 
 info ""
 if [[ "$FAIL" -ne 0 ]]; then
