@@ -7,9 +7,9 @@
 # aarch64 需要在 Arch Linux ARM 上构建/安装（上游 Arch 官方仓库没有 aarch64；
 # dotnet-sdk 也只有 Arch Linux ARM 的 aarch64 版本）。构建时按 $CARCH 选 RID。
 pkgname=uzip2
-pkgver=3.13.0
+pkgver=3.13.1
 # 仓库的发布 tag 是两段（v3.10），包版本是三段（3.10.0）
-_tag=v3.13
+_tag=v3.13.1
 pkgrel=1
 pkgdesc="UZIP2 — 7-Zip 前端（图形界面 + 命令行）"
 arch=('x86_64' 'aarch64')
@@ -38,7 +38,7 @@ source=("$pkgname-$pkgver.tar.gz::$url/archive/$_tag.tar.gz")
 # 因此那边必须、也确实填的是真值。
 sha256sums=('SKIP')
 build() {
-  cd "UZIP2-${_tag#v}"   # GitHub 归档目录名跟 tag 走（UZIP2-3.13），不是 pkgver
+  cd "UZIP2-${_tag#v}"   # GitHub 归档目录名跟 tag 走（UZIP2-3.13.1），不是 pkgver
   case "$CARCH" in
     x86_64)  _rid=linux-x64 ;;
     aarch64) _rid=linux-arm64 ;;

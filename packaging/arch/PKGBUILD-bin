@@ -11,9 +11,9 @@
 #    tar.gz 去算：gzip 头部带 mtime，同一份代码两次打包的字节流不同。
 #    核对命令：curl -L <Release 上的 xxx.tar.gz.sha256>
 pkgname=uzip2-bin
-pkgver=3.13.0
+pkgver=3.13.1
 # 仓库的发布 tag 是两段（v3.10），包版本是三段（3.10.0）
-_tag=v3.13
+_tag=v3.13.1
 pkgrel=1
 pkgdesc="UZIP2 — 7-Zip 前端（图形界面 + 命令行，预编译）"
 arch=('x86_64' 'aarch64')
@@ -30,12 +30,12 @@ case "$CARCH" in
   *)       error "不支持的架构: $CARCH（只支持 x86_64 / aarch64）" ;;
 esac
 source_x86_64=("UZIP2-$pkgver-linux-x64.tar.gz::$url/releases/download/$_tag/UZIP2-$pkgver-linux-x64.tar.gz")
-sha256sums_x86_64=('fdca60ce44f7c03cd439154bec0a993f41614f9fad53cc0cc3dacbd04cc1177e')
+sha256sums_x86_64=('3065297547dc2a814783c0bdafbd0169ec5ac116784ae830550768edbcbf88f9')
 source_aarch64=("UZIP2-$pkgver-linux-arm64.tar.gz::$url/releases/download/$_tag/UZIP2-$pkgver-linux-arm64.tar.gz")
 # aarch64 与 x86_64 用各自的侧车真值：两个 tarball 是分别构建的（x86_64 在主机上、
 # arm64 交叉构建），内容不同，不能共用同一个 hash。换版本或重新打包后，用
 # `bash scripts/aur-sums.sh --dir packaging/arch --fill` 从 Release 侧车重新对齐。
-sha256sums_aarch64=('cf36520739d5e659b68670ada04c8b70d6c97aa5f1b2e1e3ca1063eab88eaa87')
+sha256sums_aarch64=('64c228398b9ab2cb0ab173ed972e221a6f6462952077de4a865804d6c15c297b')
 
 package() {
   _src="$srcdir/UZIP2-$pkgver-linux-$_arch"
