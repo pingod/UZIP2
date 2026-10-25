@@ -87,8 +87,10 @@ namespace UZIP2.Tests
             Assert.Equal(0, code);
             Assert.Empty(e);
             Assert.Contains(o, s => s.Contains("实际使用主卷"));
-            // 清单内容来自主卷（12 个文件全在），不是中间卷的碎片
-            Assert.Equal(12, o.Count(s => s.Contains("src/f") && s.Contains(".bin")));
+            // 清单内容来自主卷（12 个文件全在），不是中间卷的碎片。
+            // 注意 7z 在包内路径里用什么分隔符随平台而变（Windows 是 src\f1.bin，
+            // Linux 是 src/f1.bin），所以只按文件名后缀匹配，不断言分隔符。
+            Assert.Equal(12, o.Count(s => s.TrimEnd().EndsWith(".bin")));
             Assert.Contains(o, s => s.EndsWith(" 项"));
         }
 
