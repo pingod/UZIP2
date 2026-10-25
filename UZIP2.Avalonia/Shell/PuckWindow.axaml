@@ -3,13 +3,15 @@
         x:Class="UZIP2.Avalonia.Shell.PuckWindow"
         Title="UZIP 拖拽方块"
         Width="112" Height="112"
+        MinWidth="112" MinHeight="112" MaxWidth="112" MaxHeight="112"
         WindowDecorations="None"
         CanResize="False"
         ShowInTaskbar="False"
         Topmost="True"
         TransparencyLevelHint="Transparent"
         Background="Transparent"
-        WindowStartupLocation="Manual">
+        WindowStartupLocation="Manual"
+        DragDrop.AllowDrop="True">
   <Grid>
     <Border Background="#E61E1E24" CornerRadius="18" BorderBrush="#3A3A44" BorderThickness="1">
       <Grid>

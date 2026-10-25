@@ -432,6 +432,103 @@ namespace UZIP2.Avalonia.Tests
             Assert.Null(PuckWindow.ResolveRestorePoint(-1, -1, primary));
         }
 
+        // ── Hyprland 浮动窗口（方块被平铺拉伸）─────────────────────────────────
+        // 根因：Wayland 的 xdg-shell 里，客户端既不能声明「我是浮动窗口」，也不能指定
+        // 绝对坐标 —— 都由合成器决定。Hyprland 的 dwindle 布局会把 112×112 的方块当普通
+        // 窗口塞进布局树，拉伸成整块（实测 1268×688，内容跟着糊）。唯一出路是走 hyprctl IPC。
+        // 这些用例只验命令拼装与 JSON 解析，不碰真进程。
+
+        [Fact]
+        public void Hyprland_float_command_targets_the_window_address()
+        {
+            Assert.Equal(
+                "hl.dsp.window.float({ window = \"address:0x5601564cf680\", action = \"enable\" })",
+                HyprlandWindowHelper.BuildFloatCommand("0x5601564cf680"));
+
+            Assert.Equal(
+                "hl.dsp.window.move({ window = \"address:0x5601564cf680\", x = 800, y = 600 })",
+                HyprlandWindowHelper.BuildMoveCommand("0x5601564cf680", 800, 600));
+
+            // 负坐标也要原样拼进去（多屏合成器允许负 xy），不能被吞掉或加引号。
+            Assert.Contains("x = -1920", HyprlandWindowHelper.BuildMoveCommand("0x1", -1920, 200));
+        }
+
+        [Fact]
+        public void Hyprland_picks_this_process_window_by_pid()
+        {
+            // 真实 hyprctl clients -j 的裁剪版：两个窗口，只有 pid 能区分。
+            const string json = "[{\"address\":\"0xaaaa\",\"pid\":11,\"title\":\"别的程序\"}," +
+                                "{\"address\":\"0xbbbb\",\"pid\":22,\"title\":\"UZIP 拖拽方块\"}]";
+            Assert.Equal("0xbbbb", HyprlandWindowHelper.PickAddress(json, 22));
+            Assert.Null(HyprlandWindowHelper.PickAddress(json, 99));
+            Assert.Null(HyprlandWindowHelper.PickAddress("", 22));
+            Assert.Null(HyprlandWindowHelper.PickAddress("not json", 22));
+        }
+
+        /// <summary>
+        /// Wayland 下 `Window.Position` 恒为 0,0（xdg-shell 不告诉客户端绝对位置）。
+        /// 如果照它存盘，用户挪过方块后设置里就被写成 0,0，下次启动方块跑到左上角。
+        /// 所以 Wayland 上必须改问合成器 —— 这里验 JSON 解析这条路。
+        /// </summary>
+        [Fact]
+        public void Hyprland_reads_the_real_position_from_the_compositor()
+        {
+            const string json = "[{\"address\":\"0xaaaa\",\"pid\":11,\"at\":[0,0]}," +
+                                "{\"address\":\"0xbbbb\",\"pid\":22,\"at\":[2198,1462]}]";
+
+            Assert.True(HyprlandWindowHelper.TryParsePosition(json, 22, out int x, out int y));
+            Assert.Equal(2198, x);
+            Assert.Equal(1462, y);
+
+            // 找不到自己 → false，而不是给个 0,0 的假答案。
+            Assert.False(HyprlandWindowHelper.TryParsePosition(json, 99, out _, out _));
+            Assert.False(HyprlandWindowHelper.TryParsePosition("", 22, out _, out _));
+            Assert.False(HyprlandWindowHelper.TryParsePosition("[{\"pid\":22}]", 22, out _, out _));
+        }
+
+        // ── 方块拖放 ──────────────────────────────────────────────────────────
+        /// <summary>
+        /// 曾经：代码里挂了 DragDrop.DragOver/Drop 处理器，但 XAML 里没有
+        /// DragDrop.AllowDrop="True"。Avalonia 只会把拖放事件派发给 AllowDrop 为 true 的
+        /// 控件，所以把文件拖到方块上毫无反应 —— 用户报的「拖到方块无任何动作」。
+        /// 这条用例守住 XAML 里的那个属性，别再丢。
+        /// </summary>
+        [Fact]
+        public void Puck_window_accepts_dropped_files()
+        {
+            var xaml = File.ReadAllText(Path.Combine(RepoRoot, "UZIP2.Avalonia", "Shell", "PuckWindow.axaml"));
+
+            Assert.Contains("DragDrop.AllowDrop=\"True\"", xaml);
+
+            // 固定尺寸：不给 Min/Max，Hyprland 收不到「不可拉伸」的信号，
+            // 会把方块平铺拉伸（这是「桌面只留方块」被拉伸的另一半原因）。
+            Assert.Contains("MinWidth=\"112\"", xaml);
+            Assert.Contains("MaxWidth=\"112\"", xaml);
+        }
+
+        /// <summary>
+        /// AllowDrop 只在 XAML 里写对还不够 —— 得真有一个实例化的 PuckWindow，
+        /// 而 Avalonia 判断要不要把拖放事件派给某个控件，看的就是这个附加属性。
+        /// 这条用例直接读实例上的值，比 grep XAML 文本更贴近真实行为。
+        /// </summary>
+        [AvaloniaFact]
+        public void Puck_window_has_allow_drop_switched_on()
+        {
+            var window = new PuckWindow();
+            try
+            {
+                Assert.True(global::Avalonia.Input.DragDrop.GetAllowDrop(window),
+                    "方块窗口必须 AllowDrop，否则 Avalonia 不会把拖放事件派给它");
+
+                // 事件处理器本身也要挂上（有两个来源：构造函数里的 AddHandler）。
+                Assert.NotNull(window.FindControl<global::Avalonia.Controls.TextBlock>("HintText"));
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+
         // ── 路径分隔符（Linux GUI 解压曾经 100% 失败）──────────────────────────
         // 根因：TempManager.Completion / ArchiveWorker.TempFix 硬编码反斜杠，
         // Linux 上把 "/tmp/x" 拼成 "/tmp/x\"，反斜杠只是普通文件名字符 →

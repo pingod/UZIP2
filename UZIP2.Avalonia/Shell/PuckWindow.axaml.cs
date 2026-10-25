@@ -28,6 +28,9 @@ namespace UZIP2.Avalonia.Shell
         private bool _dragIn;
         private DateTime _flashUntil;
         private bool _restoring;
+        // 已经成功让 Hyprland 把方块转成浮动窗口了吗。Opened 触发时窗口可能还没进
+        // hyprctl 的 clients 列表（映射晚于 Opened），那一次 Float 会落空，所以要重试。
+        private bool _floated;
 
         public PuckWindow()
         {
@@ -35,6 +38,7 @@ namespace UZIP2.Avalonia.Shell
             _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
             _timer.Tick += (_, __) => Refresh();
             AddHandler(DragDrop.DragOverEvent, OnDragOver);
+            AddHandler(DragDrop.DragLeaveEvent, OnDragLeave);
             AddHandler(DragDrop.DropEvent, OnDrop);
             PositionChanged += (_, __) => SavePosition();
             Opened += (_, __) => { RestorePosition(); Refresh(); };
@@ -56,6 +60,8 @@ namespace UZIP2.Avalonia.Shell
             }
 
             _tries = 0;
+            // 先让它进浮动层，再谈摆位：对平铺窗口发 move 是没意义的（会立刻被布局树拉回去）。
+            ApplyHyprlandFloat();
             ApplyTarget();
             // 窗口还没映射时设的坐标会被丢掉，落点改由合成器决定（实测设 800,600 读回 0,0，
             // 最终停在 2240,600）。合成器什么时候摆完窗口没有可靠的信号，所以这里在 Opened
@@ -64,6 +70,25 @@ namespace UZIP2.Avalonia.Shell
             _chase.Tick -= OnChaseTick;
             _chase.Tick += OnChaseTick;
             _chase.Start();
+        }
+
+        /// <summary>
+        /// 让 Hyprland 把方块改成浮动窗口。
+        /// Wayland 的 xdg-shell 里客户端既不能声明「我是浮动窗口」，也不能指定绝对坐标 ——
+        /// 这两件事合成器说了算。Hyprland 的 dwindle 布局会把 112×112 的方块当成普通窗口
+        /// 塞进布局树，拉伸成整块（实测 1268×688，内容跟着糊）。唯一的办法是走它的 IPC：
+        /// 先 float 进位浮动层，再 move 到目标点。实测做完之后窗口立刻变回 112×112。
+        /// </summary>
+        private void ApplyHyprlandFloat()
+        {
+            if (_floated || !HyprlandWindowHelper.IsAvailable) return;
+            _floated = HyprlandWindowHelper.Float();
+            if (!_floated)
+            {
+                // 找不到窗口（还没被合成器收进 clients 列表）就静默等下一轮追踪再试，
+                // 只有追踪跑完还没成功才值得记一条警告。
+                AppHost.Logger?.Info("Hyprland 浮动窗口设定暂未生效，下一轮重试");
+            }
         }
 
         /// <summary>
@@ -86,8 +111,14 @@ namespace UZIP2.Avalonia.Shell
             if (_target == null || ++_tries > MaxRestoreTries)
             {
                 StopChase();
+                if (!_floated && HyprlandWindowHelper.IsAvailable)
+                {
+                    AppHost.Logger?.Warn("Hyprland 浮动窗口设定失败，方块可能仍被平铺拉伸");
+                }
                 return;
             }
+            // 映射晚于 Opened 的窗口第一轮多半找不到，跟着追踪一起补。
+            ApplyHyprlandFloat();
             ApplyTarget();
         }
 
@@ -102,6 +133,8 @@ namespace UZIP2.Avalonia.Shell
             if (_target is not { } target) return;
             _restoring = true;
             Position = target;
+            // Wayland 下上一行其实没用（合成器不认客户端坐标）。Hyprland 靠 IPC 摆位。
+            if (HyprlandWindowHelper.IsAvailable) HyprlandWindowHelper.MoveTo(target.X, target.Y);
             _restoring = false;
         }
 
@@ -113,10 +146,31 @@ namespace UZIP2.Avalonia.Shell
             // 而且常常给的是同一条坐标。SettingsService.Save 是「无条件写盘 + 全量 Changed 广播」，
             // 所以值没变就不该调它——否则挪一次方块就能让 settings.json 被重写几百遍，
             // 订阅方（App.ApplyWindowSettings）也跟着跑几百遍。
-            int x = Position.X, y = Position.Y;
+            if (!TryReadPosition(out int x, out int y)) return;
             var s = AppHost.Settings.Current;
             if (s.PuckLeft == x && s.PuckTop == y) return;
             AppHost.Settings.Save(next => { next.PuckLeft = x; next.PuckTop = y; });
+        }
+
+        /// <summary>
+        /// 读出方块此刻的真实坐标。
+        /// Wayland 下 <c>Window.Position</c> 是假的：xdg-shell 不告诉客户端绝对位置，Avalonia
+        /// 只能给 0,0（实测拖动后方块明明在 2198,1462，读回来还是 0,0）。如果照它存盘，
+        /// 用户挪过方块后设置里就被写成 0,0，下次启动方块跑到左上角。所以 Wayland 上改问
+        /// 合成器要；问不到就不存（宁可保留旧值，也不要写错值）。
+        /// </summary>
+        private bool TryReadPosition(out int x, out int y)
+        {
+            x = 0;
+            y = 0;
+            if (HyprlandWindowHelper.IsAvailable && HyprlandWindowHelper.TryGetPosition(out x, out y)) return true;
+
+            // 非 Wayland（X11）：Position 是可信的。
+            var pos = Position;
+            if (pos.X == 0 && pos.Y == 0) return false;
+            x = pos.X;
+            y = pos.Y;
+            return true;
         }
 
         // ---- 交互 ----
@@ -124,7 +178,27 @@ namespace UZIP2.Avalonia.Shell
         protected override void OnPointerPressed(PointerPressedEventArgs e)
         {
             base.OnPointerPressed(e);
+            // 用户开始拖 = 别再来纠正位置了，否则追踪定时器会把窗口从用户手里拽回去。
+            StopChase();
             try { BeginMoveDrag(e); } catch { }
+        }
+
+        protected override void OnPointerReleased(PointerReleasedEventArgs e)
+        {
+            base.OnPointerReleased(e);
+            // 用户刚拖完方块。Wayland 下 Position 不会给出新坐标（xdg-shell 不告诉客户端
+            // 绝对位置），而且拖动结束时 PositionChanged 也可能压根不触发，所以在这里
+            // 主动读一次真实位置存盘。BeginMoveDrag 是异步的交互式移动，松手时窗口已经落位。
+            SavePosition();
+        }
+
+        private void OnDragLeave(object sender, DragEventArgs e)
+        {
+            // 指针拖进来又滑出去（没松手）时，把提示还原。少了这一步，提示会永远停在
+            // 「松手解压 / 压缩」，即使文件早就被拖走了。
+            _dragIn = false;
+            e.Handled = true;
+            Refresh();
         }
 
         private void OnDragOver(object sender, DragEventArgs e)
