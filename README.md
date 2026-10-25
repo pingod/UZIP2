@@ -11,75 +11,15 @@
 4. 优化临时缓存文件夹相关代码，每个压缩包有单独的缓存文件夹，并且该文件夹是隐藏的。
 5. 支持多级解压，压缩包内第一层压缩包再次解压，持续符合条件时会循环解压。
 
-## 本次增强（v3.13.1 之后 — 方块修复）
+每个版本的详细改动见 [CHANGELOG.md](CHANGELOG.md)，发版说明与产物见
+[Releases](https://github.com/pingod/UZIP2/releases)；v3.8 及更早的增强条目归档在
+[docs/history.md](docs/history.md)，剩余待办见 [docs/TODO.md](docs/TODO.md)。
 
-「桌面只留方块」是 Linux 上最容易坏的一处，因为它是个 112×112 的无边框窗口，而在
-Wayland 下客户端既不能声明「我是浮动窗口」也不能指定绝对坐标。
-
-- **方块不再被平铺拉伸**：以前它只给了 `Width/Height=112`、没有 Min/Max，Hyprland 的
-  dwindle 与 sway 的默认布局都把它当普通平铺窗口铺成 1268×688，里面的圆圈和文字跟着
-  糊掉。现在补了 `Min/Max=112`（Avalonia 的 Wayland 后端会把 Min/Max 交给合成器，wlroots
-  系据此按浮动窗口摆放），Hyprland 另走 `hyprctl` IPC（`hl.dsp.window.float` +
-  `hl.dsp.window.move`）抬进浮动层再摆位 —— 它的 dwindle 不认 Min/Max。
-- **拖文件到方块终于有反应**：`PuckWindow.axaml` 漏了 `DragDrop.AllowDrop="True"`，代码里
-  处理器都挂上了，但 Avalonia 只把拖放事件派给 `AllowDrop` 为 true 的控件，所以从未被
-  调用过（主界面一直有这一行，所以那边是好的）。顺带补了 `DragLeave`，拖进来又滑走时
-  提示会还原。
-- **方块位置不再被存成 0,0**：Wayland 下 `Window.Position` 恒为 0,0，照它存盘会让用户
-  挪过的方块下次启动跑回左上角。改成优先问合成器，问不到就不存、保留旧值；松手时主动
-  存一次；用户开始拖时停掉位置追踪定时器，否则会把窗口从手里拽回去。
-- **方块与主窗口不再认错**：`hyprctl clients` 里一个 pid 对两个窗口，「桌面只留方块」时
-  主窗口只是隐藏、仍在列表里，只按 pid 取第一个会撞上主窗口。改成优先选标题含
-  「UZIP 拖拽方块」的那个。
-
-## 本次增强（v3.13 之后 — 分卷解压修复）
-
-分卷（多压缩包分包）是 Linux 上最脆弱的一环，这一轮把图形界面与 CLI 两侧都修透了：
-
-- **修掉一个阻断级 bug**：Linux 图形界面的解压此前 **100% 失败**（与分卷无关）。临时目录的路径分隔符被硬编码成反斜杠，拼出 `/tmp/xxx\/UZipTemp_1\` 这种路径，反斜杠成了普通文件名字符，于是路径不存在、`DirectoryNotFoundException`。现在统一走 `PlatformPaths.EnsureTrailing` / `TrimSeparators`，跟随 `Path.DirectorySeparatorChar`。
-- **分卷的每一卷都按压缩包对待**：以前只有 `.001` 在白名单里，`x.7z.003` 被图形界面当"普通文件"送去压缩（产出 `x.7z.zip`）。现在数字卷与旧式 `.z01` 都识别，仍不会把 `log.txt.002` 误判成压缩包。
-- **预览与转格式支持分卷**：两者以前把中间卷直接交给 7z（`Cannot open the file as archive`）。新增 `ArchiveInspector.ExtractTarget` 统一回退到主卷；转格式产物名也按主卷推导（`v7.zip`，不再是 `v7.7z.003.zip`）。
-- **CLI 认得分卷了**：中间卷能解、整组卷只处理一次（其余报"已随分卷主文件处理"、退出码 0）、缺卷会点名（`分卷不完整：缺少 v7.7z.004`）、非压缩包仍报"格式不支持"。`watch once` 同样去重。
-
-## 本次增强（v3.13 — 原生 Wayland / Arch 分发）
-
-- **原生 Wayland**：升级到 Avalonia 12.1.4 并接入 `Avalonia.Wayland`，Linux 上不再走 XWayland。根因是 `Avalonia.Wayland` 包从 12.1.0 才发布，11.x 系列根本没有 Wayland 后端。纯 Wayland 会话里 `WAYLAND_DEBUG=1` 能抓到 `wl_compositor` / `xdg_wm_base` / `wl_shm` / `wl_seat` 往返，进程 fd 里 X11 socket 数量为 0。
-- **Arch 包补齐**：`uzip2-bin`（预编译）与 `uzip2`（源码构建）都在本机跑完 `makepkg` 完整 fakeroot 流程，解包 `--version` 均输出 `UZIP 3.13.2`；`sha256sums` 全部填 Release 侧车真值。
-- **修掉 .NET 10 的一个发布坑**：`--self-contained` 在 .NET 10 里变成纯开关，`--self-contained false` 不再生效，框架依赖产物被打成 144 MB（正确值 9 MB）——`UZIP2.exe` 正是应用内自更新下载的附件，会让每次更新多下 135 MB。三处发布链路统一改用 `-p:SelfContained=`。
-- 顺带修掉 Avalonia 11.3.2 的 SNI 上游 bug：`Status` 槽位曾被写入 `Id`（`"UZIP2"`），Avalonia 12 已返回规范的 `Active`。
-
-## 本次增强（v3.12 — Thunar 菜单 / Wayland 热键 / 安装脚本）
-
-- **Thunar 右键菜单**：两个动作合并进用户已有的 `uca.xml`（改前备份，卸载只删自己那两条）。
-- **Wayland 全局热键**：走 `org.freedesktop.portal.GlobalShortcuts`（经 `gdbus`），只在 KDE 等实现了 portal 的桌面启用；没有就安静关闭并写日志。
-- **X11 热键漏按修复**：轮询间隔 150ms → 25ms，100ms 的按键现在稳定触发（Xvfb 实机验证）。
-- **tar.gz 安装脚本**：`install.sh` / `uninstall.sh`，装二进制、桌面入口与图标；卸载保留配置。
-- 启动时把桌面能力摘要写进日志，远程排查不用开设置页。
-
-完整历史见 [CHANGELOG.md](CHANGELOG.md)，剩余待办（含需要真实桌面才能验证的项）见 [docs/TODO.md](docs/TODO.md)。
-
-## 本次增强（v3.11 — Linux 图形版补全 + X11 全局热键）
-
-v3.10 把 Linux 版做出来了，v3.11 把它补齐到"日常能直接用"：密码页、卡片上的转换/校验/对比、单实例、桌面入口、X11 全局热键。
-
-**新功能**
-
-1. **密码页**：密码本增删、逐行显示/隐藏、复制、成功次数；密码纸整段粘贴、清空、200 条上限提示。口令沿用 AES-256-GCM（Linux）或 DPAPI（Windows）。
-2. **卡片三个入口**：转格式（7 种可创建格式，原包保留）、校验和（SHA-256 + `SHA256SUMS`/`.sfv`/`.md5` 逐条比对）、包对比（选另一个包，列出仅左/仅右/大小不同）。
-3. **包内预览勾选**：清单逐项勾选后只解压选中项，走引擎已有的 `onlyEntries` 路径。
-4. **单实例**：从文件管理器连续双击多个文件不会再开出多个窗口，第二个进程把路径转发给已在跑的实例；启动参数同样入队。
-5. **桌面入口**：`uzip2.desktop` + 48/128 px 图标随 tar.gz 与 Arch 包安装，应用列表里能直接搜到。
-6. **X11 全局热键**：Ctrl+Alt+U 唤起窗口。没有用 `XGrabKey` 抢键，而是 150ms 轮询键位图与修饰键掩码、只在按下沿触发；没有 DISPLAY 或 libX11 时安静降级，设置页可关闭。
-
-**验证**：811 个 WPF 测试 + 11 个 Avalonia 测试（含单实例转发、桌面能力判定、热键边沿逻辑、密码页遮罩、渲染截图），Debug/Release 全绿、0 警告。
-
-**验证**：X11 侧在 WSL + Xvfb 里真跑过（窗口创建、热键注册、100ms 按键触发均留日志）；Wayland portal 与托盘/方块定位仍缺真实桌面会话的实机验证。
-
-## Linux 版（v3.10 起：图形界面 + 命令行，同一个二进制）
+## Linux 版（图形界面 + 命令行，同一个二进制）
 
 Windows 界面是 WPF，无法在 Linux 上构建或运行，所以 Linux 版从跨平台核心出发：`Models + 可移植 Services + CLI` 拆进 `UZIP2.Core`（`net8.0`，不引用任何 UI 框架），界面用 Avalonia 重写（`UZIP2.Avalonia`）。**一个二进制同时是 GUI 和 CLI**：带显式命令词（`extract`/`compress`/`diff`…）时在 Avalonia 初始化之前就走无界面路径，所以服务器上没有显示环境也能用。
 
-已对齐（v3.12 之后 Avalonia 与 WPF 的功能差距已补齐）：主页队列（拖放、并发、卡片九种操作含重试与删除源文件、批量清除失败项）、任务排序（加入顺序/最新在前/按状态/按文件名）、包内预览（可勾选只解压选中项）、密码本/密码纸（含从剪贴板粘贴）、历史（含重跑）、设置（40 余项，覆盖主题、热键组合、解压输出模式与覆盖策略、自定义文件夹、更新检查等）、托盘（含失败气泡）、悬浮拖拽方块（含进度环与位置记忆）、Thunar/Nautilus/Dolphin 右键菜单；CLI 全部命令与 Windows 一致：`list / extract / compress / test / convert / diff / checksum / vault / history / config / log / watch once / update --check`。
+图形界面的功能与 WPF 版对齐：主页队列（拖放、并发、卡片九种操作含重试与删除源文件、批量清除失败项）、任务排序（加入顺序/最新在前/按状态/按文件名）、包内预览（可勾选只解压选中项）、密码本/密码纸（含从剪贴板粘贴）、历史（含重跑）、设置（40 余项，覆盖主题、热键组合、解压输出模式与覆盖策略、自定义文件夹、更新检查等）、托盘（含失败气泡）、悬浮拖拽方块（含进度环与位置记忆）、Thunar/Nautilus/Dolphin 右键菜单；CLI 全部命令与 Windows 一致：`list / extract / compress / test / convert / diff / checksum / vault / history / config / log / watch once / update --check`。
 
 Wayland 兼容性按能力降级，而不是假装对齐：X11 三项全开；KDE Wayland 托盘/热键/方块定位都可用；GNOME Wayland 没有窗口定位接口、托盘需要 AppIndicator 扩展；sway/Hyprland 这类 wlroots 合成器有托盘宿主，方块定位靠合成器允许客户端置位（本程序没有用 layer-shell）。设置页会直接把当前会话判定结果写出来。**全局热键**：X11 用 25ms 轮询键位图（Ctrl+Alt+U 唤起窗口，在 Xvfb 实机上验证过按下即触发）；Wayland 走 XDG 的 `GlobalShortcuts` portal（经 `gdbus` 调用，目前只有 KDE 实现了它），没有 portal 时安静关闭并在日志里说明。
 
@@ -124,19 +64,13 @@ cd UZIP2-3.13.2-linux-x64 && sudo ./install.sh      # 默认 /usr/local，装桌
 
 构建与打包：`scripts/publish-linux.ps1`（Windows 与 Linux 都能跑，交叉发布 x64/arm64 并组装 tar.gz + `.sha256` + `SHA256SUMS-linux.txt`）；`scripts/package-linux.sh` 从 tar.gz 生成 `.deb` / `.rpm`（两种格式共用一份暂存树，全程不 strip）；`scripts/aur-sums.sh` 负责发布前核对并回填两个 PKGBUILD 的 `sha256sums`、生成 `.SRCINFO`；版本号只在 `scripts/version.ps1` 读一处。CI 见 `.github/workflows/build-linux.yml`（`archlinux` 容器里跑真正的 `makepkg`、`ubuntu` 上跑无头 Avalonia 测试并打包 deb/rpm）与 `build-windows.yml`（WPF + Avalonia 双侧测试）。
 
-真机验证（v3.12 之后）：在 **Hyprland 0.56.2**（Wayland + XWayland，双显示器）真会话里跑通了托盘（`busctl` 见到 `org.kde.StatusNotifierItem`，图标像素解出来就是 UZIP 的线条画，菜单结构正确）、悬浮方块（4 组坐标重启后精确恢复）、失败气泡（隐藏时 3 个坏包 → 1 条通知，前台 → 0 条）；CLI 解普通包/加密包（含无口令时的正确报错）都正常。
+真机验证：在 **Hyprland 0.56.2**（Wayland + XWayland，双显示器）真会话里跑通了托盘（`busctl` 见到 `org.kde.StatusNotifierItem`，图标像素解出来就是 UZIP 的线条画，菜单结构正确）、悬浮方块（4 组坐标重启后精确恢复）、失败气泡（隐藏时 3 个坏包 → 1 条通知，前台 → 0 条）；CLI 解普通包/加密包（含无口令时的正确报错）都正常。
 
-**图形后端（v3.13 起）**：升级到 **Avalonia 12.1.4** 并引入 `Avalonia.Wayland`，Linux 上走**原生 Wayland**（实测协议流里有 `wl_compositor` / `xdg_wm_base` / `wl_shm` / `wl_seat`），X11 只是兜底 —— `UseWaylandWithFallback()` 仅在 Wayland 客户端连不上时才退回 XWayland。`Avalonia.Wayland` 从 12.1.0 才开始发布，Avalonia 11.x **完全没有** Wayland 后端，这是之前所有窗口都跑在 XWayland 上的根因。
+**图形后端**：用 **Avalonia 12.1.4** + `Avalonia.Wayland`，Linux 上走**原生 Wayland**（实测协议流里有 `wl_compositor` / `xdg_wm_base` / `wl_shm` / `wl_seat`），X11 只是兜底 —— `UseWaylandWithFallback()` 仅在 Wayland 客户端连不上时才退回 XWayland。选择 12.x 的原因：`Avalonia.Wayland` 从 12.1.0 才开始发布，Avalonia 11.x **完全没有** Wayland 后端。
 
-**已知限制**（都是环境或上游限制，不是没做完）：原生 Wayland 下客户端既不能声明「我是浮动窗口」也不能设绝对坐标，全归合成器决定。悬浮方块在 Hyprland 上走 `hyprctl` IPC（`hl.dsp.window.float` + `hl.dsp.window.move`）摆位、能精确恢复保存的位置；sway 这类 wlroots 合成器靠窗口的 Min/Max 尺寸自己把它当浮动窗口摆放；**KDE / GNOME Wayland 下方块仍会被当成平铺窗口拉伸**，没有通用解法。Hyprland **不实现 EWMH**，置顶属性设得上但合成器不体现「重启后仍在最上层」；KDE/X11 正常。`rpm` 自 v3.13.1 起本机装了 `rpm-tools`，已能本地真构建并拆包实跑；AUR 包已就绪（含 `.SRCINFO`）但尚未提交（需要 AUR 账号与 SSH key）；arm64 仍只有交叉构建。
+**已知限制**（都是环境或上游限制，不是没做完）：原生 Wayland 下客户端既不能声明「我是浮动窗口」也不能设绝对坐标，全归合成器决定。悬浮方块在 Hyprland 上走 `hyprctl` IPC（`hl.dsp.window.float` + `hl.dsp.window.move`）摆位、能精确恢复保存的位置；sway 这类 wlroots 合成器靠窗口的 Min/Max 尺寸自己把它当浮动窗口摆放；**KDE / GNOME Wayland 下方块仍会被当成平铺窗口拉伸**，没有通用解法。Hyprland **不实现 EWMH**，置顶属性设得上但合成器不体现「重启后仍在最上层」；KDE/X11 正常。`rpm` 与 `deb`、两个 Arch 包都是本机真构建并拆包实跑的；AUR 包已就绪（含 `.SRCINFO`）但尚未提交（需要 AUR 账号与 SSH key）；arm64 仍只有交叉构建。
 
 一个打包坑记在这里：makepkg 默认会 `strip`，而 .NET 单文件在 ELF 末尾追加了 bundle，strip 之后运行时报 `Arithmetic overflow while reading bundle`。两个 PKGBUILD 都必须带 `options=(!strip !debug)`。
-
-## 历史增强（v3.8 及更早）
-
-v3.8 的进度环与审计第二轮、v3.7 的全量审计、v3.6~v2.3 各版本条目已归档到
-[`docs/history.md`](docs/history.md)，按版本分节可直接检索；逐版本摘要另见
-[CHANGELOG.md](CHANGELOG.md)。
 
 # [UZIP简介](https://www.yuque.com/farkaway/uzip/gggnsn)
 UZIP是一个主要用于解压各种压缩档案的小工具，希望它可以为您提供更便利的解压功能。
