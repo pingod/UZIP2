@@ -1,6 +1,6 @@
 # 待办事项
 
-截至 **v3.13.0**（2026-10-24）。v3.13 把 Linux 图形界面从 XWayland 换到原生 Wayland，
+截至 **v3.13.1**（2026-10-25）。v3.13.1 修掉了让 Linux 图形界面解压 100% 失败的反斜杠路径 bug 与全部分卷缺陷；v3.13 把 Linux 图形界面从 XWayland 换到原生 Wayland，
 并补齐发行版打包（Arch / deb / rpm / AppImage）；v3.12 后那一轮补完了 E2/E3/E5 实机验证与 F1–F7 功能对齐。
 下面只留「仍然做不了」和「新发现、尚未做」的部分，末尾记录已做完的与验证方式。
 
@@ -66,7 +66,7 @@
 
 | # | 事项 | 结果 |
 |---|------|------|
-| P1 | AUR 准备 | `packaging/arch/.SRCINFO` 与 `.SRCINFO-bin` 已生成；`PKGBUILD-bin` 的 `sha256sums_x86_64`=`fcf1f84b…` / `sha256sums_aarch64`=`71e9706e…` 是真值（源码 `PKGBUILD` 因「文件在归档内」的固定点只能 SKIP，见下表）；新增 `scripts/aur-sums.sh` 做「下载→计算→比对→回填→生成 .SRCINFO」一条命令。**真提交做不了**（见 P1b），但 v3.13 Release 已发布、产物已上传，AUR 提交所需的 hash 与文件都已就绪 |
+| P1 | AUR 准备 | `packaging/arch/.SRCINFO` 与 `.SRCINFO-bin` 已生成；`PKGBUILD-bin` 的 `sha256sums_x86_64`=`30652975…` / `sha256sums_aarch64`=`64c22839…` 是真值（源码 `PKGBUILD` 因「文件在归档内」的固定点只能 SKIP，见下表）；新增 `scripts/aur-sums.sh` 做「下载→计算→比对→回填→生成 .SRCINFO」一条命令。**真提交做不了**（见 P1b），但 v3.13.1 Release 已发布、产物已上传，AUR 提交所需的 hash 与文件都已就绪 |
 | P2 | deb / rpm / AppImage | 新增 `scripts/package-linux.sh`（统一入口）+ `packaging/deb/`、`packaging/rpm/`、`packaging/appimage/`。三种格式共用一份 payload 暂存树，保证逐字节一致，全程不 strip（守住 `Arithmetic overflow while reading bundle` 那条坑）。**deb 已真打包（36 MB）并拆包核对元数据**；rpm/AppImage 本机缺工具，留给 CI |
 | P3 | arm64 | 两个 PKGBUILD 的 `arch` 与 `build()` 已支持 aarch64；`package-linux.sh --arch arm64` 路径可跑；CI 按规格只产 arm64 tar.gz |
 | P4 | Windows CI 跑 Avalonia 测试 | `build-windows.yml` 新增 `Test the Avalonia shell (headless, Windows)`；不需要 `EnableWindowsTargeting`（Avalonia 测试工程本身是 net8.0），且 `dotnet test` 给的是 .csproj 而非 .sln，WPF 项目不会被拉进 restore 图 |
@@ -119,9 +119,10 @@
 |------|------|
 | deb 本机真构建 | `scripts/package-linux.sh --arch x64 --formats deb` → `uzip2_3.13.0_amd64.deb`（38.8 MB）。本机没有 `dpkg-deb`，走 `ar + tar` 回退路径 |
 | AppImage 本机真构建 | 同上 `--formats appimage` → `UZIP2-3.13.0-linux-x64.AppImage`（36.5 MB）；`--appimage-extract` 后 `--version` → `UZIP 3.13.0`，cage 无头沙箱渲染截图与 dev build **md5 完全相同** |
-| rpm 由 CI 构建 | 本机无 `rpmbuild`，CI 的 `linux-packages` job 产出 `uzip2-3.13.0-1.x86_64.rpm`（31.7 MB），并在容器里 `rpm2cpio` 拆包、跑 `--version` 得 `UZIP 3.13.0` |
+| rpm 本机真构建（v3.13.1 起） | 装了 `rpm-tools`（`rpmbuild` 6.0.1）后可直接构建：`--formats rpm` → `uzip2-3.13.1-1.x86_64.rpm`（31.8 MB）；`rpm2cpio` + `cpio -idm` 拆包后 `./usr/bin/uzip2 --version` → `UZIP 3.13.1`，并用它跑通了分卷解压 |
+| rpm 由 CI 构建 | 本机原无 `rpmbuild`（v3.13.1 已装 `rpm-tools`，改为本机构建），v3.13 时由 CI 的 `linux-packages` job 产出 `uzip2-3.13.0-1.x86_64.rpm`（31.7 MB），并在容器里 `rpm2cpio` 拆包、跑 `--version` 得 `UZIP 3.13.0` |
 | AppImage 三个坑 | ① `.desktop` 的 `Categories=Utility;Archiver;` 里 `Archiver` 不是注册值 → 改 `Archiving`；② AppStream `<id>` 必须是反域名 → 改 `io.github.pingod.UZIP2`；③ 元数据文件名必须与 id 一致 → 文件改名（否则报 `metainfo-filename-cid-mismatch`）。另外 CI runner 升到 Ubuntu 26.04 后 `tail` 是 uutils 版，`tail -40` 报 `unexpected argument '-4'`，把上面这些真实错误全盖住了，改成 `tail -n 40` |
-| 发布 | 九个产物 + 各自 `.sha256` 已上传 Release `v3.13`；rpm 是 CI 构建的那个 |
+| 发布 | 九个产物 + 各自 `.sha256` 已上传 Release `v3.13`（v3.13.1 再补 aborted 后的修复版，见上） |
 
 ## 三·补二、v3.13 之后：分卷（多压缩包分包）
 
