@@ -3,6 +3,49 @@
 本项目按 tag 发布（两段版本号，如 `v3.12`），安装包里的程序版本是三段（`3.12.0`）。
 条目按"用户能感知的变化"写，不逐条列重构。
 
+## [未发布] — Hyprland 下滑块（桌面只留方块）的两个缺陷
+
+方块是 UZIP2 在 Linux 上最容易坏的一处：它是个 112×112 的无边框窗口，靠设置页
+「桌面只留方块」或托盘菜单打开。
+
+### 修复
+
+- **方块被平铺拉伸成整屏**：Wayland 的 xdg-shell 不允许客户端声明「我是浮动窗口」，
+  也无法指定绝对坐标，落点与尺寸全归合成器。方块窗口原来只给了 `Width/Height=112`，
+  没有 Min/Max 尺寸，于是 Hyprland 的 dwindle（sway 的默认布局同理）把它当普通平铺
+  窗口铺成 1268×688，里面的圆圈和提示文字跟着拉伸糊掉。两处一起补：
+  - `PuckWindow.axaml` 补 `MinWidth/MinHeight/MaxWidth/MaxHeight=112` —— Wayland 后端
+    会把 Min/Max 交给合成器，wlroots 系（实测 sway）据此直接按浮动窗口摆放。
+  - 新增 `HyprlandWindowHelper`：Hyprland 的 dwindle 不认 Min/Max，得走 `hyprctl` IPC
+    发 `hl.dsp.window.float` 把它抬进浮动层、再 `hl.dsp.window.move` 摆位。只在
+    Hyprland 会话里启用，其它合成器整条路径不参与。
+- **拖文件到方块毫无反应**：`PuckWindow.axaml` 漏了 `DragDrop.AllowDrop="True"`。
+  代码里 `DragOver`/`Drop` 两个处理器都挂上了，但 Avalonia 只把拖放事件派给
+  `AllowDrop` 为 true 的控件，所以处理器从来没被调用过（主界面 `HomeView` 一直有这
+  一行，所以那边是好的）。同时补 `DragLeave`，否则拖进来又滑走时提示会永远停在
+  「松手解压 / 压缩」。
+- **方块位置存成 0,0**：Wayland 下 `Window.Position` 恒为 0,0（xdg-shell 不告诉客户端
+  绝对位置），照它存盘会把用户挪过的方块写成 0,0，下次启动跑到左上角。改成优先问
+  合成器，问不到就不存、宁可保留旧值；松手时主动存一次（Wayland 下拖动结束不一定
+  触发 `PositionChanged`）。用户开始拖时停掉位置追踪定时器，否则它会把窗口从用户
+  手里拽回去。
+- **方块和主窗口认错**：`hyprctl clients` 里一个 pid 对两个窗口（主窗口 + 方块）。
+  「桌面只留方块」时主窗口只是隐藏、仍在列表里，只按 pid 取第一个会撞上主窗口 ——
+  后果是把主窗口抬进浮动层、把方块挪到别处。改成优先选标题含「UZIP 拖拽方块」的那个。
+
+### 移除
+
+- **不再产出 AppImage**。它是所有产物里最脆的一环：打包末步要联网下载 runtime
+  （网络受限就失败）、依赖 FUSE（Ubuntu 22.04+ 默认没有）、还因为 `Categories` 与
+  AppStream 元数据的三处格式问题反复打不出来。deb / rpm / Arch / tar.gz 已覆盖
+  Arch、Debian/Ubuntu、Fedora/RHEL/openSUSE 与通用场景，AppImage 的边际价值不值得
+  这份维护成本。`scripts/package-linux.sh`、CI 与文档里的相关路径一并删掉。
+
+### 测试
+
+42 条（新增 6 条）：hyprctl 命令拼装、按 pid + 标题选窗口、读合成器坐标、
+`AllowDrop` 开关（含读 axaml 文本断言 Min/Max）。
+
 ## [3.13.1] — 2026-10-25
 
 分卷解压是 Linux 上最严重的一批缺陷，其中一条让**图形界面的解压功能完全不可用**。

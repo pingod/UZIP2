@@ -5,13 +5,12 @@ name: Build Linux
 #   UZIP2-<ver>-linux-x64.tar.gz / -arm64.tar.gz（自包含单文件，含 .sha256 侧车）
 #   uzip2_<ver>_amd64.deb / uzip2_<ver>_arm64.deb
 #   uzip2-<ver>-<rel>.x86_64.rpm / .aarch64.rpm
-#   UZIP2-<ver>-linux-x64.AppImage
 #   uzip2-<ver>-<rel>-<arch>.pkg.tar.zst（makepkg 真构建，安装后冒烟）
 #
 # Linux 版不依赖 WPF，所以可以在 Linux 上直接 dotnet publish；
 # Windows 的 GUI 发布会话与这里互不影响。
 #
-# 构建（两个架构）+ 打包（deb/rpm/AppImage）拆成两个 job：
+# 构建（两个架构）+ 打包（deb/rpm）拆成两个 job：
 # 打包只需要 tar.gz 当输入，不该为了拿它而重跑一遍 dotnet publish。
 
 on:
@@ -127,7 +126,7 @@ jobs:
           retention-days: 14
 
   linux-packages:
-    # deb / rpm / AppImage 只做"把已发布的二进制装进包"，不重新发布。
+    # deb / rpm 只做"把已发布的二进制装进包"，不重新发布。
     needs: linux-binary
     runs-on: ubuntu-latest
     steps:
@@ -159,35 +158,25 @@ jobs:
           # 不写死其中一个，两个都试，缺了就让整个 job 失败（冒烟测试要用它）。
           sudo apt-get install -y -qq 7zip || sudo apt-get install -y -qq p7zip-full
           command -v 7z >/dev/null || { echo '装不上 7z（试过 7zip 与 p7zip-full）'; exit 1; }
-          mkdir -p "$HOME/.local/bin"
-          # appimagetool 是 AppImage 的唯一硬依赖：直接下 release 里的 x86_64 AppImage，
-          # 用 --appimage-extract-and-run 调用（runner 上不一定有 FUSE）。
-          curl -fsSL --retry 3 -o "$HOME/.local/bin/appimagetool" \
-            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
-          chmod +x "$HOME/.local/bin/appimagetool"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo '--- 工具自检 ---'
           rpmbuild --version | head -1
           dpkg-deb --version | head -1
           7z 2>&1 | head -2
-          "$HOME/.local/bin/appimagetool" --version || \
-            "$HOME/.local/bin/appimagetool" --appimage-extract-and-run --version
 
-      - name: Build x64 packages (deb, rpm, AppImage)
+      - name: Build x64 packages (deb, rpm)
         shell: bash
         run: |
           set -euo pipefail
           bash scripts/package-linux.sh \
-            --arch x64 --formats deb,rpm,appimage \
+            --arch x64 --formats deb,rpm \
             --tarball-dir "artifacts/${{ steps.ver.outputs.value }}"
 
       # arm64 只发 tar.gz（+ 它的 .sha256 侧车），刻意**不**在这里产 arm64 的
-      # deb/rpm/AppImage：
+      # deb/rpm：
       #   * 任务规格明确要求 arm64 只出 tar.gz；
-      #   * 这三样在 x86_64 runner 上属于「交叉打包」，本机没有 arm64 环境可以
-      #     真装一次验证，一旦哪天 rpmbuild/appimagetool 的行为变了，红的就是
-      #     发版当天的 CI；
-      #   * 真要在 arm64 上出这三样，装好工具后直接跑
+      #   * 这两样在 x86_64 runner 上属于「交叉打包」，本机没有 arm64 环境可以
+      #     真装一次验证，一旦哪天 rpmbuild 的行为变了，红的就是发版当天的 CI；
+      #   * 真要在 arm64 上出这两样，装好工具后直接跑
       #       bash scripts/package-linux.sh --arch arm64 --formats deb,rpm
       #     就行（脚本已支持，纯数据打包不需要交叉编译器），只是不放进默认 CI。
 
@@ -218,24 +207,6 @@ jobs:
           rpm -qlp "$rpmf" | grep -qx /usr/bin/uzip2 || { echo 'rpm 里没有 /usr/bin/uzip2'; exit 1; }
           rpm -qp --qf '%{ARCH}\n' "$rpmf" | grep -qx x86_64 || { echo 'rpm 架构不是 x86_64'; exit 1; }
           echo 'rpm 元数据 OK'
-
-          echo '===== AppImage 结构 ====='
-          # 用绝对路径：下面要 cd 到 /tmp 里解包，相对路径会解析错
-          img="$PWD/$d/UZIP2-${v}-linux-x64.AppImage"
-          test -f "$img" || { echo "缺少 $img"; exit 1; }
-          # appimagetool 打的 AppImage 自带 squashfs：用 --appimage-extract 拆开检查内容，
-          # 不需要 root、不需要 FUSE（拆包是用户态操作）。
-          rm -rf /tmp/aimg && mkdir -p /tmp/aimg
-          ( cd /tmp/aimg && "$img" --appimage-extract >/dev/null )
-          test -x /tmp/aimg/squashfs-root/AppRun
-          test -f /tmp/aimg/squashfs-root/uzip2.desktop
-          test -f /tmp/aimg/squashfs-root/usr/share/metainfo/io.github.pingod.UZIP2.appdata.xml
-          # 包内二进制必须与 tarball 里的逐字节相同（AppImage 打包不该改写它）
-          rm -rf /tmp/tarx && mkdir -p /tmp/tarx
-          tar -xzf "$d/UZIP2-${v}-linux-x64.tar.gz" -C /tmp/tarx
-          cmp "/tmp/aimg/squashfs-root/usr/bin/uzip2" \
-              "/tmp/tarx/UZIP2-${v}-linux-x64/UZIP2"
-          echo 'AppImage 内容 OK（二进制与 tarball 一致）'
 
       - name: Install the deb and smoke test
         shell: bash
@@ -289,17 +260,6 @@ jobs:
           ./usr/bin/uzip2 extract p.zip -o out
           test -f out/a.txt || { echo 'rpm payload 解压冒烟失败'; exit 1; }
 
-      - name: Run the AppImage CLI (no FUSE on runners)
-        shell: bash
-        run: |
-          set -euo pipefail
-          v="${{ steps.ver.outputs.value }}"
-          img="$(pwd)/artifacts/$v/UZIP2-${v}-linux-x64.AppImage"
-          chmod +x "$img"
-          # AppRun 会把参数原样透传给同一个二进制，所以 CLI 用法必须成立；
-          # runner 上不一定有 FUSE，用 --appimage-extract-and-run 走解包运行。
-          "$img" --appimage-extract-and-run --version || "$img" --version
-
       - name: Upload Linux packages
         uses: actions/upload-artifact@v4
         with:
@@ -307,10 +267,8 @@ jobs:
           path: |
             artifacts/${{ steps.ver.outputs.value }}/*.deb
             artifacts/${{ steps.ver.outputs.value }}/*.rpm
-            artifacts/${{ steps.ver.outputs.value }}/*.AppImage
             artifacts/${{ steps.ver.outputs.value }}/*.deb.sha256
             artifacts/${{ steps.ver.outputs.value }}/*.rpm.sha256
-            artifacts/${{ steps.ver.outputs.value }}/*.AppImage.sha256
             artifacts/${{ steps.ver.outputs.value }}/SHA256SUMS-linux-packages.txt
           retention-days: 14
 

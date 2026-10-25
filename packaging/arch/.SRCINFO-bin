@@ -1,6 +1,6 @@
 pkgbase = uzip2-bin
 	pkgdesc = UZIP2 — 7-Zip 前端（图形界面 + 命令行，预编译）
-	pkgver = 3.13.1
+	pkgver = 3.13.2
 	pkgrel = 1
 	url = https://github.com/pingod/UZIP2
 	arch = x86_64
@@ -15,9 +15,9 @@ pkgbase = uzip2-bin
 	conflicts = uzip2
 	options = !strip
 	options = !debug
-	source_x86_64 = UZIP2-3.13.1-linux-x64.tar.gz::https://github.com/pingod/UZIP2/releases/download/v3.13.1/UZIP2-3.13.1-linux-x64.tar.gz
-	sha256sums_x86_64 = 3065297547dc2a814783c0bdafbd0169ec5ac116784ae830550768edbcbf88f9
-	source_aarch64 = UZIP2-3.13.1-linux-arm64.tar.gz::https://github.com/pingod/UZIP2/releases/download/v3.13.1/UZIP2-3.13.1-linux-arm64.tar.gz
-	sha256sums_aarch64 = 64c228398b9ab2cb0ab173ed972e221a6f6462952077de4a865804d6c15c297b
+	source_x86_64 = UZIP2-3.13.2-linux-x64.tar.gz::https://github.com/pingod/UZIP2/releases/download/v3.13.2/UZIP2-3.13.2-linux-x64.tar.gz
+	sha256sums_x86_64 = bd9eba9b270f624f283518cc79c28d9b9373c831549f1a5eb7d34b0b1eacbeee
+	source_aarch64 = UZIP2-3.13.2-linux-arm64.tar.gz::https://github.com/pingod/UZIP2/releases/download/v3.13.2/UZIP2-3.13.2-linux-arm64.tar.gz
+	sha256sums_aarch64 = f66ee7173c238d3c144e80a35c0ad913596d5a4bf4174c039638b8aa9276e720
 
 pkgname = uzip2-bin

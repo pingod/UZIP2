@@ -286,7 +286,7 @@ GUI 部分刻意不在用户真实会话里开窗（AGENTS.md 铁律），改用
 | # | 内容 | 证据 |
 |---|------|------|
 | P1 | **AUR 准备完成**：`.SRCINFO` / `.SRCINFO-bin` 已生成；`PKGBUILD-bin` 的架构专属数组是真值（`sha256sums_x86_64=fcf1f84b…` / `sha256sums_aarch64=71e9706e…`）；源码 `PKGBUILD` 的 `sha256sums=('SKIP')` 是**数学必然**（该文件就在它下载的 tag 归档里，填真值会改变归档，见 P10）；新增 `scripts/aur-sums.sh`（check/`--print`/`--fill`/`--srcinfo`/`--offline`）一条命令完成下载→计算→比对→回填→生成 .SRCINFO | `makepkg --printsrcinfo` 两个 PKGBUILD 都通过；源码包与 bin 包均本机真构建成功。**真提交做不了**：无 SSH key（`Host key verification failed`）、无 sudo。但 v3.13 Release 已发布、九个产物已上传，提交 AUR 所需的文件全部就绪 |
-| P2 | **deb / rpm / AppImage**：新增 `scripts/package-linux.sh` + `packaging/{deb,rpm,appimage}/`。三种格式共用一份「已装好布局」的暂存树（`usr/bin/uzip2`、desktop、hicolor 48/128 图标、LICENSE、copyright），保证逐字节一致；全程不 strip（`%global __strip /bin/true` 等），CI 里用 `cmp` 对包内二进制与 tarball 逐字节比对兜底 | **deb 真打包成功 36 MB**（`ar rcD` 回退路径，本机无 dpkg-deb），拆包核对 `Depends`/`Architecture`/`Version`/`Installed-Size: 84864`；rpm/AppImage 本机缺 rpmbuild/appimagetool，明示跳过并退出码 0 不谎报产出 |
+| P2 | **deb / rpm**：新增 `scripts/package-linux.sh` + `packaging/{deb,rpm}/`。两种格式共用一份「已装好布局」的暂存树（`usr/bin/uzip2`、desktop、hicolor 48/128 图标、LICENSE、copyright），保证逐字节一致；全程不 strip（`%global __strip /bin/true` 等），CI 里用 `cmp` 对包内二进制与 tarball 逐字节比对兜底 | **deb 真打包成功 36 MB**（`ar rcD` 回退路径，本机无 dpkg-deb），拆包核对 `Depends`/`Architecture`/`Version`/`Installed-Size: 84864`；rpm 自 v3.13.1 起本机装了 `rpm-tools`，已能本地真构建 |
 | P3 | **arm64**：两个 PKGBUILD 的 `arch` 与 `build()` 支持 aarch64（`case "$CARCH" in aarch64) _rid=linux-arm64`）；`package-linux.sh --arch arm64` 路径可跑；CI 按规格 arm64 只产 tar.gz | 代码路径本地实跑；真 arm64 运行待设备 |
 | P4 | **Windows CI 跑 Avalonia 测试**：`build-windows.yml` 加 `Test the Avalonia shell (headless, Windows)`，用项目级 `.csproj`（不是 .sln）所以不会把 WPF 拉进 restore 图，也不需要 `EnableWindowsTargeting` | 本地等价命令通过 |
 | P5 | **版本号单一来源**：新增 `scripts/version.ps1`（四行来源声明 + `Get-UzipVersion` 以 Avalonia csproj 为权威、归一化到三段比对、漂移即 throw 并列出四行）；两个 publish 脚本都改成 `. version.ps1; Get-UzipVersion` | `_tools/pwsh/pwsh -NoProfile -Command '. ./scripts/version.ps1; Get-UzipVersion'` → `VERSION=3.12.0`，四行全读出；真跑 `publish-linux.ps1 -Rids linux-x64` 产出 35.6 MB tar.gz，解包 `--version` → `UZIP 3.12.0` |
@@ -323,16 +323,12 @@ Wayland 验证走 `cage` + `WLR_BACKENDS=headless WLR_RENDERER=pixman` 沙箱，
 | P10b | **源码包真构建**：`makepkg -f -p PKGBUILD --nodeps`（本机无 `dotnet-sdk` 包，SDK 装在 `_tools/`，PATH 指过去即可）→ `uzip2-3.13.0-1-x86_64.pkg.tar.zst`（35,683,348 B），比 bin 包多 `usr/share/licenses/uzip2/LICENSE` | 下载源码归档（`sha256sum -c` 通过）→ `dotnet publish` → fakeroot `package()` → 压缩全通；解包 `./usr/bin/uzip2 --version` → `UZIP 3.13.0` |
 | P11 | **Arch 包实跑**：解包产物在纯 Wayland 沙箱里启动并截图 | 截图 md5 与 dev build / tar.gz 完全一致 |
 
-### 发行版包（deb / rpm / AppImage）
+### 发行版包（deb / rpm）
 
 | # | 内容 | 证据 |
 |---|------|------|
 | P12 | **deb 本机真构建**：`scripts/package-linux.sh --arch x64 --formats deb` → `uzip2_3.13.0_amd64.deb`（38,848,292 B）。本机没有 `dpkg-deb`，脚本自动走 `ar + tar` 回退路径 | `file` → `Debian binary package (format 2.0), with control.tar.zst, data compression zst`；随附 `.sha256` 与汇总清单 |
-| P13 | **AppImage 本机真构建**：`--formats appimage` → `UZIP2-3.13.0-linux-x64.AppImage`（36,563,448 B）；`--appimage-extract` 后 `./squashfs-root/usr/bin/uzip2 --version` → `UZIP 3.13.0` | 纯 Wayland 沙箱 `--appimage-extract-and-run` 渲染截图 md5 = `0fa4ad02621a3772e9d9c2d27f4ac762`，与 dev build / tar.gz / Arch 包完全一致 |
-| P14 | **AppImage 三个真坑**：① `.desktop` 的 `Categories=Utility;Archiver;` 里 `Archiver` 不是注册值（appimagetool 报 `contains an unregistered value "Archiver"`）→ 改 `Archiving`；② AppStream `<id>` 必须是反域名（`appstreamcli` 报 `cid-desktopapp-is-not-rdns`，新版 appimagetool 把警告当失败）→ `io.github.pingod.UZIP2`；③ 元数据文件名必须与 id 一致（否则 `metainfo-filename-cid-mismatch`）→ 文件改名。**XML 注释里不能出现连续两个连字符**，原注释写了 `--no-appstream` 导致 `parser error : Comment must not contain '--'` | `appstreamcli validate --no-net` → `✔ 验证成功`；`desktop-file-validate packaging/linux/uzip2.desktop` 无输出 |
-| P15 | **CI runner 的 `tail` 换成 uutils 版**：Ubuntu 26.04 上 `tail -40` 报 `error: unexpected argument '-4' found`，这行错误把 appimagetool 的真实失败完全盖住（现象是日志里只有 tail 的用法说明）。改成 `tail -n 40` | `scripts/package-linux.sh` 两处（rpm.log / appimage.log）；CI run 40049383452 的 `linux-packages` 通过 |
-| P16 | **rpm 由 CI 真构建 + 实跑**：`linux-packages` job 装 `rpm`/`cpio`，`scripts/package-linux.sh --formats deb,rpm,appimage` → `uzip2-3.13.0-1.x86_64.rpm`（31,745,020 B）；CI 用 `rpm2cpio` 拆包校验文件清单并跑 `--version` → `UZIP 3.13.0` | CI run 40049383452 日志：`生成 uzip2-3.13.0-1.x86_64.rpm（31M）`、`/usr/bin/uzip2` / `copyright` / `LICENSE` / 两档图标齐全、`UZIP 3.13.0`、`/tmp/rpmx/p.zip -> /tmp/rpmx/out/`（真解压一个包） |
-| P17 | **`appimagetool` 联网下载 runtime**：最后一步从 `AppImage/type2-runtime` Releases 拉 `runtime-x86_64`，网络受限时报 `Failed to download runtime`。脚本加 `--runtime-file PATH` / `APPIMAGE_RUNTIME_FILE` / 同级目录自动发现 `runtime-<arch>`，失败日志里额外提示。**从 appimagetool 自身切出来的 runtime 不可用**（产物 `--appimage-extract` 直接 core dump，`REAL_EXIT=139`），只能用可信来源 | `--runtime-file` 传入手工切的 runtime → 产物段错误；不传该参数（让 appimagetool 自己下）→ 产物正常，截图 md5 一致 |
+| P16 | **rpm 真构建 + 实跑**：`scripts/package-linux.sh --formats deb,rpm` → rpm；本机自 v3.13.1 起装了 `rpm-tools` 可直接出包，CI 里也跑（`linux-packages` job 装 `rpm`/`cpio`）；CI 用 `rpm2cpio` 拆包校验文件清单并跑 `--version` → `UZIP 3.13.0` | CI run 40049383452 日志：`生成 uzip2-3.13.0-1.x86_64.rpm（31M）`、`/usr/bin/uzip2` / `copyright` / `LICENSE` / 两档图标齐全、`UZIP 3.13.0`、`/tmp/rpmx/p.zip -> /tmp/rpmx/out/`（真解压一个包） |
 | P18 | **CI 全绿**：`linux-binary` / `arch-package` / `linux-packages` 三个 job 与 Windows 侧 `build-windows` 全部 success（run 40049383452 / 40049470683） | `gh run view --json jobs` 逐 job 结论 |
 | P19 | **Release 资产齐备**：v3.13 共 15 个资产（9 个产物 + 5 个 `.sha256` 侧车 + 汇总清单 `SHA256SUMS-linux-packages.txt`），其中 rpm 用的是 CI 构建的那份（本机无 `rpmbuild`） | `gh release view v3.13 --json assets` 列出全部名称与大小；本地 `sha256sum -c SHA256SUMS-linux-packages.txt` 三项全通过 |
 
@@ -358,3 +354,16 @@ Wayland 验证走 `cage` + `WLR_BACKENDS=headless WLR_RENDERER=pixman` 沙箱，
 | V10 | **测试**：`UZIP2.Avalonia.Tests` 21 → 36 条；`UZIP2.Tests/CliVolumeTests.cs` 新增 14 条（真 7z 造 16k 小分卷） | `Total: 36, Errors: 0, Failed: 0`；CliVolumeTests 在 net8.0 探针里 `14 通过 / 0 失败`。**造多片卷组时填充必须随机** —— 可压缩填充会让 7z 把几十 KB 全塞进第一卷，多片卷组根本造不出来 |
 
 **环境限制**：`dotnet test UZIP2.Tests` 在 Linux 起不来（testhost 要 `Microsoft.WindowsDesktop.App`），CLI 新测试只在临时 net8.0 探针工程里跑过，正式工程需 Windows CI 复跑。顺带给既有 `CliRunnerTests` 跑了一遍：53 通过 / 4 失败，4 条全是 `Update_apply_*`，因 `UpdatePolicy.CanApplyInPlaceOn` 在 Linux 直接拒绝就地自更新 —— 既有平台门槛，与本次改动无关。
+
+### 方块（桌面只留方块）
+
+| # | 内容 | 证据 |
+|---|------|------|
+| P20 | **方块被平铺拉伸成整屏（实测 1268×688）**：Wayland 的 xdg-shell 里客户端既不能声明「我是浮动窗口」也不能指定绝对坐标。`PuckWindow.axaml` 只有 `Width/Height=112`、**没有 Min/Max**，Hyprland 的 dwindle 与 sway 的默认布局都把它当普通平铺窗口塞进布局树 | 修复前 `hyprctl clients -j` → `size=[1268,688] floating=false`。对同一窗口手工发 `hl.dsp.window.float({...action:enable})` → 立刻变 `[112,112] floating=true`，由此锁定唯一原因。修复后 wstream 沙箱（sway）里是 `floating_con`、`112x112`、`floating=user_on` |
+| P21 | **Hyprland 不认 Min/Max**，得走 IPC：`hl.dsp.window.float` 抬进浮动层 + `hl.dsp.window.move` 摆位。这版 Hyprland（0.56.2，Lua 配置解析器）**不认老式裸动词** —— `hyprctl dispatch setfloating "address:0x..."` 报 `')' expected near 'address'` | 新增 `HyprlandWindowHelper`（`IsAvailable` 只认 `XDG_CURRENT_DESKTOP` 含 HYPRLAND 或 `HYPRLAND_INSTANCE_SIGNATURE` + `hyprctl` 在 PATH）。生产 API 在用户真实 Hyprland 会话实测 `FloatAtAddress('0x5601564cf680', 700, 400) => True`，窗口从 1112,1291 → 700,400，尺寸保持 112×112（随后已还原坐标） |
+| P22 | **拖文件到方块毫无反应**：`PuckWindow.axaml` 漏了 `DragDrop.AllowDrop="True"`。处理器都挂上了，但 Avalonia 只把拖放事件派给 `AllowDrop` 为 true 的控件 → 从未被调用（主界面 `HomeView.axaml:20` 一直有这一行，所以那边没问题） | `Puck_window_has_allow_drop_switched_on` 直接断言 `DragDrop.GetAllowDrop(new PuckWindow())`；`Puck_window_accepts_dropped_files` 读 axaml 文本断言 `AllowDrop`/`MinWidth`/`MaxWidth`。顺带补 `DragLeave`，否则拖进来又滑走时提示永远停在「松手解压 / 压缩」 |
+| P23 | **Wayland 下 `Window.Position` 恒为 0,0**（xdg-shell 不告诉客户端绝对位置），照它存盘会把用户挪过的方块写坏成 0,0，下次启动跑左上角 | `SavePosition` 改走 `TryReadPosition`：先问合成器（hyprctl），问不到就**不存**、宁可保留旧值。另补 `OnPointerReleased` 主动存一次（Wayland 下拖动结束不一定触发 `PositionChanged`），以及 `OnPointerPressed` 里 `StopChase()`（否则追踪定时器会把窗口从用户手里拽回去） |
+| P24 | **一个 pid 对两个窗口**：主窗口与方块同进程。「桌面只留方块」时主窗口只是隐藏、仍在 `hyprctl clients` 里，只按 pid 取第一个会撞上主窗口 → 把主窗口抬进浮动层、把方块 move 到别处 | `PickAddress` 加 `titleHint`：优先标题含「UZIP 拖拽方块」，选不到才退回第一个 pid 匹配（退回而非 null）。`Hyprland_tells_the_puck_apart_from_the_main_window` 用「主窗口排在前面」的 JSON 钉住；坐标读取复用同一选窗口逻辑 |
+| P25 | **测试**：`UZIP2.Avalonia.Tests` 36 → 42 条 | `Total: 42, Errors: 0, Failed: 0`。新增 6 条：hyprctl 命令拼装（含负坐标）、按 pid+标题选窗口、读合成器坐标、`AllowDrop` 开关、axaml 文本断言 |
+
+**残留限制**：sway 靠 Min/Max 自己浮动、Hyprland 靠 IPC，**KDE/GNOME Wayland 下方块仍会被当平铺窗口**（没有 hyprctl、合成器也不给 Min/Max 特权）；GNOME Wayland 连置顶都不允许，这条无解。纯 Wayland 下 Avalonia 拿不到绝对坐标，位置保存目前**只有 Hyprland 实现**（sway 会话拿不到坐标就不存，会退回默认落点）。

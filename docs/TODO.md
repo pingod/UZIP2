@@ -1,7 +1,7 @@
 # 待办事项
 
-截至 **v3.13.1**（2026-10-25）。v3.13.1 修掉了让 Linux 图形界面解压 100% 失败的反斜杠路径 bug 与全部分卷缺陷；v3.13 把 Linux 图形界面从 XWayland 换到原生 Wayland，
-并补齐发行版打包（Arch / deb / rpm / AppImage）；v3.12 后那一轮补完了 E2/E3/E5 实机验证与 F1–F7 功能对齐。
+截至 **v3.13.1**（2026-10-25，另有未发布的方块修复）。v3.13.1 修掉了让 Linux 图形界面解压 100% 失败的反斜杠路径 bug 与全部分卷缺陷，其后修掉了 Hyprland 下方块被平铺拉伸与拖放无反应；v3.13 把 Linux 图形界面从 XWayland 换到原生 Wayland，
+并补齐发行版打包（Arch / deb / rpm）；v3.12 后那一轮补完了 E2/E3/E5 实机验证与 F1–F7 功能对齐。
 下面只留「仍然做不了」和「新发现、尚未做」的部分，末尾记录已做完的与验证方式。
 
 > **v3.13 已关闭的旧条目**：`E3b`（原生 Wayland 下的方块定位）与 `N1`（Avalonia 11.3.2
@@ -26,9 +26,7 @@
 
 | # | 事项 | 现状 | 建议 |
 |---|------|------|------|
-| N2 | **AppImage 依赖 FUSE** | Ubuntu 22.04+ 默认没装 `libfuse2`，用户直接双击会报 `dlopen(): error loading libfuse2` | 文档提示，或改用 `--appimage-extract-and-run` 包装启动 |
-| N2b | **`appimagetool` 打包要联网下载 runtime** | 最后一步从 `AppImage/type2-runtime` 的 Releases 拉 `runtime-x86_64`，网络受限时失败并报 `Failed to download runtime`。已加 `--runtime-file PATH` / `APPIMAGE_RUNTIME_FILE` / 同级目录自动发现 `runtime-<arch>`。**注意**：从 `appimagetool` 自身切出来的 runtime 会让产物段错误（`--appimage-extract` 都 core dump），只能用可信来源 | 网络受限环境传入合法 runtime |
-| N3 | **arm64 只有 tar.gz** | deb/rpm/AppImage 的 arm64 分支脚本已支持（`--arch arm64`）但没有任何流程产出，交叉打包无法验证 | 有 arm64 runner 后再接入 CI |
+| N3 | **arm64 只有 tar.gz** | deb/rpm 的 arm64 分支脚本已支持（`--arch arm64`）但没有任何流程产出，交叉打包无法验证 | 有 arm64 runner 后再接入 CI |
 | N4 | **Hyprland 不实现 EWMH 置顶** | `xprop -root _NET_SUPPORTED` 里没有 `_NET_WM_STATE_ABOVE`，`hyprctl -j clients` 显示 `pinned:false`。置顶开关本身能设（`Topmost` 属性即时变化），但"重启后仍在最上层"在这个桌面上无法体现 | 桌面限制，非代码缺陷。KDE/X11 下正常 |
 
 ---
@@ -67,7 +65,7 @@
 | # | 事项 | 结果 |
 |---|------|------|
 | P1 | AUR 准备 | `packaging/arch/.SRCINFO` 与 `.SRCINFO-bin` 已生成；`PKGBUILD-bin` 的 `sha256sums_x86_64`=`30652975…` / `sha256sums_aarch64`=`64c22839…` 是真值（源码 `PKGBUILD` 因「文件在归档内」的固定点只能 SKIP，见下表）；新增 `scripts/aur-sums.sh` 做「下载→计算→比对→回填→生成 .SRCINFO」一条命令。**真提交做不了**（见 P1b），但 v3.13.1 Release 已发布、产物已上传，AUR 提交所需的 hash 与文件都已就绪 |
-| P2 | deb / rpm / AppImage | 新增 `scripts/package-linux.sh`（统一入口）+ `packaging/deb/`、`packaging/rpm/`、`packaging/appimage/`。三种格式共用一份 payload 暂存树，保证逐字节一致，全程不 strip（守住 `Arithmetic overflow while reading bundle` 那条坑）。**deb 已真打包（36 MB）并拆包核对元数据**；rpm/AppImage 本机缺工具，留给 CI |
+| P2 | deb / rpm | 新增 `scripts/package-linux.sh`（统一入口）+ `packaging/deb/`、`packaging/rpm/`。两种格式共用一份 payload 暂存树，保证逐字节一致，全程不 strip（守住 `Arithmetic overflow while reading bundle` 那条坑）。**deb 已真打包（36 MB）并拆包核对元数据** |
 | P3 | arm64 | 两个 PKGBUILD 的 `arch` 与 `build()` 已支持 aarch64；`package-linux.sh --arch arm64` 路径可跑；CI 按规格只产 arm64 tar.gz |
 | P4 | Windows CI 跑 Avalonia 测试 | `build-windows.yml` 新增 `Test the Avalonia shell (headless, Windows)`；不需要 `EnableWindowsTargeting`（Avalonia 测试工程本身是 net8.0），且 `dotnet test` 给的是 .csproj 而非 .sln，WPF 项目不会被拉进 restore 图 |
 | P5 | 版本号单一来源 | 新增 `scripts/version.ps1`：声明四处来源（Avalonia csproj 为权威、Cli csproj、两个 AssemblyInfo），归一化到三段后比对，漂移即 throw 并列出四行。`publish.ps1` 与 `publish-linux.ps1` 都改成 `. version.ps1; Get-UzipVersion` |
@@ -113,15 +111,14 @@
 2. **无 SNI 宿主时托盘降级正常**：cage 沙箱里没有 `StatusNotifierWatcher`，程序照常启动、
    窗口正常渲染、日志只记一条桌面能力，不崩不卡。
 
-### 发行版包（deb / rpm / AppImage）
+### 发行版包（deb / rpm）
 
 | 事项 | 结果 |
 |------|------|
 | deb 本机真构建 | `scripts/package-linux.sh --arch x64 --formats deb` → `uzip2_3.13.0_amd64.deb`（38.8 MB）。本机没有 `dpkg-deb`，走 `ar + tar` 回退路径 |
-| AppImage 本机真构建 | 同上 `--formats appimage` → `UZIP2-3.13.0-linux-x64.AppImage`（36.5 MB）；`--appimage-extract` 后 `--version` → `UZIP 3.13.0`，cage 无头沙箱渲染截图与 dev build **md5 完全相同** |
 | rpm 本机真构建（v3.13.1 起） | 装了 `rpm-tools`（`rpmbuild` 6.0.1）后可直接构建：`--formats rpm` → `uzip2-3.13.1-1.x86_64.rpm`（31.8 MB）；`rpm2cpio` + `cpio -idm` 拆包后 `./usr/bin/uzip2 --version` → `UZIP 3.13.1`，并用它跑通了分卷解压 |
 | rpm 由 CI 构建 | 本机原无 `rpmbuild`（v3.13.1 已装 `rpm-tools`，改为本机构建），v3.13 时由 CI 的 `linux-packages` job 产出 `uzip2-3.13.0-1.x86_64.rpm`（31.7 MB），并在容器里 `rpm2cpio` 拆包、跑 `--version` 得 `UZIP 3.13.0` |
-| AppImage 三个坑 | ① `.desktop` 的 `Categories=Utility;Archiver;` 里 `Archiver` 不是注册值 → 改 `Archiving`；② AppStream `<id>` 必须是反域名 → 改 `io.github.pingod.UZIP2`；③ 元数据文件名必须与 id 一致 → 文件改名（否则报 `metainfo-filename-cid-mismatch`）。另外 CI runner 升到 Ubuntu 26.04 后 `tail` 是 uutils 版，`tail -40` 报 `unexpected argument '-4'`，把上面这些真实错误全盖住了，改成 `tail -n 40` |
+| `.desktop` 的 `Categories` | 原来写的 `Utility;Archiver;` 里 `Archiver` 不是注册值（`desktop-file-validate` 报 `contains an unregistered value "Archiver"`）→ 改 `Utility;Archiving;`。这个缺陷曾让已发布的 tar.gz / Arch 包带着非法 desktop 文件发出，v3.13.0 后已重打 |
 | 发布 | 九个产物 + 各自 `.sha256` 已上传 Release `v3.13`（v3.13.1 再补 aborted 后的修复版，见上） |
 
 ## 三·补二、v3.13 之后：分卷（多压缩包分包）
@@ -145,6 +142,36 @@
 
 ---
 
+
+## 三·补三、v3.13.1 之后：方块（桌面只留方块）的两个缺陷
+
+用户报障：「桌面只留方块点击后应该为 hyprland 的悬浮窗口，要不然会被拉伸」「文件拖动到
+方块无任何动作」。两条都确认是真实缺陷。
+
+| 缺陷 | 根因 | 修法 |
+|------|------|------|
+| **方块被平铺拉伸成整屏**（实测 1268×688） | Wayland 的 xdg-shell 里客户端既不能声明「我是浮动窗口」也不能指定绝对坐标，全归合成器。`PuckWindow.axaml` 只给了 `Width/Height=112`，**没有 Min/Max**，Hyprland 的 dwindle 与 sway 的默认布局都把它当普通平铺窗口塞进布局树，里面的 `Border`/`Viewbox` 跟着拉伸糊掉 | ① `PuckWindow.axaml` 补 `MinWidth/MinHeight/MaxWidth/MaxHeight=112` —— Avalonia 的 Wayland 后端会把 Min/Max 交给合成器（`SetMinMaxSize`/`EmitMinMaxSize`），wlroots 系据此按浮动窗口摆放（实测 sway：`floating=user_on`、112×112）；② 新增 `HyprlandWindowHelper` 走 `hyprctl` IPC 发 `hl.dsp.window.float` + `hl.dsp.window.move` —— Hyprland 的 dwindle 不认 Min/Max。只在 Hyprland 会话里启用 |
+| **拖文件到方块毫无反应** | `PuckWindow.axaml` 漏了 `DragDrop.AllowDrop="True"`。`DragOver`/`Drop` 两个处理器都挂上了，但 Avalonia 只把拖放事件派给 `AllowDrop` 为 true 的控件 → 处理器从未被调用（主界面 `HomeView.axaml` 一直有这一行，所以那边没问题） | 补 `AllowDrop`；同时补 `DragLeave`，否则拖进来又滑走时提示永远停在「松手解压 / 压缩」 |
+| 方块位置被存成 0,0 | Wayland 下 `Window.Position` 恒为 0,0（xdg-shell 不告诉客户端绝对位置，实测拖动后读回仍是 0,0）。照它存盘会写坏设置，下次启动方块跑到左上角 | `TryReadPosition` 优先问合成器，问不到就**不存**（宁可保留旧值）；松手时主动存一次（Wayland 下拖动结束不一定触发 `PositionChanged`）；用户开始拖时停掉位置追踪定时器，否则会把窗口从用户手里拽回去 |
+| 方块与主窗口认错 | `hyprctl clients` 里**一个 pid 对两个窗口**（主窗口 + 方块）。「桌面只留方块」时主窗口只是隐藏、仍在列表里，只按 pid 取第一个会撞上主窗口 —— 后果是把主窗口抬进浮动层、把方块 move 到别处 | `PickAddress` 增加 `titleHint`：优先选标题含「UZIP 拖拽方块」的，选不到才退回第一个 pid 匹配项（退回而非 null —— 能动总比完全不动好）。坐标读取走同一条选窗口逻辑 |
+
+**环境限制记录**：`hyprctl dispatch` 在这版 Hyprland（0.56.2，Lua 配置解析器）**不认老式裸动词** ——
+`hyprctl dispatch setfloating "address:0x..."` 报 `')' expected near 'address'`，必须用
+`hl.dsp.window.float({ window = "address:0x...", action = "enable" })` 这种 Lua 形式。
+
+**测试**：`UZIP2.Avalonia.Tests` 36→42（新增 6 条：命令拼装、按 pid+标题选窗口、读合成器坐标、
+`AllowDrop` 开关含 axaml 文本断言 Min/Max）。
+
+**验证**：wstream 沙箱（sway）里方块是 `floating_con`、**112×112**、`floating=user_on`、位置正确、
+日志 0 个 ERROR/Exception；生产 API 在用户真实 Hyprland 会话里实测
+`FloatAtAddress('0x5601564cf680', 700, 400) => True`，窗口从 1112,1291 移到 700,400，尺寸保持
+112×112（随后已还原原坐标）。
+
+**残留**：① sway 靠 Min/Max 自己浮动，Hyprland 靠 IPC；KDE/GNOME Wayland 下方块仍会被当平铺窗口
+（没有 hyprctl 也没有 Min/Max 支持时无解，且 GNOME Wayland 连置顶都不允许）；② 纯 Wayland 下
+Avalonia 拿不到绝对坐标，只能靠合成器 IPC，Sway 会话的位置保存目前**没有**实现（只有 Hyprland 有）。
+
+---
 
 ## 四、明确不做的（评估过，留记录避免重复讨论）
 

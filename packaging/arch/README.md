@@ -58,7 +58,7 @@ hash 又变了，永远追不上。
 
 ## 其它发行版
 
-`.deb` / `.rpm` / AppImage 由 `scripts/package-linux.sh` 统一产出（不需要 root，
+`.deb` / `.rpm` 由 `scripts/package-linux.sh` 统一产出（不需要 root，
 缺工具的格式会打印提示并跳过）。同一个「绝不 strip」约束在那边同样成立，细节见
 脚本头部的注释。
 

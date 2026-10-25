@@ -11,6 +11,27 @@
 4. 优化临时缓存文件夹相关代码，每个压缩包有单独的缓存文件夹，并且该文件夹是隐藏的。
 5. 支持多级解压，压缩包内第一层压缩包再次解压，持续符合条件时会循环解压。
 
+## 本次增强（v3.13.1 之后 — 方块修复）
+
+「桌面只留方块」是 Linux 上最容易坏的一处，因为它是个 112×112 的无边框窗口，而在
+Wayland 下客户端既不能声明「我是浮动窗口」也不能指定绝对坐标。
+
+- **方块不再被平铺拉伸**：以前它只给了 `Width/Height=112`、没有 Min/Max，Hyprland 的
+  dwindle 与 sway 的默认布局都把它当普通平铺窗口铺成 1268×688，里面的圆圈和文字跟着
+  糊掉。现在补了 `Min/Max=112`（Avalonia 的 Wayland 后端会把 Min/Max 交给合成器，wlroots
+  系据此按浮动窗口摆放），Hyprland 另走 `hyprctl` IPC（`hl.dsp.window.float` +
+  `hl.dsp.window.move`）抬进浮动层再摆位 —— 它的 dwindle 不认 Min/Max。
+- **拖文件到方块终于有反应**：`PuckWindow.axaml` 漏了 `DragDrop.AllowDrop="True"`，代码里
+  处理器都挂上了，但 Avalonia 只把拖放事件派给 `AllowDrop` 为 true 的控件，所以从未被
+  调用过（主界面一直有这一行，所以那边是好的）。顺带补了 `DragLeave`，拖进来又滑走时
+  提示会还原。
+- **方块位置不再被存成 0,0**：Wayland 下 `Window.Position` 恒为 0,0，照它存盘会让用户
+  挪过的方块下次启动跑回左上角。改成优先问合成器，问不到就不存、保留旧值；松手时主动
+  存一次；用户开始拖时停掉位置追踪定时器，否则会把窗口从手里拽回去。
+- **方块与主窗口不再认错**：`hyprctl clients` 里一个 pid 对两个窗口，「桌面只留方块」时
+  主窗口只是隐藏、仍在列表里，只按 pid 取第一个会撞上主窗口。改成优先选标题含
+  「UZIP 拖拽方块」的那个。
+
 ## 本次增强（v3.13 之后 — 分卷解压修复）
 
 分卷（多压缩包分包）是 Linux 上最脆弱的一环，这一轮把图形界面与 CLI 两侧都修透了：
@@ -23,7 +44,7 @@
 ## 本次增强（v3.13 — 原生 Wayland / Arch 分发）
 
 - **原生 Wayland**：升级到 Avalonia 12.1.4 并接入 `Avalonia.Wayland`，Linux 上不再走 XWayland。根因是 `Avalonia.Wayland` 包从 12.1.0 才发布，11.x 系列根本没有 Wayland 后端。纯 Wayland 会话里 `WAYLAND_DEBUG=1` 能抓到 `wl_compositor` / `xdg_wm_base` / `wl_shm` / `wl_seat` 往返，进程 fd 里 X11 socket 数量为 0。
-- **Arch 包补齐**：`uzip2-bin`（预编译）与 `uzip2`（源码构建）都在本机跑完 `makepkg` 完整 fakeroot 流程，解包 `--version` 均输出 `UZIP 3.13.1`；`sha256sums` 全部填 Release 侧车真值。
+- **Arch 包补齐**：`uzip2-bin`（预编译）与 `uzip2`（源码构建）都在本机跑完 `makepkg` 完整 fakeroot 流程，解包 `--version` 均输出 `UZIP 3.13.2`；`sha256sums` 全部填 Release 侧车真值。
 - **修掉 .NET 10 的一个发布坑**：`--self-contained` 在 .NET 10 里变成纯开关，`--self-contained false` 不再生效，框架依赖产物被打成 144 MB（正确值 9 MB）——`UZIP2.exe` 正是应用内自更新下载的附件，会让每次更新多下 135 MB。三处发布链路统一改用 `-p:SelfContained=`。
 - 顺带修掉 Avalonia 11.3.2 的 SNI 上游 bug：`Status` 槽位曾被写入 `Id`（`"UZIP2"`），Avalonia 12 已返回规范的 `Active`。
 
@@ -66,7 +87,7 @@ Wayland 兼容性按能力降级，而不是假装对齐：X11 三项全开；KD
 最新包在 [Releases](https://github.com/pingod/UZIP2/releases/latest) 页面，直接装现成的：
 
 ```
-sudo pacman -U uzip2-bin-3.13.1-1-x86_64.pkg.tar.zst    # 预编译
+sudo pacman -U uzip2-bin-3.13.2-1-x86_64.pkg.tar.zst    # 预编译
 ```
 
 或者从源码构建（需要 `dotnet-sdk>=10`，见下面的说明）：
@@ -77,18 +98,18 @@ cd packaging/arch && makepkg -si          # PKGBUILD
 cd packaging/arch && makepkg -si -p PKGBUILD-bin
 ```
 
-Debian/Ubuntu 用 `.deb`，通用发行版可以用 AppImage：
+Debian/Ubuntu 用 `.deb`，Fedora/RHEL/openSUSE 用 `.rpm`：
 
 ```
-sudo dpkg -i uzip2_3.13.1_amd64.deb                    # Debian/Ubuntu
-chmod +x UZIP2-3.13.1-linux-x64.AppImage && ./UZIP2-3.13.1-linux-x64.AppImage   # 需 FUSE
+sudo dpkg -i uzip2_3.13.2_amd64.deb                    # Debian/Ubuntu
+sudo rpm -i uzip2-3.13.2-1.x86_64.rpm                  # Fedora/RHEL/openSUSE
 ```
 
 或者直接解包 tar.gz，目录里带安装脚本：
 
 ```
-tar -xzf UZIP2-3.13.1-linux-x64.tar.gz
-cd UZIP2-3.13.1-linux-x64 && sudo ./install.sh      # 默认 /usr/local，装桌面入口与图标
+tar -xzf UZIP2-3.13.2-linux-x64.tar.gz
+cd UZIP2-3.13.2-linux-x64 && sudo ./install.sh      # 默认 /usr/local，装桌面入口与图标
 # 卸载：sudo PREFIX=/usr/local ./uninstall.sh（配置目录保留）
 # 只要二进制：sudo install -Dm755 UZIP2 /usr/bin/uzip2
 ```
@@ -101,13 +122,13 @@ cd UZIP2-3.13.1-linux-x64 && sudo ./install.sh      # 默认 /usr/local，装桌
 
 自更新（`update --apply`）只在 Windows 可用；Linux 上明确提示用包管理器更新，不做换二进制的动作。
 
-构建与打包：`scripts/publish-linux.ps1`（Windows 与 Linux 都能跑，交叉发布 x64/arm64 并组装 tar.gz + `.sha256` + `SHA256SUMS-linux.txt`）；`scripts/package-linux.sh` 从 tar.gz 生成 `.deb` / `.rpm` / `AppImage`（三种格式共用一份暂存树，全程不 strip）；`scripts/aur-sums.sh` 负责发布前核对并回填两个 PKGBUILD 的 `sha256sums`、生成 `.SRCINFO`；版本号只在 `scripts/version.ps1` 读一处。CI 见 `.github/workflows/build-linux.yml`（`archlinux` 容器里跑真正的 `makepkg`、`ubuntu` 上跑无头 Avalonia 测试并打包三种格式）与 `build-windows.yml`（WPF + Avalonia 双侧测试）。
+构建与打包：`scripts/publish-linux.ps1`（Windows 与 Linux 都能跑，交叉发布 x64/arm64 并组装 tar.gz + `.sha256` + `SHA256SUMS-linux.txt`）；`scripts/package-linux.sh` 从 tar.gz 生成 `.deb` / `.rpm`（两种格式共用一份暂存树，全程不 strip）；`scripts/aur-sums.sh` 负责发布前核对并回填两个 PKGBUILD 的 `sha256sums`、生成 `.SRCINFO`；版本号只在 `scripts/version.ps1` 读一处。CI 见 `.github/workflows/build-linux.yml`（`archlinux` 容器里跑真正的 `makepkg`、`ubuntu` 上跑无头 Avalonia 测试并打包 deb/rpm）与 `build-windows.yml`（WPF + Avalonia 双侧测试）。
 
 真机验证（v3.12 之后）：在 **Hyprland 0.56.2**（Wayland + XWayland，双显示器）真会话里跑通了托盘（`busctl` 见到 `org.kde.StatusNotifierItem`，图标像素解出来就是 UZIP 的线条画，菜单结构正确）、悬浮方块（4 组坐标重启后精确恢复）、失败气泡（隐藏时 3 个坏包 → 1 条通知，前台 → 0 条）；CLI 解普通包/加密包（含无口令时的正确报错）都正常。
 
 **图形后端（v3.13 起）**：升级到 **Avalonia 12.1.4** 并引入 `Avalonia.Wayland`，Linux 上走**原生 Wayland**（实测协议流里有 `wl_compositor` / `xdg_wm_base` / `wl_shm` / `wl_seat`），X11 只是兜底 —— `UseWaylandWithFallback()` 仅在 Wayland 客户端连不上时才退回 XWayland。`Avalonia.Wayland` 从 12.1.0 才开始发布，Avalonia 11.x **完全没有** Wayland 后端，这是之前所有窗口都跑在 XWayland 上的根因。
 
-**已知限制**（都是环境或上游限制，不是没做完）：原生 Wayland 下客户端设窗口坐标本就无效（由合成器决定），悬浮方块的绝对定位因此依赖合成器配合；实测 Hyprland 下能精确恢复保存的位置。Hyprland **不实现 EWMH**，置顶属性设得上但合成器不体现「重启后仍在最上层」；KDE/X11 正常。AppImage 依赖 FUSE，Ubuntu 22.04+ 需自行装 `libfuse2`；`appimagetool` 打包最后要联网下载 runtime，网络受限时用 `--runtime-file` 指定可信 runtime（从 appimagetool 自身切出来的那份会导致产物段错误）。`rpm` 因本机无 `rpmbuild` 未在本地真构建，由 CI 构建并在容器里拆包实跑；AUR 包已就绪（含 `.SRCINFO`）但尚未提交（需要 AUR 账号与 SSH key）；arm64 仍只有交叉构建。
+**已知限制**（都是环境或上游限制，不是没做完）：原生 Wayland 下客户端既不能声明「我是浮动窗口」也不能设绝对坐标，全归合成器决定。悬浮方块在 Hyprland 上走 `hyprctl` IPC（`hl.dsp.window.float` + `hl.dsp.window.move`）摆位、能精确恢复保存的位置；sway 这类 wlroots 合成器靠窗口的 Min/Max 尺寸自己把它当浮动窗口摆放；**KDE / GNOME Wayland 下方块仍会被当成平铺窗口拉伸**，没有通用解法。Hyprland **不实现 EWMH**，置顶属性设得上但合成器不体现「重启后仍在最上层」；KDE/X11 正常。`rpm` 自 v3.13.1 起本机装了 `rpm-tools`，已能本地真构建并拆包实跑；AUR 包已就绪（含 `.SRCINFO`）但尚未提交（需要 AUR 账号与 SSH key）；arm64 仍只有交叉构建。
 
 一个打包坑记在这里：makepkg 默认会 `strip`，而 .NET 单文件在 ELF 末尾追加了 bundle，strip 之后运行时报 `Arithmetic overflow while reading bundle`。两个 PKGBUILD 都必须带 `options=(!strip !debug)`。
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# UZIP2 Linux 分发打包脚本：把自包含单文件二进制打成 .deb / .rpm / AppImage。
+# UZIP2 Linux 分发打包脚本：把自包含单文件二进制打成 .deb / .rpm。
 #
 # 背景与边界
 # ----------
@@ -24,8 +24,8 @@
 #
 # 缺工具时的行为
 # --------------
-# dpkg-deb 缺失时用纯 `ar` 回退（本机实测可行，见 build_deb_with_ar）；rpmbuild /
-# appimagetool 缺失时打印中文提示并**跳过该格式**，绝不假装成功。
+# dpkg-deb 缺失时用纯 `ar` 回退（本机实测可行，见 build_deb_with_ar）；rpmbuild
+# 缺失时打印中文提示并**跳过该格式**，绝不假装成功。
 # 退出码只在「一个产物都没产出」或某格式真失败时非 0。
 #
 # 用法：bash scripts/package-linux.sh --help
@@ -66,13 +66,13 @@ skip_format() {
 
 usage() {
     cat <<'EOF'
-UZIP2 Linux 打包脚本 —— 生成 .deb / .rpm / AppImage
+UZIP2 Linux 打包脚本 —— 生成 .deb / .rpm
 
 用法：
   bash scripts/package-linux.sh [选项]
 
 选项：
-  -f, --formats LIST      要产出的格式，逗号分隔：deb,rpm,appimage,all
+  -f, --formats LIST      要产出的格式，逗号分隔：deb,rpm,all
                           默认 all（缺工具的格式自动跳过并说明）
   -a, --arch LIST         目标架构，逗号分隔：x64,arm64,both
                           默认本机架构；也可用 --from-tarball 的 tarball 架构
@@ -83,16 +83,12 @@ UZIP2 Linux 打包脚本 —— 生成 .deb / .rpm / AppImage
       --version VER       覆盖版本号（默认从 UZIP2.Avalonia/UZIP2.Avalonia.csproj 读）
       --release N         rpm 的 Release 号，默认 1
       --dotnet PATH       dotnet 可执行文件路径，默认取 PATH 上的 dotnet
-      --appimagetool PATH appimagetool 路径（默认找 PATH 上的 appimagetool）
-      --runtime-file PATH  AppImage runtime 文件（默认让 appimagetool 自己下载；
-                          网络受限时用这个，或在 appimagetool 旁边放 runtime-<arch>）
       --keep-stage        保留暂存目录（调试用）
   -h, --help              显示本帮助
 
 依赖（缺了对应格式会被跳过，不会假成功）：
   .deb       dpkg-deb（Debian/Ubuntu）；没有时用 ar + tar 回退，功能等价
   .rpm       rpmbuild（Debian/Ubuntu: apt-get install rpm；Fedora: dnf install rpm-build）
-  AppImage   appimagetool（https://github.com/AppImage/appimagetool/releases）
 
 全程不需要 root / sudo：deb 与 rpm 的「打包」都不需要安装，只写文件到产物目录。
 
@@ -116,8 +112,6 @@ OUTDIR=""
 VERSION_OVERRIDE=""
 RELEASE="1"
 DOTNET_BIN="dotnet"
-APPIMAGETOOL_BIN=""
-APPIMAGE_RUNTIME_FILE=""
 KEEP_STAGE=0
 
 while [ $# -gt 0 ]; do
@@ -131,8 +125,6 @@ while [ $# -gt 0 ]; do
         --version)            VERSION_OVERRIDE=${2:?--version 需要参数}; shift 2 ;;
         --release)            RELEASE=${2:?--release 需要参数}; shift 2 ;;
         --dotnet)             DOTNET_BIN=${2:?--dotnet 需要参数}; shift 2 ;;
-        --appimagetool)       APPIMAGETOOL_BIN=${2:?--appimagetool 需要参数}; shift 2 ;;
-        --runtime-file)       APPIMAGE_RUNTIME_FILE=${2:?--runtime-file 需要参数}; shift 2 ;;
         --keep-stage)         KEEP_STAGE=1; shift ;;
         *)                    die "不认识的参数：$1（用 --help 看用法）" ;;
     esac
@@ -163,8 +155,8 @@ fi
 OUTDIR=${OUTDIR:-$REPO_ROOT/artifacts/$VERSION}
 TARBALL_DIR=${TARBALL_DIR:-$OUTDIR}
 
-# 统一转成绝对路径：脚本里有几处会 cd 到别处（ar rcD、sha256sum 侧车、
-# appimagetool），相对路径在那里会解析错（`ar: xxx.deb: 没有那个文件或目录`）。
+# 统一转成绝对路径：脚本里有几处会 cd 到别处（ar rcD、sha256sum 侧车），
+# 相对路径在那里会解析错（`ar: xxx.deb: 没有那个文件或目录`）。
 abspath() {
     case "$1" in
         /*) printf '%s' "$1" ;;
@@ -199,14 +191,6 @@ rid_for() {
     case "$1" in
         x64)   printf 'linux-x64' ;;
         arm64) printf 'linux-arm64' ;;
-        *) die "不支持的架构：$1（可选 x64 / arm64）" ;;
-    esac
-}
-
-appimage_arch_for() {
-    case "$1" in
-        x64)   printf 'x86_64' ;;
-        arm64) printf 'aarch64' ;;
         *) die "不支持的架构：$1（可选 x64 / arm64）" ;;
     esac
 }
@@ -395,7 +379,7 @@ build_deb() {
     # 早期版本直接在共用暂存目录里建 DEBIAN/，结果 rpm 打包时整棵树（含 DEBIAN/）
     # 被拷进 buildroot，rpmbuild 报
     #   Installed (but unpackaged) file(s) found: /DEBIAN/control ...
-    # 直接失败。所以 deb 自己复制一份根目录，与 rpm / AppImage 互不影响。
+    # 直接失败。所以 deb 自己复制一份根目录，与 rpm 互不影响。
     debroot="$WORK_ROOT/deb-root/$arch"
     rm -rf -- "$debroot"
     mkdir -p -- "$debroot"
@@ -564,135 +548,22 @@ verify_rpm() {
     return 0
 }
 
-# ---------------------------------------------------------------- AppImage
-
-build_appimage() {
-    local stage=$1 out=$2 arch=$3
-    local archimg appdir tool
-
-    archimg=$(appimage_arch_for "$arch")
-
-    tool=$APPIMAGETOOL_BIN
-    if [ -z "$tool" ]; then
-        have appimagetool && tool=$(command -v appimagetool)
-    fi
-    if [ -z "$tool" ] || [ ! -x "$tool" ]; then
-        skip_format "AppImage" "没有 appimagetool（下载：https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage；或用 --appimagetool 指定路径）"
-        return 1
-    fi
-
-    appdir="$WORK_ROOT/appimage/$arch/AppDir"
-    log "组装 AppDir -> $(basename -- "$out")"
-    rm -rf -- "$appdir"
-    mkdir -p -- "$appdir"
-
-    # AppDir = usr/ 里的真实文件 + 根目录的 AppRun / desktop / 图标（appimagetool 要求）
-    cp -a -- "$stage/usr" "$appdir/usr"
-    install -m 644 -- "$REPO_ROOT/packaging/linux/uzip2.desktop" "$appdir/uzip2.desktop"
-    install -m 644 -- "$REPO_ROOT/packaging/linux/uzip2.png"     "$appdir/uzip2.png"
-    install -m 644 -- "$REPO_ROOT/packaging/linux/uzip2.png"     "$appdir/.DirIcon"
-    install -m 755 -- "$REPO_ROOT/packaging/appimage/AppRun"     "$appdir/AppRun"
-
-    # AppStream 元数据：新版 appimagetool（2025 起）缺它会直接失败，
-    # 而老版本不认 --no-appstream 开关 —— 所以这里一律带一个合法文件，
-    # 版本号与日期现场从 @VERSION@ / @DATE@ 填充，避免发版时漏改。
-    # 只放 usr/share/metainfo/：这是 AppStream 规范位置，新旧 appimagetool 都认；
-    # 再往 AppDir 根目录放一份会被当成重复元数据（同一个 id 出现两次）。
-    mkdir -p -- "$appdir/usr/share/metainfo"
-    sed -e "s|@VERSION@|$VERSION|g" -e "s|@DATE@|$(date -u +%Y-%m-%d)|g" \
-        "$REPO_ROOT/packaging/appimage/io.github.pingod.UZIP2.appdata.xml" \
-        > "$appdir/usr/share/metainfo/io.github.pingod.UZIP2.appdata.xml"
-
-    # appimagetool 自己也是 AppImage：没有 FUSE 时用 --appimage-extract-and-run。
-    # 先探测哪种调用方式可用；两种都不行就明确失败（不要用一个必然失败的调用硬撞）。
-    local -a runner=()
-    if "$tool" --version >/dev/null 2>&1; then
-        runner=("$tool")
-    elif "$tool" --appimage-extract-and-run --version >/dev/null 2>&1; then
-        runner=("$tool" --appimage-extract-and-run)
-    else
-        warn "appimagetool 既不能直接运行也不能 --appimage-extract-and-run（缺 FUSE？）"
-        warn "提示：AppImage 打包装箱只要它能跑，不需要 root；可用 --appimagetool 指定另一份"
-        return 1
-    fi
-
-    # appimagetool 在最后一步要往产物前面拼一段 runtime，默认会去 GitHub
-    # （AppImage/type2-runtime）现场下载。网络受限时这一步必然失败，报的是
-    #   Failed to download runtime: server returned status code 0
-    # 看起来像打包脚本的 bug，其实只是下载不来。传 --runtime-file 就能完全离线：
-    # 既接受显式 --runtime-file，也接受在 appimagetool 旁边放一份 runtime-<arch>
-    # 自动发现，避免每次打包都去 GitHub 撞一次。
-    local runtime=${APPIMAGE_RUNTIME_FILE:-}
-    if [ -z "$runtime" ]; then
-        local sibling
-        sibling="$(dirname -- "$tool")/runtime-$archimg"
-        if [ -f "$sibling" ]; then runtime=$sibling; fi
-    fi
-    if [ -n "$runtime" ]; then
-        [ -f "$runtime" ] || die "--runtime-file 指定的文件不存在：$runtime"
-        runner+=("--runtime-file" "$runtime")
-        info "使用本地 runtime：$runtime"
-    fi
-
-    # ARCH 必须显式给：交叉打 aarch64 时 appimagetool 靠它决定 ELF 架构
-    if ! ARCH="$archimg" "${runner[@]}" "$appdir" "$out" > "$WORK_ROOT/appimage.log" 2>&1; then
-        tail -n 40 -- "$WORK_ROOT/appimage.log" >&2 || true
-        if grep -q 'Failed to download runtime' "$WORK_ROOT/appimage.log" 2>/dev/null; then
-            warn "appimagetool 下载 runtime 失败（网络受限），可用 --runtime-file 指定本地 runtime"
-        fi
-        die "appimagetool 失败，完整日志：$WORK_ROOT/appimage.log"
-    fi
-    [ -f "$out" ] || die "appimagetool 没有产出文件：$out"
-    chmod 755 -- "$out"
-    return 0
-}
-
-verify_appimage() {
-    local img=$1 src_bin=${2:-}
-    [ -f "$img" ] || { warn "AppImage 不存在，跳过校验：$img"; return 1; }
-
-    log "AppImage 结构校验（解包看内容，不启动 GUI）"
-    local tmp root
-    tmp=$(mktemp -d "$WORK_ROOT/aimg-XXXXXX")
-    if ! ( cd -- "$tmp" && "$img" --appimage-extract >/dev/null 2>&1 ); then
-        warn "AppImage 解包失败（可能缺 FUSE）"
-        rm -rf -- "$tmp"
-        return 1
-    fi
-    root="$tmp/squashfs-root"
-    [ -x "$root/AppRun" ]        || die "AppImage 里没有可执行的 AppRun"
-    [ -f "$root/uzip2.desktop" ] || die "AppImage 里没有 uzip2.desktop"
-    [ -f "$root/uzip2.png" ]     || die "AppImage 里没有 uzip2.png（appimagetool 要求根目录有图标）"
-    [ -x "$root/usr/bin/uzip2" ] || die "AppImage 里没有 usr/bin/uzip2"
-    [ -f "$root/usr/share/metainfo/io.github.pingod.UZIP2.appdata.xml" ] \
-        || die "AppImage 里没有 AppStream 元数据（新版 appimagetool 会拒绝构建）"
-    # 二进制必须与源文件逐字节一致（AppImage 打包不该动它）
-    if [ -n "$src_bin" ]; then
-        cmp -s -- "$root/usr/bin/uzip2" "$src_bin" \
-            || die "AppImage 里的二进制与源二进制不一致（被改写了？）"
-    fi
-    info "AppRun / uzip2.desktop / 图标 / metainfo / usr/bin/uzip2 齐全（二进制未改写）"
-    rm -rf -- "$tmp"
-    return 0
-}
-
 # ---------------------------------------------------------------- 主流程
 
 mkdir -p -- "$OUTDIR"
 
-want_deb=0; want_rpm=0; want_appimage=0
+want_deb=0; want_rpm=0
 case "$FORMATS" in
-    all) want_deb=1; want_rpm=1; want_appimage=1 ;;
+    all) want_deb=1; want_rpm=1 ;;
     *)
         IFS=',' read -r -a _fmts <<< "$FORMATS"
         for f in "${_fmts[@]}"; do
             case "$f" in
                 deb)      want_deb=1 ;;
                 rpm)      want_rpm=1 ;;
-                appimage) want_appimage=1 ;;
-                all)      want_deb=1; want_rpm=1; want_appimage=1 ;;
+                all)      want_deb=1; want_rpm=1 ;;
                 '')       : ;;
-                *)        die "不认识的格式：$f（可选：deb,rpm,appimage,all）" ;;
+                *)        die "不认识的格式：$f（可选：deb,rpm,all）" ;;
             esac
         done
         ;;
@@ -753,16 +624,6 @@ for arch in "${ARCH_LIST[@]}"; do
         fi
     fi
 
-    if [ "$want_appimage" -eq 1 ]; then
-        out="$OUTDIR/UZIP2-${VERSION}-linux-${arch}.AppImage"
-        if build_appimage "$stage" "$out" "$arch"; then
-            verify_appimage "$out" "$RELEASE_DIR/UZIP2" || true
-            PRODUCED+=("$out")
-            info "生成 $(basename -- "$out")（$(du -h -- "$out" | cut -f1)）"
-        else
-            SKIPPED+=("appimage/$arch")
-        fi
-    fi
 done
 
 # 侧车 sha256（与 publish-linux.ps1 的 .sha256 风格一致：小写 hash + 两个空格 + 文件名）
