@@ -335,3 +335,26 @@ Wayland 验证走 `cage` + `WLR_BACKENDS=headless WLR_RENDERER=pixman` 沙箱，
 | P17 | **`appimagetool` 联网下载 runtime**：最后一步从 `AppImage/type2-runtime` Releases 拉 `runtime-x86_64`，网络受限时报 `Failed to download runtime`。脚本加 `--runtime-file PATH` / `APPIMAGE_RUNTIME_FILE` / 同级目录自动发现 `runtime-<arch>`，失败日志里额外提示。**从 appimagetool 自身切出来的 runtime 不可用**（产物 `--appimage-extract` 直接 core dump，`REAL_EXIT=139`），只能用可信来源 | `--runtime-file` 传入手工切的 runtime → 产物段错误；不传该参数（让 appimagetool 自己下）→ 产物正常，截图 md5 一致 |
 | P18 | **CI 全绿**：`linux-binary` / `arch-package` / `linux-packages` 三个 job 与 Windows 侧 `build-windows` 全部 success（run 40049383452 / 40049470683） | `gh run view --json jobs` 逐 job 结论 |
 | P19 | **Release 资产齐备**：v3.13 共 15 个资产（9 个产物 + 5 个 `.sha256` 侧车 + 汇总清单 `SHA256SUMS-linux-packages.txt`），其中 rpm 用的是 CI 构建的那份（本机无 `rpmbuild`） | `gh release view v3.13 --json assets` 列出全部名称与大小；本地 `sha256sum -c SHA256SUMS-linux-packages.txt` 三项全通过 |
+
+### 分卷（多压缩包分包）
+
+| # | 内容 | 证据 |
+|---|------|------|
+| V1 | **Linux GUI 解压 100% 失败（阻断级）**：`TempManager.Completion` 与 `ArchiveWorker.TempFix` 硬编码 `\\`，Linux 上拼出 `/tmp/voltest\/UZipTemp_x\`。反斜杠被当成普通文件名字符 → `/tmp` 下凭空出现目录 `voltest\` → `Directory.GetFiles(temp)` 抛 `DirectoryNotFoundException`。**与分卷无关**，所有非 Windows GUI 解压都失败 | 修复前 wstream 沙箱里 `plain.7z` 与 `v7.7z.001` 都 Failed，`history.json` 的 error 就是那句 `Could not find a part of the path '/tmp/voltest\/UZipTemp_plain_1\'`；`ls -la '/tmp/voltest\'` 能看到误建的目录。修复后同样输入 `status: Success`（`Temp_manager_never_produces_a_backslash_on_unix` 钉住） |
+| V2 | **中间卷被送进压缩队列**：`ArchiveInspector.Extractable` 只有 `.001`，`x.7z.003` 被判"普通文件"，GUI 自动分流于是 `EnqueueCompress` → 产出 `x.7z.zip` | 修复前 `v7.7z.003` 的卡片是 `kind: Compress`、`destination: /tmp/voltest/v7.7z.zip`、Success；修复后 `kind: Extract`、Success、`count: 1`（`Every_numeric_volume_counts_as_an_archive` 7 条 + `Old_style_zip_splits_count_as_archives` 钉住） |
+| V3 | **预览 / 转格式缺主卷回退**：只有解压做了回退，`PreviewAsync` 与 `RunConvertAsync` 直接读中间卷（7z 报 `Cannot open the file as archive`） | 新增 `ArchiveInspector.ExtractTarget` 后，net8.0 探针实测 `[preview] v7.7z.003: success=True entries=22`、`[preview] vz.zip.003: success=True entries=22`、`[convert] v7.7z.003: status=Success out=.../v7.zip`（产物名按主卷推导，不再是 `v7.7z.003.zip`） |
+| V4 | **CLI 完全不认识分卷**（6 项）：中间卷报"格式不支持"、批量传整组卷 exit=1、缺中卷/缺主卷都只说"格式不支持"、zip 中间卷解出半截 | 修复前后对照见下 6 行 |
+| V4a | 中间卷单独 `extract`/`list`/`test` | 修复前：三次都 `格式不支持或包内无文件` exit=1。修复后：`exit=0` + `v7.7z.003: 分卷，实际使用主卷 v7.7z.001`，解出 20 文件 / list 22 项 / test `正常` |
+| V4b | 批量传 `.001`…`.008` | 修复前：只有 `.001` 成功，其余 7 卷各报错，**exit=1**。修复后：1 条成功 + 7 条 `已随分卷主文件处理`，**exit=0**，20 文件 |
+| V4c | 缺中间卷（删 `.004`） | 修复前：`格式不支持或包内无文件` exit=1（误导）。修复后：`分卷不完整：缺少 v7.7z.004` exit=1 |
+| V4d | 缺主卷（只有 `.002`+） | 修复前：`格式不支持或包内无文件`。修复后：`分卷不完整：缺少主卷 v7.7z.001（分卷必须从第一卷开始读）` exit=1 |
+| V4e | zip 中间卷 `extract vz.zip.004` | 修复前：`压缩包数据损坏 (CRC)`、只解出 3 个文件。修复后：回落到 `vz.zip.001`、exit=0、20 文件 |
+| V4f | 非压缩包不能被分卷逻辑吞掉 | `list readme.txt` → 仍 `格式不支持或包内无文件` exit=1，且输出里**不含"分卷"** |
+| V5 | **`list *.00* --json` 破坏 NDJSON**：从属卷那行中文插进输出流，下游 `jq`/CI 直接解析失败 | 改为并入主卷对象的 `volumes` 数组，整组卷只出一个 JSON 对象（`List_json_batch_of_volumes_emits_one_object_with_volumes_field` 钉住） |
+| V6 | **7z 区分不了"缺中卷"与"缺末卷"**：两者都只回 `Unexpected end of archive` / `Cannot open as archive`（exit=2），缺口只能在文件名层自己数 | `CliRunner.FindVolumeGap` 按 `BaseName + SecondExt + "."` 枚举收卷号进 HashSet 取 max，从 1 扫到 max-1 找空洞；**只有缺的那卷后面还有卷时才报缺口**，否则 `.001~.007` 恰好是全集会被误判"缺 .008"。末卷缺失靠"卷组齐全但 7z 仍失败"间接归因，文案写"末卷缺失或最后一卷未下载完" |
+| V7 | **卷组内主卷优先排序**：不加会把用户明确给的主卷报成"已随分卷主文件处理" | `OrderedTargets` 用 `OrderBy(是否被纠正)` 稳定排序；实测 `extract v7.7z.003 v7.7z.001` 输出顺序正确 |
+| V8 | **去重键跟平台走**：Linux 下 `a.7z` 与 `A.7z` 是两个文件，Windows 下是同一个 | `CliRunner.PathComparer` = `IsWindows ? OrdinalIgnoreCase : Ordinal` |
+| V9 | **`watch once` 也有同一 bug**：目录里 `.001`~`.008` 一起被枚举，每卷都解一遍 | `DoWatch` 同样接入 `OrderedTargets` + `seen` 去重 |
+| V10 | **测试**：`UZIP2.Avalonia.Tests` 21 → 36 条；`UZIP2.Tests/CliVolumeTests.cs` 新增 14 条（真 7z 造 16k 小分卷） | `Total: 36, Errors: 0, Failed: 0`；CliVolumeTests 在 net8.0 探针里 `14 通过 / 0 失败`。**造多片卷组时填充必须随机** —— 可压缩填充会让 7z 把几十 KB 全塞进第一卷，多片卷组根本造不出来 |
+
+**环境限制**：`dotnet test UZIP2.Tests` 在 Linux 起不来（testhost 要 `Microsoft.WindowsDesktop.App`），CLI 新测试只在临时 net8.0 探针工程里跑过，正式工程需 Windows CI 复跑。顺带给既有 `CliRunnerTests` 跑了一遍：53 通过 / 4 失败，4 条全是 `Update_apply_*`，因 `UpdatePolicy.CanApplyInPlaceOn` 在 Linux 直接拒绝就地自更新 —— 既有平台门槛，与本次改动无关。

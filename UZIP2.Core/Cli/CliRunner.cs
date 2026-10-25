@@ -150,42 +150,185 @@ namespace UZIP2.Cli
             return list;
         }
 
-        async Task<(SevenZipResult res, string used)> TryExtractAsync(string archive, string dest, CliRequest r, CancellationToken ct)
+        // ---------- 分卷解析 ----------
+
+        // 把"用户提交的那一卷"翻译成 7z 真正能读的主卷，并在跑 7z 之前认出结构性缺陷。
+        // 7z 对中间卷只会回 "Cannot open the file as archive"，对缺卷只会回
+        // "Unexpected end of archive" —— 都说不出缺的是哪一卷，只能在命名层面自己数。
+        sealed class VolumeResolution
         {
-            foreach (var pw in Candidates(archive, r))
+            public string Given;         // 用户提交的路径
+            public string Target;        // 真正交给 7z 的路径；分卷时是主卷
+            public bool IsVolume;
+            public string Diagnosis;     // 非 null = 卷组不完整，直接判失败，别让 7z 白跑一趟
+            public string Key;           // 同批去重键：整组卷归一化到主卷路径
+        }
+
+        // Linux 下 a.7z 与 A.7z 是两个文件，Windows 下是同一个：去重键必须跟着平台走
+        static readonly StringComparer PathComparer = OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+
+        static VolumeResolution ResolveVolume(string path)
+        {
+            var info = ArchiveInspector.Inspect(path);
+            var v = new VolumeResolution { Given = path, Target = path, Key = path };
+            if (info?.Volume == null || !info.Volume.IsVolume) return v;
+            v.IsVolume = true;
+
+            string main = info.Volume.MainVolumePath;
+            if (string.IsNullOrEmpty(main) || !File.Exists(main))
             {
-                var res = await _zip.ExtractAsync(archive, dest, pw, null, ct, r.Cover ?? "-aos", r.Entries).ConfigureAwait(false);
-                if (res.Success) { if (pw != null) _passwords.ReportResult(pw, true); return (res, pw); }
-                if (res.Error != SevenZipError.WrongPassword) return (res, pw);
+                // 只剩中间卷（只下到 .003，或主卷被删）：7z 会把它当"不是压缩包"，
+                // 那句话对用户零信息量，真正要修的是"把主卷找回来"。
+                v.Diagnosis = "分卷不完整：缺少主卷 " + Path.GetFileName(main ?? "")
+                    + "（分卷必须从第一卷开始读）";
+                return v;
             }
-            return (await _zip.ExtractAsync(archive, dest, null, null, ct, r.Cover ?? "-aos", r.Entries).ConfigureAwait(false), null);
+            string gap = FindVolumeGap(info.Volume);
+            if (gap != null)
+            {
+                v.Diagnosis = "分卷不完整：缺少 " + Path.GetFileName(gap);
+                return v;
+            }
+            v.Target = main;
+            v.Key = main;
+            return v;
+        }
+
+        // 缺中卷检测：只有在"缺的那一卷后面还有卷"时才认定缺口。
+        // 否则 .001~.007 恰好是全集时会被误判成"缺 .008"。
+        static string FindVolumeGap(VolumeInfo vol)
+        {
+            if (vol == null || string.IsNullOrEmpty(vol.SecondExt) || string.IsNullOrEmpty(vol.Folder)
+                || !Directory.Exists(vol.Folder)) return null;
+            string prefix = vol.BaseName + vol.SecondExt + ".";
+            var present = new HashSet<int>();
+            try
+            {
+                foreach (var f in Directory.EnumerateFiles(vol.Folder, prefix + "*"))
+                {
+                    var name = Path.GetFileName(f);
+                    if (name.Length <= prefix.Length) continue;
+                    if (!name.StartsWith(prefix, StringComparison.Ordinal)) continue;
+                    if (int.TryParse(name.Substring(prefix.Length), out int n) && n > 0) present.Add(n);
+                }
+            }
+            catch { return null; }
+            int max = 0;
+            foreach (var n in present) if (n > max) max = n;
+            for (int n = 1; n < max; n++)
+                if (!present.Contains(n)) return Path.Combine(vol.Folder, prefix + n.ToString("000"));
+            return null;
+        }
+
+        // 卷组已确认齐全（主卷在、中卷无缺口）却仍然失败：基本只剩末卷缺失或最后一卷没下完
+        // （7z 的头在末卷，缺了它只会报"不是压缩包"/Unexpected end，而真正原因是分卷没收全）。
+        static string VolumeAware(string diagnosis, VolumeResolution vol)
+        {
+            if (vol == null || !vol.IsVolume || vol.Diagnosis != null) return diagnosis;
+            return "分卷不完整：末卷缺失或最后一卷未下载完（已按主卷 "
+                + Path.GetFileName(vol.Target ?? "") + " 读取，7z 报：" + diagnosis + "）";
+        }
+
+        static SevenZipResult Refine(SevenZipResult res, VolumeResolution vol, string fallback)
+            => res == null || res.Success ? res : res with { Diagnosis = VolumeAware(res.Diagnosis ?? fallback, vol) };
+
+        static ArchiveListing Refine(ArchiveListing list, VolumeResolution vol, string fallback)
+            => list == null || list.Success ? list : list with { Diagnosis = VolumeAware(list.Diagnosis ?? fallback, vol) };
+
+        // 卷组内把"用户给的就是主卷"的那一条排前面：否则 `extract v7.7z.003 v7.7z.001`
+        // 会先处理 .003 再把 .001 报成"已随分卷主文件处理"，读起来完全颠倒。
+        // OrderBy 是稳定排序，组内仍保留用户给的顺序。
+        List<(string File, VolumeResolution Vol)> OrderedTargets(IEnumerable<string> files)
+        {
+            var list = new List<(string File, VolumeResolution Vol)>();
+            foreach (var f in files)
+                list.Add((f, File.Exists(f) ? ResolveVolume(f) : null));
+            return list.OrderBy(t => t.Vol != null && t.Vol.IsVolume && t.Vol.Target != t.File ? 1 : 0).ToList();
+        }
+
+        // 分卷被纠正到主卷时告知一句，否则用户会以为 .003 自己就是能解的包
+        void NoteVolume(VolumeResolution vol, CliRequest r)
+        {
+            if (vol == null || !vol.IsVolume || vol.Diagnosis != null) return;
+            if (vol.Target == vol.Given) return;
+            if (r != null && r.Json) return;   // JSON 流里不能混人话
+            _out(vol.Given + ": 分卷，实际使用主卷 " + Path.GetFileName(vol.Target));
+        }
+
+        async Task<(SevenZipResult res, string used)> TryExtractAsync(string archive, string dest, CliRequest r, CancellationToken ct,
+            VolumeResolution vol = null)
+        {
+            vol = vol ?? ResolveVolume(archive);
+            if (vol.Diagnosis != null)
+                return (SevenZipResult.Fail("", SevenZipError.Unknown, vol.Diagnosis, archive), null);
+            string target = vol.Target;
+            foreach (var pw in Candidates(target, r))
+            {
+                var res = await _zip.ExtractAsync(target, dest, pw, null, ct, r.Cover ?? "-aos", r.Entries).ConfigureAwait(false);
+                if (res.Success) { if (pw != null) _passwords.ReportResult(pw, true); return (res, pw); }
+                if (res.Error != SevenZipError.WrongPassword) return (Refine(res, vol, "解压失败"), pw);
+            }
+            var last = await _zip.ExtractAsync(target, dest, null, null, ct, r.Cover ?? "-aos", r.Entries).ConfigureAwait(false);
+            return (Refine(last, vol, "解压失败"), null);
         }
 
         // ---------- list ----------
 
-        async Task<(ArchiveListing listing, string used)> ReadListingAsync(string archive, CliRequest r, CancellationToken ct)
+        async Task<(ArchiveListing listing, string used)> ReadListingAsync(VolumeResolution vol, CliRequest r, CancellationToken ct)
         {
+            if (vol.Diagnosis != null)
+                return (ArchiveListing.Fail(SevenZipError.Unknown, vol.Diagnosis), null);
             ArchiveListing list = null; string used = null;
-            foreach (var pw in Candidates(archive, r))
+            foreach (var pw in Candidates(vol.Target, r))
             {
-                list = await _zip.ListEntriesAsync(archive, pw, ct).ConfigureAwait(false);
+                list = await _zip.ListEntriesAsync(vol.Target, pw, ct).ConfigureAwait(false);
                 if (list.Success || list.Error != SevenZipError.WrongPassword) { used = pw; break; }
             }
-            return (list, used);
+            return (Refine(list, vol, "读取包内清单失败"), used);
         }
+
+        async Task<(ArchiveListing listing, string used)> ReadListingAsync(string archive, CliRequest r, CancellationToken ct)
+            => await ReadListingAsync(ResolveVolume(archive), r, ct).ConfigureAwait(false);
 
         async Task<int> DoList(CliRequest r, CancellationToken ct)
         {
             if (r.Args.Count == 0) { _err("用法: uzip2 list <压缩包> [--password pw|--auto] [--json [--show-passwords]]"); return 2; }
             int code = 0;
-            foreach (var f in r.Args)
+            var targets = OrderedTargets(r.Args);
+            // 先把同卷组的从属卷挑出来：--json 时必须并入主卷那一条的 volumes 字段，
+            // 不能像文本模式那样另起一行——那行中文会把 NDJSON 流直接弄坏。
+            var seen = new HashSet<string>(PathComparer);
+            var shadowIdx = new HashSet<int>();
+            var shadows = new Dictionary<string, List<string>>(PathComparer);
+            for (int i = 0; i < targets.Count; i++)
             {
-                if (!File.Exists(f)) { _err(f + ": 文件不存在"); code = 1; continue; }
-                var (list, used) = await ReadListingAsync(f, r, ct).ConfigureAwait(false);
+                var (sf, sv) = targets[i];
+                if (sv == null || seen.Add(sv.Key)) continue;
+                shadowIdx.Add(i);
+                if (!shadows.TryGetValue(sv.Key, out var list)) shadows[sv.Key] = list = new List<string>();
+                list.Add(sf);
+            }
+            for (int i = 0; i < targets.Count; i++)
+            {
+                var (f, vol) = targets[i];
+                if (vol == null) { _err(f + ": 文件不存在"); code = 1; continue; }
+                if (shadowIdx.Contains(i)) { if (!r.Json) _out(f + ": 已随分卷主文件处理"); continue; }
+                if (vol.Diagnosis != null) { _err(f + ": " + vol.Diagnosis); code = 1; continue; }
+                var (list, used) = await ReadListingAsync(vol, r, ct).ConfigureAwait(false);
                 if (!list.Success) { _err(f + ": " + (list.Diagnosis ?? "读取失败")); code = 1; continue; }
+                NoteVolume(vol, r);
                 if (r.Json)
                     // 试出来的密码默认脱敏：JSON 会被整份丢进日志/CI，明文等于泄露
-                    _out(JsonSerializer.Serialize(new { archive = f, password = r.ShowPasswords ? used : (used != null ? "***" : null), entries = list.Entries.Select(e => new { path = e.Path, size = e.Size, folder = e.IsFolder, method = e.Method }) }, Json));
+                    _out(JsonSerializer.Serialize(new
+                    {
+                        archive = f,
+                        password = r.ShowPasswords ? used : (used != null ? "***" : null),
+                        entries = list.Entries.Select(e => new { path = e.Path, size = e.Size, folder = e.IsFolder, method = e.Method }),
+                        // 同组的分卷不再单独成行，而是挂在主卷这条里；没有分卷时不出现该字段
+                        volumes = shadows.TryGetValue(vol.Key, out var sh) ? sh.ToArray() : null,
+                    }, Json));
                 else
                 {
                     _out(f);
@@ -249,18 +392,24 @@ namespace UZIP2.Cli
         {
             if (r.Args.Count == 0) { _err("用法: uzip2 test <压缩包...> [--password pw|--auto]"); return 2; }
             int code = 0;
-            foreach (var f in r.Args)
+            var seen = new HashSet<string>(PathComparer);
+            foreach (var (f, vol) in OrderedTargets(r.Args))
             {
-                if (!File.Exists(f)) { _err(f + ": 文件不存在"); code = 1; continue; }
+                if (vol == null) { _err(f + ": 文件不存在"); code = 1; continue; }
+                // 同一卷组只真检一次：其余卷跟着主卷的结论走，否则 `test *.00*` 会报 7 条假失败
+                if (!seen.Add(vol.Key)) { _out(f + ": 已随分卷主文件处理"); continue; }
                 SevenZipResult res = null;
                 var started = DateTime.UtcNow;
-                foreach (var pw in Candidates(f, r))
-                {
-                    res = await _zip.TestAsync(f, pw, ct).ConfigureAwait(false);
-                    if (res.Success || res.Error != SevenZipError.WrongPassword) break;
-                }
-                if (res.Success) _out(f + ": 正常");
-                else { _err(f + ": " + (res.Diagnosis ?? "校验失败")); code = 1; }
+                if (vol.Diagnosis != null)
+                    res = SevenZipResult.Fail("", SevenZipError.Unknown, vol.Diagnosis, f);
+                else
+                    foreach (var pw in Candidates(vol.Target, r))
+                    {
+                        res = await _zip.TestAsync(vol.Target, pw, ct).ConfigureAwait(false);
+                        if (res.Success || res.Error != SevenZipError.WrongPassword) break;
+                    }
+                if (res.Success) { NoteVolume(vol, r); _out(f + ": 正常"); }
+                else { _err(f + ": " + (Refine(res, vol, "校验失败").Diagnosis ?? "校验失败")); code = 1; }
                 RecordHistory("Test", f, null, res.Success, res.Success ? null : (res.Diagnosis ?? res.Error.ToString()), null, started);
             }
             return code;
@@ -274,14 +423,18 @@ namespace UZIP2.Cli
             if (files.Count == 0) { _err("用法: uzip2 extract <压缩包...> [-o DIR|--here] [--password pw|--auto] [--entries a;b]"); return files.Count == 0 && r.Args.Count > 0 ? 1 : 2; }
             foreach (var miss in r.Args.Where(a => !File.Exists(a))) _err(miss + ": 文件不存在");
             int code = 0;
-            foreach (var f in files)
+            var seen = new HashSet<string>(PathComparer);
+            foreach (var (f, vol) in OrderedTargets(files))
             {
+                // 整组卷只解一次：每一卷都解一遍会在同一目录里撞名、重复占满磁盘
+                if (!seen.Add(vol.Key)) { _out(f + ": 已随分卷主文件处理"); continue; }
                 string dest = ResolveDest(f, r);
                 var started = DateTime.UtcNow;
-                var (res, used) = await TryExtractAsync(f, dest, r, ct).ConfigureAwait(false);
+                var (res, used) = await TryExtractAsync(f, dest, r, ct, vol).ConfigureAwait(false);
                 if (res.Success)
                 {
-                    _out(f + " -> " + dest.TrimEnd('\\'));
+                    NoteVolume(vol, r);
+                    _out(f + " -> " + dest.TrimEnd('\\', '/'));
                     RecordHistory("Extract", f, dest.TrimEnd('\\', '/'), true, null, used, started);
                 }
                 else
@@ -759,15 +912,18 @@ namespace UZIP2.Cli
             var folder = r.Args.Count > 1 ? r.Args[1] : r.Output;
             if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder)) { _err("用法: uzip2 watch once <目录> [-o 解压到] [--auto]"); return 2; }
             int code = 0, done = 0;
-            foreach (var f in Directory.GetFiles(folder, "*", SearchOption.TopDirectoryOnly))
+            var seen = new HashSet<string>(PathComparer);
+            // 目录里 .001~.008 会一起被枚举出来，不归一化的话每一卷都要"解"一遍
+            foreach (var (f, vol) in OrderedTargets(Directory.GetFiles(folder, "*", SearchOption.TopDirectoryOnly)
+                                                       .Where(ArchiveInspector.CanExtractByExtension)))
             {
-                if (!ArchiveInspector.CanExtractByExtension(f)) continue;
+                if (!seen.Add(vol.Key)) { _out(f + ": 已随分卷主文件处理"); continue; }
                 string dest = ResolveDest(f, new CliRequest { Output = r.Output, Here = r.Here });
                 var started = DateTime.UtcNow;
-                var (res, used) = await TryExtractAsync(f, dest, r, ct).ConfigureAwait(false);
+                var (res, used) = await TryExtractAsync(f, dest, r, ct, vol).ConfigureAwait(false);
                 if (res.Success)
                 {
-                    done++; _out(f + " -> " + dest.TrimEnd('\\'));
+                    done++; NoteVolume(vol, r); _out(f + " -> " + dest.TrimEnd('\\', '/'));
                     RecordHistory("Extract", f, dest.TrimEnd('\\', '/'), true, null, used, started);
                 }
                 else

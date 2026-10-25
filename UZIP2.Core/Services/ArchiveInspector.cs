@@ -95,7 +95,14 @@ namespace UZIP2.Services
         public static bool CanExtractByExtension(string path)
         {
             var ext = Path.GetExtension(path).ToLowerInvariant();
-            return ext.Length > 0 && Extractable.Contains(ext);
+            if (ext.Length > 0 && Extractable.Contains(ext)) return true;
+            // 数字分卷的中间卷（.002/.003…）以及 .z01 这类旧式 zip 分卷：
+            // 白名单里只有 .001，所以以前 x.7z.003 会被判定成"普通文件"，
+            // GUI 的自动分流于是把它塞进*压缩*队列（生成 x.7z.zip），
+            // CLI 则报"格式不支持"。分卷的每一卷都应当按压缩包对待 —— 实际作业时
+            // 由 ArchiveWorker 回退到主卷（ExtractTargetPath）并在卷组内去重。
+            try { return AnalyzeVolume(path).IsVolume; }
+            catch { return false; }
         }
 
         public static VolumeInfo AnalyzeVolume(string filePath)
@@ -191,6 +198,25 @@ namespace UZIP2.Services
             return true;
         }
 
+        // 真正应当交给 7z 去打开的那个文件。
+        // 分卷的中间卷（x.7z.002 / x.zip.003 / x.z01 …）本身不是可打开的归档，
+        // 7z 对它会报 "Cannot open the file as archive"；凡是"读包"的动作
+        // （解压 / 预览 / 校验 / 转格式 / list / test）都必须先经过这里回退到主卷。
+        // 主卷缺失时原样返回 —— 让上层按"分卷不完整"去诊断，而不是在这里猜。
+        public static string ExtractTarget(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return path;
+            try
+            {
+                var v = AnalyzeVolume(path);
+                if (v != null && v.IsVolume && !string.IsNullOrEmpty(v.MainVolumePath)
+                    && File.Exists(v.MainVolumePath))
+                    return v.MainVolumePath;
+            }
+            catch { }
+            return path;
+        }
+
         public static ArchiveInfo Inspect(string path)
         {
             var info = new ArchiveInfo
@@ -201,8 +227,7 @@ namespace UZIP2.Services
             };
             info.IsArchive = info.RealExt != null;
             info.Volume = AnalyzeVolume(path);
-            info.ExtractTargetPath = info.Volume.IsVolume && File.Exists(info.Volume.MainVolumePath)
-                ? info.Volume.MainVolumePath : path;
+            info.ExtractTargetPath = ExtractTarget(path);
             info.BaseName = info.Volume.BaseName;
             // ExtractUnknow=false 时按扩展名; true 时按魔数(worker 决定, 这里都给字段)
             return info;

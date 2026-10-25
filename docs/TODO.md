@@ -123,6 +123,25 @@
 | AppImage 三个坑 | ① `.desktop` 的 `Categories=Utility;Archiver;` 里 `Archiver` 不是注册值 → 改 `Archiving`；② AppStream `<id>` 必须是反域名 → 改 `io.github.pingod.UZIP2`；③ 元数据文件名必须与 id 一致 → 文件改名（否则报 `metainfo-filename-cid-mismatch`）。另外 CI runner 升到 Ubuntu 26.04 后 `tail` 是 uutils 版，`tail -40` 报 `unexpected argument '-4'`，把上面这些真实错误全盖住了，改成 `tail -n 40` |
 | 发布 | 九个产物 + 各自 `.sha256` 已上传 Release `v3.13`；rpm 是 CI 构建的那个 |
 
+## 三·补二、v3.13 之后：分卷（多压缩包分包）
+
+用户点测分卷解压时挖出四个 bug，其中一个让 **Linux 图形界面的解压功能完全不可用**。
+
+| 缺陷 | 根因 | 修法 |
+|------|------|------|
+| **Linux GUI 解压 100% 失败**（阻断级） | `TempManager.Completion` / `ArchiveWorker.TempFix` 把分隔符硬编码成 `\\`，Linux 上拼出 `/tmp/voltest\/UZipTemp_x\` —— 反斜杠成了普通文件名字符，`/tmp` 下凭空多出目录 `voltest\`，随后 `Directory.GetFiles` 抛 `DirectoryNotFoundException`。与分卷无关，所有非 Windows GUI 解压都失败 | 新增 `PlatformPaths.EnsureTrailing` / `TrimSeparators`（跟 `Path.DirectorySeparatorChar`、TrimEnd 双字符），收口 `TempManager` 与 `ArchiveWorker` 里全部单字符 `TrimEnd('\\')` |
+| 中间卷被送进**压缩**队列 | `ArchiveInspector.Extractable` 白名单只有 `.001`，`x.7z.003` 被判为普通文件，GUI 自动分流产出 `x.7z.zip` | `CanExtractByExtension` 额外认可 `AnalyzeVolume().IsVolume`（含 `.z01`），仍不误判 `log.txt.002` |
+| 预览 / 转格式在分卷上不可用 | 只有解压做了主卷回退，`PreviewAsync`、`RunConvertAsync` 直接把中间卷给 7z（`Cannot open the file as archive`） | 新增 `ArchiveInspector.ExtractTarget`，三处统一走它；转格式产物名按主卷推导（`v7.zip` 而非 `v7.7z.003.zip`） |
+| CLI 完全不认识分卷（6 项） | `DoExtract`/`DoList`/`DoTest`/`DoWatch` 从不调 `ArchiveInspector.Inspect`，逐文件硬跑 7z | 新 `VolumeResolution`/`ResolveVolume`：归一到主卷、按文件名数卷找缺口、主卷优先排序、卷组内去重（`PathComparer` 跟平台）、`Refine` 改写诊断为"分卷不完整：缺少 X" |
+
+**trap 记录**：7z 根本区分不了"缺中卷"和"缺末卷"（两者都只回 `Unexpected end of archive` / `Cannot open as archive`，exit=2），缺口只能在文件名层自己数；且**只有在缺的那卷后面还有卷时才报缺口**，否则 `.001~.007` 恰好是全集会被误判成"缺 .008"。
+
+**测试**：`UZIP2.Avalonia.Tests` 21→36（路径分隔符、卷识别、`ExtractTarget`）；`UZIP2.Tests/CliVolumeTests.cs` 新增 14 条（真 7z 造 16k 分卷）。造多片卷组时**填充必须随机** —— 可压缩填充会让 7z 把几十 KB 全塞进第一卷。
+
+**验证**：CLI 六场景全部 exit code 正确；GUI 在 wstream 沙箱里 `v7.7z.003` 卡片显示"Extract 完成"、汇总"活动 0 · 完成 1 · 失败 0 · 共 1"；预览/转格式用 net8.0 探针实测 `entries=22` 与产物 `v7.zip`。
+
+**残留**：① 缺卷检测依赖三位补零命名，≥1000 卷走不误报兜底；② 末卷"存在但被截断"归入"末卷缺失或最后一卷未下载完"；③ `UZIP2.Tests` 在 Linux 跑不了（testhost 需 `Microsoft.WindowsDesktop.App`），新 CLI 测试只在临时 net8.0 探针里跑过，正式工程需 Windows CI 复跑。
+
 ---
 
 

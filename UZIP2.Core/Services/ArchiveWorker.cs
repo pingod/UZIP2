@@ -295,6 +295,12 @@ namespace UZIP2.Services
         // 清单读取不读数据，按解压同款密码链试一遍也很便宜
         public async Task<ArchiveListing> PreviewAsync(string archive, string password = null, CancellationToken ct = default)
         {
+            // 分卷的中间卷（x.7z.002 这类）本身不是可打开的归档：7z 对它有
+            // "Cannot open the file as archive"。预览必须跟解压一样先回退到主卷，
+            // 否则「预览」按钮在分卷上永远读不出清单。
+            var target = ArchiveInspector.ExtractTarget(archive);
+            if (!string.IsNullOrEmpty(target)) archive = target;
+
             var first = await _zip.ListEntriesAsync(archive, password, ct).ConfigureAwait(false);
             if (first.Success || first.Error != SevenZipError.WrongPassword) return first;
 
@@ -427,7 +433,7 @@ namespace UZIP2.Services
 
         SemaphoreSlim DirGate(string dir)
         {
-            var key = (dir ?? "").TrimEnd('\\').ToLowerInvariant();
+            var key = PlatformPaths.TrimSeparators(dir).ToLowerInvariant();
             lock (_sync)
             {
                 SemaphoreSlim g;
@@ -566,7 +572,7 @@ namespace UZIP2.Services
             foreach (var c in chain)
             {
                 if (ct.IsCancellationRequested) break;
-                res = await _zip.ExtractAsync(f, temp.TrimEnd('\\'), c.Password, progress, ct,
+                res = await _zip.ExtractAsync(f, PlatformPaths.TrimSeparators(temp), c.Password, progress, ct,
                     s.ExtractCoverMode, job.SelectedEntries).ConfigureAwait(false);
                 if (res.Success)
                 {
@@ -707,12 +713,15 @@ namespace UZIP2.Services
         static string TempFix(string dir)
         {
             Directory.CreateDirectory(dir);
-            return dir.EndsWith("\\") ? dir : dir + "\\";
+            // 这里曾经硬编码反斜杠：Linux 上 /tmp/voltest 会被拼成 "/tmp/voltest\"，
+            // 反斜杠只是普通文件名字符 → 后续 Directory.GetFiles 找不到临时目录而抛
+            // DirectoryNotFoundException，Linux GUI 解压 100% 失败。统一走平台分隔符。
+            return PlatformPaths.EnsureTrailing(dir);
         }
 
         static void TryDeleteTemp(string temp)
         {
-            try { if (Directory.Exists(temp)) Directory.Delete(temp.TrimEnd('\\'), true); } catch { }
+            try { if (Directory.Exists(temp)) Directory.Delete(PlatformPaths.TrimSeparators(temp), true); } catch { }
         }
 
         // 7z 的 a 是边压边写：取消或中途失败会留下一个头部完整、数据不全的档案。
@@ -853,8 +862,13 @@ namespace UZIP2.Services
                 return;
             }
 
+            // 分卷的中间卷不能直接交给 7z（"Cannot open the file as archive"），
+            // 转格式同样要回退到主卷；产物名也按主卷推导，否则会把
+            // x.7z.003 当成主名产出 x.7z.003.zip 这种怪名字。
+            string src = ArchiveInspector.ExtractTarget(job.Archive);
+
             string outDir = TempFix(job.Target ?? Path.GetDirectoryName(job.Archive));
-            string outArchive = ArchiveFormat.TargetPath(job.Archive, outDir, job.ConvertType);
+            string outArchive = ArchiveFormat.TargetPath(src, outDir, job.ConvertType);
             string temp = TempManager.CreateSessionTemp(outDir, job.Archive, job.Id.ToString(), _settings.ConfigDirectory);
             try
             {
@@ -864,7 +878,7 @@ namespace UZIP2.Services
                 var external = _passwords.ExternalPasswords();
                 var enc = ShouldProbeEncryption(job.ManualPassword, namePw, external.Count,
                         _passwords.Book.Count, _passwords.Paper.Count)
-                    ? await _zip.ProbeEncryptionAsync(job.Archive, ct).ConfigureAwait(false)
+                    ? await _zip.ProbeEncryptionAsync(src, ct).ConfigureAwait(false)
                     : EncryptionState.Unknown;
                 var chain = BuildPasswordChain(enc == EncryptionState.Encrypted, job.ManualPassword,
                     external, namePw,
@@ -883,7 +897,7 @@ namespace UZIP2.Services
                 foreach (var c in chain)
                 {
                     if (ct.IsCancellationRequested) break;
-                    res = await _zip.ExtractAsync(job.Archive, temp.TrimEnd('\\'), c.Password, unpack, ct, "-aos")
+                    res = await _zip.ExtractAsync(src, PlatformPaths.TrimSeparators(temp), c.Password, unpack, ct, "-aos")
                               .ConfigureAwait(false);
                     if (res.Success) { password = c.Password; break; }
                     if (res.Error != SevenZipError.WrongPassword) break;

@@ -3,6 +3,53 @@
 本项目按 tag 发布（两段版本号，如 `v3.12`），安装包里的程序版本是三段（`3.12.0`）。
 条目按"用户能感知的变化"写，不逐条列重构。
 
+## [未发布] — 分卷（多压缩包分包）修复
+
+分卷解压是 Linux 上最严重的一批缺陷，其中一条让**图形界面的解压功能完全不可用**。
+
+### 修复（严重）
+
+- **Linux 图形界面解压 100% 失败**（阻断级）：`TempManager.Completion` 与 `ArchiveWorker.TempFix`
+  把路径分隔符硬编码成反斜杠，Linux 上拼出 `/tmp/voltest\/UZipTemp_x\` 这种路径 ——
+  反斜杠被当成普通文件名字符，于是 `/tmp` 下凭空多出一个叫 `voltest\` 的目录，
+  紧接着 `Directory.GetFiles(temp)` 找不到 → `DirectoryNotFoundException`。
+  所有非 Windows 平台上的每一次 GUI 解压都失败，与分卷无关。
+  新增 `PlatformPaths.EnsureTrailing` / `TrimSeparators`（跟随 `Path.DirectorySeparatorChar`，
+  TrimEnd 双字符），把 `TempManager`、`ArchiveWorker` 里所有单字符 `TrimEnd('\\')` 一并收口。
+- **分卷的中间卷被当成"普通文件"送进压缩队列**：`ArchiveInspector.Extractable` 白名单里只有
+  `.001`，于是 `x.7z.003` 被 GUI 自动分流判定为待压缩文件，产出 `x.7z.zip`。
+  `CanExtractByExtension` 改为额外认可 `AnalyzeVolume().IsVolume`（覆盖 `.002`…`.999`
+  与旧式 `.z01`），仍不把 `log.txt.002` 这类误判成压缩包。
+- **预览与转格式在分卷上不可用**：只有解压做了"回退到主卷"，`PreviewAsync` 与
+  `RunConvertAsync` 都把中间卷直接交给 7z（`Cannot open the file as archive`）。
+  新增 `ArchiveInspector.ExtractTarget`，三处统一走它；转格式的产物名也改按主卷推导
+  （`v7.zip`，不再是 `v7.7z.003.zip`）。
+- **CLI 完全不认识分卷**（6 项）：
+  `extract`/`list`/`test` 遇到中间卷一律报"格式不支持或包内无文件"；
+  批量传整组卷时只有 `.001` 成功、其余各报一次错并让退出码变成 1；
+  缺中卷、缺主卷都只说"格式不支持"，不告诉用户缺的是哪一卷；
+  zip 中间卷被当成独立包解出半截（`CRC` 错误）。
+  现在：卷组内归一到主卷并只处理一次（其余打印"已随分卷主文件处理"，退出码 0），
+  主卷优先于从属卷排序，缺卷点名（`分卷不完整：缺少 v7.7z.004` /
+  `缺少主卷 v7.7z.001（分卷必须从第一卷开始读）`），末卷缺失单独归因，
+  非压缩包仍走原来的"格式不支持"（不被分卷逻辑吞掉）。`watch once` 同样去重。
+- **`list *.00* --json` 会破坏 NDJSON**：从属卷那行中文插进了输出流，下游 `jq`/CI 直接解析失败。
+  改为并入主卷对象的 `volumes` 数组，整组卷只出一个 JSON 对象。
+
+### 测试
+
+- `UZIP2.Avalonia.Tests` 21 → 36 条：路径分隔符（含 Unix 上绝不产生反斜杠）、
+  数字卷与旧式 `.z01` 识别、`log.txt.002` 不算压缩包、`ExtractTarget` 回退/主卷缺失时原样返回。
+- `UZIP2.Tests/CliVolumeTests.cs` 新增 14 条（真 7z 造 16k 小分卷）：中间卷回落、
+  批量去重、乱序输入主卷优先、缺中卷/缺主卷/缺末卷、zip 中间卷、JSON 单对象。
+  **注意造多片卷组时填充数据必须是随机的** —— 可压缩的填充会让 7z 把几十 KB 全塞进第一卷。
+
+### 已知限制
+
+- 缺卷检测依赖 7z 的三位补零命名（`.001`…`.999`）；≥1000 卷或四位补零走"不误报"的兜底。
+- 7z 本身区分不了"缺中卷"与"缺末卷"，缺口只能在文件名层自己数；
+  末卷存在但被截断会归入"末卷缺失或最后一卷未下载完"。
+
 ## [3.13.0] — 2026-10-24
 
 Linux 图形界面从 **XWayland** 切到**原生 Wayland**，并补齐了缺位的 Arch 分发产物。

@@ -432,6 +432,136 @@ namespace UZIP2.Avalonia.Tests
             Assert.Null(PuckWindow.ResolveRestorePoint(-1, -1, primary));
         }
 
+        // ── 路径分隔符（Linux GUI 解压曾经 100% 失败）──────────────────────────
+        // 根因：TempManager.Completion / ArchiveWorker.TempFix 硬编码反斜杠，
+        // Linux 上把 "/tmp/x" 拼成 "/tmp/x\"，反斜杠只是普通文件名字符 →
+        // 临时目录建到 /tmp 下一个叫 "x\" 的怪目录里，随后 Directory.GetFiles
+        // 用带尾反斜杠的路径找不到，抛 DirectoryNotFoundException。
+        [Fact]
+        public void Ensure_trailing_uses_the_platform_separator()
+        {
+            var sep = Path.DirectorySeparatorChar;
+            Assert.Equal("/tmp/voltest" + sep, PlatformPaths.EnsureTrailing("/tmp/voltest"));
+            // 已经有分隔符（任一种）就不要重复追加
+            Assert.Equal("/tmp/voltest/", PlatformPaths.EnsureTrailing("/tmp/voltest/"));
+            Assert.Equal("/tmp/voltest/", PlatformPaths.EnsureTrailing("/tmp/voltest/"));
+            // 空值与 null 原样返回，不炸
+            Assert.Equal("", PlatformPaths.EnsureTrailing(""));
+            Assert.Equal("", PlatformPaths.EnsureTrailing(null));
+        }
+
+        [Fact]
+        public void Trim_separators_strips_both_kinds()
+        {
+            Assert.Equal("/tmp/voltest", PlatformPaths.TrimSeparators("/tmp/voltest/"));
+            Assert.Equal("/tmp/voltest", PlatformPaths.TrimSeparators("/tmp/voltest\\"));
+            Assert.Equal("/tmp/voltest", PlatformPaths.TrimSeparators("/tmp/voltest/\\"));
+            Assert.Equal("", PlatformPaths.TrimSeparators(null));
+        }
+
+        [Fact]
+        public void Temp_manager_never_produces_a_backslash_on_unix()
+        {
+            if (OperatingSystem.IsWindows()) return;   // 这个 bug 只在 Unix 上暴露
+            var outDir = Path.Combine(Path.GetTempPath(), "uzip2-path-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(outDir);
+            try
+            {
+                var temp = TempManager.CreateSessionTemp(outDir, Path.Combine(outDir, "a.7z.001"), "1",
+                    Path.Combine(outDir, "cfg"));
+                Assert.DoesNotContain('\\', temp);
+                Assert.True(temp.StartsWith(outDir + "/"), $"临时目录应落在输出目录下，实际 {temp}");
+                Assert.True(Directory.Exists(temp), $"临时目录必须真的存在：{temp}");
+                // 曾经这里会抛 DirectoryNotFoundException
+                Assert.Empty(Directory.GetFiles(temp, "*", SearchOption.TopDirectoryOnly));
+            }
+            finally
+            {
+                try { Directory.Delete(outDir, true); } catch { }
+            }
+        }
+
+        // ── 分卷识别（GUI 自动分流曾把中间卷送进压缩队列）─────────────────────
+        // 白名单里只有 ".001"，.002/.003… 因此被判成"普通文件"，
+        // GUI 的 EnqueueAuto 于是把它当待压缩物（产出 x.7z.zip），CLI 报"格式不支持"。
+        [Theory]
+        [InlineData("x.7z.002")]
+        [InlineData("x.7z.008")]
+        [InlineData("x.zip.003")]
+        [InlineData("x.tar.002")]
+        [InlineData("x.bz2.002")]
+        [InlineData("x.gz.002")]
+        [InlineData("x.xz.002")]
+        public void Every_numeric_volume_counts_as_an_archive(string name)
+        {
+            Assert.True(ArchiveInspector.CanExtractByExtension("/tmp/" + name),
+                $"{name} 是分卷，必须按压缩包对待");
+        }
+
+        [Fact]
+        public void Old_style_zip_splits_count_as_archives()
+        {
+            Assert.True(ArchiveInspector.CanExtractByExtension("/tmp/b.z01"));
+            Assert.True(ArchiveInspector.CanExtractByExtension("/tmp/b.z12"));
+        }
+
+        [Fact]
+        public void Unknown_numeric_suffix_is_still_not_an_archive()
+        {
+            // 数字后缀但基名不是压缩包 → 不是分卷
+            Assert.False(ArchiveInspector.CanExtractByExtension("/tmp/log.txt.002"));
+            Assert.False(ArchiveInspector.CanExtractByExtension("/tmp/photo.png"));
+        }
+
+        [Fact]
+        public void Extract_target_falls_back_to_the_first_volume()
+        {
+            // 分卷的中间卷本身打不开（7z: "Cannot open the file as archive"），
+            // 所以凡是"读包"的动作都要先回退到 .001。预览与转格式曾经漏了这一步。
+            string dir = Directory.CreateTempSubdirectory("uzip2-vol-").FullName;
+            try
+            {
+                string main = Path.Combine(dir, "x.7z.001");
+                string mid = Path.Combine(dir, "x.7z.003");
+                File.WriteAllText(main, "main");
+                File.WriteAllText(mid, "mid");
+
+                Assert.Equal(main, ArchiveInspector.ExtractTarget(mid));
+                Assert.Equal(main, ArchiveInspector.ExtractTarget(main));
+                // Inspect 的 ExtractTargetPath 走同一条路径
+                Assert.Equal(main, ArchiveInspector.Inspect(mid).ExtractTargetPath);
+            }
+            finally { Directory.Delete(dir, true); }
+        }
+
+        [Fact]
+        public void Extract_target_keeps_the_middle_volume_when_the_first_is_missing()
+        {
+            // 主卷缺失不能在这里瞎猜：原样返回，让上层报"分卷不完整"
+            string dir = Directory.CreateTempSubdirectory("uzip2-vol-").FullName;
+            try
+            {
+                string mid = Path.Combine(dir, "y.7z.003");
+                File.WriteAllText(mid, "mid");
+                Assert.Equal(mid, ArchiveInspector.ExtractTarget(mid));
+            }
+            finally { Directory.Delete(dir, true); }
+        }
+
+        [Fact]
+        public void Extract_target_leaves_plain_archives_alone()
+        {
+            string dir = Directory.CreateTempSubdirectory("uzip2-vol-").FullName;
+            try
+            {
+                string plain = Path.Combine(dir, "plain.7z");
+                File.WriteAllText(plain, "x");
+                Assert.Equal(plain, ArchiveInspector.ExtractTarget(plain));
+                Assert.Equal("", ArchiveInspector.ExtractTarget(""));
+            }
+            finally { Directory.Delete(dir, true); }
+        }
+
         /// <summary>递归找出一棵可视树里所有 Button（Avalonia 11 没有 WPF 的 FindVisualChildren）。</summary>
         private static IEnumerable<Button> AllButtons(Control root)
         {

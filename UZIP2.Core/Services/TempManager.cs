@@ -86,7 +86,7 @@ namespace UZIP2.Services
             {
                 string dir = (raw ?? "").Trim();
                 if (dir.Length == 0) continue;
-                if (!Path.GetFileName(dir.TrimEnd('\\')).StartsWith(Prefix, StringComparison.Ordinal)) continue;
+                if (!Path.GetFileName(PlatformPaths.TrimSeparators(dir)).StartsWith(Prefix, StringComparison.Ordinal)) continue;
                 if (!Directory.Exists(dir)) continue;
                 if (TryRemove(dir)) cleaned++;
                 else keep.Add(dir);        // 正被占用（另一实例在跑），下轮再试
@@ -102,13 +102,13 @@ namespace UZIP2.Services
 
         static bool TryRemove(string dir)
         {
-            try { Directory.Delete(dir.TrimEnd('\\'), true); return true; }
+            try { Directory.Delete(PlatformPaths.TrimSeparators(dir), true); return true; }
             catch { return false; }
         }
 
         static string Completion(string path)
         {
-            return path.EndsWith("\\") ? path : path + "\\";
+            return PlatformPaths.EnsureTrailing(path);
         }
     }
 }

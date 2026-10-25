@@ -11,6 +11,15 @@
 4. 优化临时缓存文件夹相关代码，每个压缩包有单独的缓存文件夹，并且该文件夹是隐藏的。
 5. 支持多级解压，压缩包内第一层压缩包再次解压，持续符合条件时会循环解压。
 
+## 本次增强（v3.13 之后 — 分卷解压修复）
+
+分卷（多压缩包分包）是 Linux 上最脆弱的一环，这一轮把图形界面与 CLI 两侧都修透了：
+
+- **修掉一个阻断级 bug**：Linux 图形界面的解压此前 **100% 失败**（与分卷无关）。临时目录的路径分隔符被硬编码成反斜杠，拼出 `/tmp/xxx\/UZipTemp_1\` 这种路径，反斜杠成了普通文件名字符，于是路径不存在、`DirectoryNotFoundException`。现在统一走 `PlatformPaths.EnsureTrailing` / `TrimSeparators`，跟随 `Path.DirectorySeparatorChar`。
+- **分卷的每一卷都按压缩包对待**：以前只有 `.001` 在白名单里，`x.7z.003` 被图形界面当"普通文件"送去压缩（产出 `x.7z.zip`）。现在数字卷与旧式 `.z01` 都识别，仍不会把 `log.txt.002` 误判成压缩包。
+- **预览与转格式支持分卷**：两者以前把中间卷直接交给 7z（`Cannot open the file as archive`）。新增 `ArchiveInspector.ExtractTarget` 统一回退到主卷；转格式产物名也按主卷推导（`v7.zip`，不再是 `v7.7z.003.zip`）。
+- **CLI 认得分卷了**：中间卷能解、整组卷只处理一次（其余报"已随分卷主文件处理"、退出码 0）、缺卷会点名（`分卷不完整：缺少 v7.7z.004`）、非压缩包仍报"格式不支持"。`watch once` 同样去重。
+
 ## 本次增强（v3.13 — 原生 Wayland / Arch 分发）
 
 - **原生 Wayland**：升级到 Avalonia 12.1.4 并接入 `Avalonia.Wayland`，Linux 上不再走 XWayland。根因是 `Avalonia.Wayland` 包从 12.1.0 才发布，11.x 系列根本没有 Wayland 后端。纯 Wayland 会话里 `WAYLAND_DEBUG=1` 能抓到 `wl_compositor` / `xdg_wm_base` / `wl_shm` / `wl_seat` 往返，进程 fd 里 X11 socket 数量为 0。

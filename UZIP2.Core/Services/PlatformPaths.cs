@@ -52,7 +52,23 @@ namespace UZIP2.Services
                || (path.Length > 1 && path[1] == ':');   // C:\… 这类 Windows 绝对路径
 
         static string TrimTrailing(string path)
-            => path.Length > 1 ? path.TrimEnd('/', '\\') : path;
+            => string.IsNullOrEmpty(path) || path.Length <= 1 ? (path ?? "") : path.TrimEnd('/', '\\');
+
+        /// <summary>
+        /// 补一个**本平台**的尾部路径分隔符。历史上这里硬编码过反斜杠，结果 Linux 上拼出
+        /// "/tmp/voltest\/UZipTemp_x\" —— 反斜杠被当成普通文件名字符，临时目录建到错误位置
+        /// （/tmp 下凭空多一个名字叫 "voltest\" 的目录），随后 Directory.GetFiles 找不到而抛
+        /// DirectoryNotFoundException，Linux GUI 解压 100% 失败。CLI 侧因为没走这两处才没事。
+        /// </summary>
+        public static string EnsureTrailing(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return path ?? "";
+            char last = path[path.Length - 1];
+            return last == '/' || last == '\\' ? path : path + Path.DirectorySeparatorChar;
+        }
+
+        /// <summary>去掉尾部路径分隔符，两种分隔符都去（Linux 上只去反斜杠会留下正斜杠）。</summary>
+        public static string TrimSeparators(string path) => TrimTrailing(path ?? "");
 
         static string Join(bool isWindows, string left, string right)
         {
