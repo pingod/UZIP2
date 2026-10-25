@@ -466,6 +466,32 @@ namespace UZIP2.Avalonia.Tests
         }
 
         /// <summary>
+        /// 主窗口和方块窗口是同一个进程开的，一个 pid 对两个窗口。「桌面只留方块」时主窗口
+        /// 只是隐藏、仍在 clients 列表里，只按 pid 取第一个会撞上主窗口 —— 那样就把主窗口
+        /// 抬进浮动层、把方块挪到别处。带标题线索时必须选方块那个。
+        /// </summary>
+        [Fact]
+        public void Hyprland_tells_the_puck_apart_from_the_main_window()
+        {
+            // 主窗口排在前面：只按 pid 的顺序会先撞上它。
+            const string json = "[{\"address\":\"0xmain\",\"pid\":22,\"title\":\"UZIP2\"}," +
+                                "{\"address\":\"0xpuck\",\"pid\":22,\"title\":\"UZIP 拖拽方块\"}]";
+            Assert.Equal("0xpuck", HyprlandWindowHelper.PickAddress(json, 22, HyprlandWindowHelper.PuckTitle));
+            // 没有标题线索时保持旧行为（第一个匹配项），不因这个改动而变。
+            Assert.Equal("0xmain", HyprlandWindowHelper.PickAddress(json, 22));
+            // 一个方块窗口都找不到时退回第一个匹配项，而不是返回 null —— 好歹能动。
+            const string mainOnly = "[{\"address\":\"0xmain\",\"pid\":22,\"title\":\"UZIP2\"}]";
+            Assert.Equal("0xmain", HyprlandWindowHelper.PickAddress(mainOnly, 22, HyprlandWindowHelper.PuckTitle));
+            // 坐标也要能按标题挑对窗口。
+            const string withAt = "[{\"address\":\"0xmain\",\"pid\":22,\"title\":\"UZIP2\",\"at\":[10,20]}," +
+                                  "{\"address\":\"0xpuck\",\"pid\":22,\"title\":\"UZIP 拖拽方块\",\"at\":[744,444]}]";
+            Assert.True(HyprlandWindowHelper.TryParsePosition(withAt, 22, out int px, out int py,
+                HyprlandWindowHelper.PuckTitle));
+            Assert.Equal(744, px);
+            Assert.Equal(444, py);
+        }
+
+        /// <summary>
         /// Wayland 下 `Window.Position` 恒为 0,0（xdg-shell 不告诉客户端绝对位置）。
         /// 如果照它存盘，用户挪过方块后设置里就被写成 0,0，下次启动方块跑到左上角。
         /// 所以 Wayland 上必须改问合成器 —— 这里验 JSON 解析这条路。

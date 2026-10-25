@@ -31,6 +31,11 @@ namespace UZIP2.Avalonia.Shell
         // 本进程窗口的 Hyprland address。窗口从创建到销毁都不变，缓存起来；
         // 否则 50ms 一次的摆位追踪每轮都要起一个 hyprctl 进程去查它，纯浪费。
         private static string _selfAddress;
+        // 缓存时用的标题线索。方块窗口和主窗口同进程，换线索就得重新查。
+        private static string _selfTitleHint;
+
+        /// <summary>方块窗口的标题。用它区分「同进程的主窗口」。</summary>
+        public const string PuckTitle = "UZIP 拖拽方块";
 
         /// <summary>Hyprland 会话里才有 hyprctl 可用；探测结果缓存。<summary>
         public static bool IsAvailable
@@ -61,7 +66,7 @@ namespace UZIP2.Avalonia.Shell
         public static bool Float()
         {
             if (!IsAvailable) return false;
-            var addr = SelfAddress();
+            var addr = SelfAddress(PuckTitle);
             if (addr == null) return false;
             return Dispatch(BuildFloatCommand(addr))
                 || Dispatch("setfloating address:" + addr); // 老版本兜底
@@ -71,32 +76,33 @@ namespace UZIP2.Avalonia.Shell
         public static bool MoveTo(int x, int y)
         {
             if (!IsAvailable) return false;
-            var addr = SelfAddress();
+            var addr = SelfAddress(PuckTitle);
             if (addr == null) return false;
             return Dispatch(BuildMoveCommand(addr, x, y));
         }
 
         /// <summary>
-        /// 本进程窗口的 address，查一次就缓存。
+        /// 本进程方块窗口的 address，查一次就缓存。
         /// 窗口刚创建、还没被合成器收进 clients 列表时查不到，这时<b>不</b>缓存失败结果，
         /// 让调用方下次再试。
         /// </summary>
-        private static string SelfAddress()
+        private static string SelfAddress(string titleHint)
         {
-            if (_selfAddress != null) return _selfAddress;
-            _selfAddress = FindAddressByPid(Environment.ProcessId);
+            if (_selfAddress != null && _selfTitleHint == titleHint) return _selfAddress;
+            _selfAddress = FindAddressByPid(Environment.ProcessId, titleHint);
+            _selfTitleHint = _selfAddress != null ? titleHint : null;
             return _selfAddress;
         }
 
         /// <summary>
-        /// 让本进程的窗口进入浮动层并摆到 (x, y)。
+        /// 让本进程的方块窗口进入浮动层并摆到 (x, y)。
         /// 返回 false 表示这一步没做成（不是 Hyprland、找不到 hyprctl、或者 IPC 拒绝），
         /// 调用方不要因此报错 —— 用户仍然可以手动拖动方块。
         /// </summary>
         public static bool FloatAt(int x, int y)
         {
             if (!IsAvailable) return false;
-            var addr = FindAddressByPid(Environment.ProcessId);
+            var addr = SelfAddress(PuckTitle);
             if (addr == null) return false;
             return FloatAtAddress(addr, x, y);
         }
@@ -128,23 +134,29 @@ namespace UZIP2.Avalonia.Shell
             y = 0;
             if (!IsAvailable) return false;
             var json = Run(_hyprctl, 3000, args: new[] { "-j", "clients" });
-            return TryParsePosition(json, Environment.ProcessId, out x, out y);
+            return TryParsePosition(json, Environment.ProcessId, out x, out y, PuckTitle);
         }
 
-        /// <summary>从 <c>hyprctl clients -j</c> 的 JSON 里取出指定 pid 窗口的 at 坐标。测试用。</summary>
-        internal static bool TryParsePosition(string clientsJson, int pid, out int x, out int y)
+        /// <summary>
+        /// 从 <c>hyprctl clients -j</c> 的 JSON 里取出指定 pid 窗口的 at 坐标。
+        /// 同样要 <paramref name="titleHint"/> 才能在一进程多窗口时挑对（见 PickAddress）。
+        /// 测试用。
+        /// </summary>
+        internal static bool TryParsePosition(string clientsJson, int pid, out int x, out int y, string titleHint = null)
         {
             x = 0;
             y = 0;
             if (string.IsNullOrEmpty(clientsJson)) return false;
+            var addr = PickAddress(clientsJson, pid, titleHint);
+            if (addr == null) return false;
             try
             {
                 using var doc = JsonDocument.Parse(clientsJson);
                 if (doc.RootElement.ValueKind != JsonValueKind.Array) return false;
                 foreach (var c in doc.RootElement.EnumerateArray())
                 {
-                    if (!c.TryGetProperty("pid", out var pidEl) || pidEl.ValueKind != JsonValueKind.Number) continue;
-                    if (pidEl.GetInt32() != pid) continue;
+                    if (!c.TryGetProperty("address", out var addrEl)) continue;
+                    if (!string.Equals(addrEl.GetString(), addr, StringComparison.Ordinal)) continue;
                     if (!c.TryGetProperty("at", out var at) || at.ValueKind != JsonValueKind.Array) continue;
                     if (at.GetArrayLength() < 2) continue;
                     x = at[0].GetInt32();
@@ -174,22 +186,37 @@ namespace UZIP2.Avalonia.Shell
         /// <summary>
         /// 从 <c>hyprctl clients -j</c> 的 JSON 里挑出属于本进程的那个窗口地址。
         /// 用 pid 匹配（比窗口标题稳，标题会随界面语言/状态变）。
+        /// <para>
+        /// 但<b>不能只按 pid</b>：主窗口和方块窗口是同一个进程开出来的，一个 pid 对两个窗口。
+        /// 「桌面只留方块」时主窗口只是隐藏、仍在 clients 列表里，先撞上谁取决于合成器的顺序 ——
+        /// 撞上主窗口就会把主窗口抬进浮动层、再把方块挪到别处。所以给了 <paramref name="titleHint"/>
+        /// 时优先选标题里含它的那个，找不到才退回第一个 pid 匹配项。
+        /// </para>
         /// </summary>
-        internal static string PickAddress(string clientsJson, int pid)
+        internal static string PickAddress(string clientsJson, int pid, string titleHint = null)
         {
             if (string.IsNullOrEmpty(clientsJson)) return null;
             try
             {
                 using var doc = JsonDocument.Parse(clientsJson);
                 if (doc.RootElement.ValueKind != JsonValueKind.Array) return null;
+                string first = null;
                 foreach (var c in doc.RootElement.EnumerateArray())
                 {
                     if (!c.TryGetProperty("pid", out var pidEl) || pidEl.ValueKind != JsonValueKind.Number) continue;
                     if (pidEl.GetInt32() != pid) continue;
                     if (!c.TryGetProperty("address", out var addrEl)) continue;
                     var addr = addrEl.GetString();
-                    if (!string.IsNullOrEmpty(addr)) return addr;
+                    if (string.IsNullOrEmpty(addr)) continue;
+                    if (first == null) first = addr;
+                    if (string.IsNullOrEmpty(titleHint)) return addr;
+                    if (c.TryGetProperty("title", out var titleEl) && titleEl.ValueKind == JsonValueKind.String)
+                    {
+                        var title = titleEl.GetString();
+                        if (title != null && title.IndexOf(titleHint, StringComparison.Ordinal) >= 0) return addr;
+                    }
                 }
+                return first;
             }
             catch (JsonException)
             {
@@ -198,10 +225,10 @@ namespace UZIP2.Avalonia.Shell
             return null;
         }
 
-        private static string FindAddressByPid(int pid)
+        private static string FindAddressByPid(int pid, string titleHint = null)
         {
             var json = Run(_hyprctl, 3000, args: new[] { "-j", "clients" });
-            return PickAddress(json, pid);
+            return PickAddress(json, pid, titleHint);
         }
 
         private static bool Dispatch(string command)
